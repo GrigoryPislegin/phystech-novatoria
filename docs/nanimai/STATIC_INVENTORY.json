@@ -1,0 +1,64 @@
+{
+  "python": "3.13.5",
+  "repos": {
+    "platform-main": {
+      "files": 416,
+      "python_files": 354,
+      "python_lines": 43764,
+      "test_files": 13,
+      "test_functions_static": 78,
+      "syntax_errors": [],
+      "missing_internal_import_modules": {},
+      "licenses": []
+    },
+    "hharon-main": {
+      "files": 342,
+      "python_files": 305,
+      "python_lines": 48687,
+      "test_files": 47,
+      "test_functions_static": 246,
+      "syntax_errors": [],
+      "missing_internal_import_modules": {},
+      "licenses": []
+    },
+    "platform-1.10.0": {
+      "files": 195,
+      "python_files": 180,
+      "python_lines": 11616,
+      "test_files": 1,
+      "test_functions_static": 0,
+      "syntax_errors": [],
+      "missing_internal_import_modules": {},
+      "licenses": []
+    }
+  },
+  "platform_example_config": {
+    "missing_required_top_level_fields": [
+      "casino_grpc",
+      "cdn",
+      "crypt",
+      "customer_telegram",
+      "hh",
+      "private_s3",
+      "public_s3",
+      "publisher_telegram",
+      "secret",
+      "tulpa_grpc"
+    ],
+    "present_top_level_keys": [
+      "debug",
+      "proxy",
+      "cors",
+      "supabase",
+      "mongo",
+      "rabbitmq",
+      "redis",
+      "yandexgpt",
+      "rocketdoc_grpc",
+      "hharon_grpc",
+      "hh_oauth",
+      "hh_vacancy_importer",
+      "hharon_oauth"
+    ]
+  }
+}

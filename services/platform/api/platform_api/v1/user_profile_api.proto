@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package platform_api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "platform_api/v1/common.proto";
+
+service UserService {
+  rpc CreateUserProfile(CreateUserProfileRequest) returns (CreateUserProfileResponse);
+  rpc ReadUserProfile(ReadUserProfileRequest) returns (ReadUserProfileResponse);
+  rpc UpdateUserProfile(UpdateUserProfileRequest) returns (UpdateUserProfileResponse);
+  rpc DeleteUserProfile(DeleteUserProfileRequest) returns (DeleteUserProfileResponse);
+}
+
+message Tutorials {
+  bool platform = 1;
+  bool interview = 2;
+}
+
+message UserProfile {
+  // UserID
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  string thumbnail_url = 4;
+  Tutorials tutorials = 5;
+
+  google.protobuf.Timestamp created_at = 100;
+  google.protobuf.Timestamp updated_at = 101;
+  optional google.protobuf.Timestamp deleted_at = 102;
+}
+
+message CreateUserProfileRequest {
+  string email = 1;
+  string name = 2;
+  string password = 3;
+  string thumbnail_url = 4;
+  Tutorials tutorials = 5;
+}
+
+message CreateUserProfileResponse {
+  UserProfile user_profile = 1;
+}
+
+message ReadUserProfileRequest {
+  // UserID
+  string id = 1;
+}
+
+message ReadUserProfileResponse {
+  UserProfile user_profile = 1;
+}
+
+message DeleteUserProfileRequest {
+  // UserID
+  string id = 1;
+}
+
+message DeleteUserProfileResponse {
+  UserProfile user_profile = 1;
+}
+
+message UpdateUserProfileRequest {
+  // UserID
+  string id = 1;
+
+  optional PatchString email = 2;
+  optional PatchString name = 3;
+  optional PatchString password = 4;
+  optional PatchString thumbnail_url = 5;
+  optional PatchBool tutorial_platform = 7;
+  optional PatchBool tutorial_interview = 8;
+}
+
+message UpdateUserProfileResponse {
+  UserProfile user_profile = 1;
+}

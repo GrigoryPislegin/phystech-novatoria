@@ -1,0 +1,8 @@
+from . import service as service
+from .service import StatisticsService as StatisticsService
+from .service import StatisticsServiceCalculationError as StatisticsServiceCalculationError
+from .service import StatisticsServiceError as StatisticsServiceError
+from .service import StatisticsServiceInvalidDataError as StatisticsServiceInvalidDataError
+from .service import StatisticsServiceProjectNotFoundError as StatisticsServiceProjectNotFoundError
+from .service import StatisticsServiceStatisticsNotFoundError as StatisticsServiceStatisticsNotFoundError
+from .service import StatisticsServiceVacancyNotFoundError as StatisticsServiceVacancyNotFoundError

@@ -1,0 +1,1 @@
+from .adapter import PostgresHeadHunterTokenRepositoryAdapter as PostgresHeadHunterTokenRepositoryAdapter

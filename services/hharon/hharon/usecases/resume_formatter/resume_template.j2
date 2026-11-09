@@ -1,0 +1,34 @@
+**{{ name.title() }}**
+{% if location is not none %}{{ location.title() }}, {% endif %}{{ gender.capitalize() }}, {{ age }}
+
+**{{ title.title() }}**
+{{ total_experience.capitalize() }}
+
+{% for exp in experience %}
+**{{ exp.position }}{% if exp.company is not none %} в компании {{ exp.company }}{% endif %}**{% if exp.location is not none %}, {{ exp.location }}{% endif %}
+*{{ exp.period }}, {{ exp.duration }}*
+
+{{ exp.description }}
+{% endfor %}
+
+{% if skills is not none %}**Ключевые навыки**
+{{ skills.title() }}
+
+{% endif %}{% if driver_license_types is not none %}**Водительские права**
+Категории: {{ ", ".join(driver_license_types) }}
+
+{% endif %}{% if education is not none %}**Образование**
+{% if education.level is not none %}Уровень: {{ education.level }}
+{% endif %}{% for item in education.education %}{{ item }}
+{% endfor %}
+{% endif %}{% if education is not none and education.additional is not none %}**Курсы повышения квалификации**
+{% for item in education.additional %}{{ item }}
+{% endfor %}
+{% endif %}{% if education is not none and education.attestation is not none %}**Сертификаты**
+{% for item in education.attestation %}{{ item }}
+{% endfor %}
+{% endif %}{% if languages is not none %}**Языки**
+{% for item in languages %}{{ item.title() }}
+{% endfor %}
+{% endif %}{% if about_me is not none %}**Обо мне**
+{{ about_me }}{% endif %}

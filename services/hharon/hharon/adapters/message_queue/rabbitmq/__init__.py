@@ -1,0 +1,1 @@
+from .push_adapter import RabbitMQPushAdapter as RabbitMQPushAdapter

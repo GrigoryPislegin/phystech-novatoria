@@ -1,0 +1,2 @@
+from .hh_api import HeadHunterResponseCollectionAdapter as HeadHunterResponseCollectionAdapter
+from .postgres import PostgresResponseCollectionRepositoryAdapter as PostgresResponseCollectionRepositoryAdapter

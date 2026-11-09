@@ -1,0 +1,1 @@
+from .service import ScoreCalculationService as ScoreCalculationService

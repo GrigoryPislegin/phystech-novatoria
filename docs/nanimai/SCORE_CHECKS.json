@@ -1,0 +1,15 @@
+{
+  "scope": "Isolated original arithmetic method extracted via AST; DTO response replaced by SimpleNamespace; no imports/app/services/LLM executed",
+  "results": [
+    {
+      "case": "one_confirmed_one_missing",
+      "score": 0.5,
+      "expected": 0.5
+    },
+    {
+      "case": "penalty_is_not_veto",
+      "score": 0.8,
+      "expected": 0.8
+    }
+  ]
+}

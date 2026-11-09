@@ -1,0 +1,15 @@
+from . import scalars as scalars
+from .scalars import AnalysisID as AnalysisID
+from .scalars import CandidateID as CandidateID
+from .scalars import CriterionID as CriterionID
+from .scalars import CustomerContactID as CustomerContactID
+from .scalars import OAuth2ProfileID as OAuth2ProfileID
+from .scalars import OperationID as OperationID
+from .scalars import PaymentID as PaymentID
+from .scalars import ProjectID as ProjectID
+from .scalars import QuestionID as QuestionID
+from .scalars import StatisticsID as StatisticsID
+from .scalars import StopFactorID as StopFactorID
+from .scalars import SubscriptionID as SubscriptionID
+from .scalars import UserID as UserID
+from .scalars import VacancyID as VacancyID
