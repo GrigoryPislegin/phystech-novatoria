@@ -1,0 +1,546 @@
+syntax = "proto3";
+
+package hharon_api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "hharon_api/v1/headhunter.proto";
+
+service HharonService {
+  // OAuth
+
+  // InitOAuthFlow - запускает процесс авторизации
+  rpc InitOAuthFlow(InitOAuthFlowRequest) returns (InitOAuthFlowResponse);
+  // CompleteOAuthFlow - завершает процесс авторизации и регистрирует пользователя в системе
+  rpc CompleteOAuthFlow(CompleteOAuthFlowRequest) returns (CompleteOAuthFlowResponse);
+  // GetUser - возвращает информацию о пользователе
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+
+  // Сбор откликов
+
+  // GetResponseCollectionPreview возвращает превью данные для сбора откликов
+  rpc GetResponseCollectionPreview(GetResponseCollectionPreviewRequest) returns (GetResponseCollectionPreviewResponse);
+  // InitResponseCollection - инициализирует сбор откликов
+  rpc InitResponseCollection(InitResponseCollectionRequest) returns (InitResponseCollectionResponse);
+  // CompleteResponseCollection - завершает сбор откликов
+  rpc CompleteResponseCollection(CompleteResponseCollectionRequest) returns (CompleteResponseCollectionResponse);
+
+  // Поисковая кампания
+
+  // GetSearchCampaignPreview возвращает превью данных для поисковой кампании
+  rpc GetSearchCampaignPreview(GetSearchCampaignPreviewRequest) returns (GetSearchCampaignPreviewResponse);
+  // CreateSearchCampaign создает новую поисковую кампанию
+  rpc CreateSearchCampaign(CreateSearchCampaignRequest) returns (CreateSearchCampaignResponse);
+  // InitSearchCampaignExecution - инициализирует выполнение поисковой кампании (запускает задачу по поиску кандидатов)
+  rpc InitSearchCampaignExecution(InitSearchCampaignExecutionRequest) returns (InitSearchCampaignExecutionResponse);
+  // CompleteSearchCampaignExecution - завершает выполнение поисковой кампании
+  rpc CompleteSearchCampaignExecution(CompleteSearchCampaignExecutionRequest) returns (CompleteSearchCampaignExecutionResponse);
+  // GetSearchCampaignStatus - возвращает статус поисковой кампании
+  rpc GetSearchCampaignStatus(GetSearchCampaignStatusRequest) returns (GetSearchCampaignStatusResponse);
+  // ExtractSearchCampaign - парсит ЮРЛ хедхантер и достает параметры поисковой кампании
+  rpc ExtractSearchCampaign(ExtractSearchCampaignRequest) returns (ExtractSearchCampaignResponse);
+  // GetSearchCampaignSettings - возвращает настройки поисковой кампании из БД
+  rpc GetSearchCampaignSettings(GetSearchCampaignSettingsRequest) returns (GetSearchCampaignSettingsResponse);
+
+  // Ручки для улучшения UX
+
+  // GetHeadhunterSuggestions получает подсказки для енумераций на ХХ (например, навыков)
+  rpc GetHeadhunterSuggestions(GetHeadhunterSuggestionsRequest) returns (GetHeadhunterSuggestionsResponse);
+  // GetHeadhunterVacancy возвращает вакансию из ХХ
+  rpc GetHeadhunterVacancy(GetHeadhunterVacancyRequest) returns (GetHeadhunterVacancyResponse);
+  // GetHeadhunterSearchCampaignAccess проверяет, есть ли доступ к поисковой кампании
+  rpc GetHeadhunterSearchCampaignAccess(GetHeadhunterSearchCampaignAccessRequest) returns (GetHeadhunterSearchCampaignAccessResponse);
+}
+
+// Общие модели
+
+message SearchCampaign {
+  // Внешний идентификатор пользователя
+  string user_id = 1;
+  // Внешний идентификатор вакансии
+  string vacancy_id = 2;
+
+  // Квота на количество кандидатов в день
+  int32 daily_limit = 3;
+  // До какого числа вести поиск. Время обрезается.
+  google.protobuf.Timestamp active_until = 4;
+
+  // Фильтры по тексту
+  repeated FullTextFilter text = 5;
+  message FullTextFilter {
+    // Поисковая фраза. Метод найдет резюме, в которых встречаются все слова заданной фразы.
+    // Особенности:
+    // - Можно указать несколько значений. Каждое дополнительное значение уточняет поиск.
+    // - Для тонкой настройки по фразе можно использовать параметры text.logic, text.field, text.period.
+    //   При использовании дополнительных text.* полей, необходимо указывать весь набор (триаду) параметров
+    //   Пример: text="программист java" settings.logic = "any" settings.field = "everywhere" settings.period = "all_time"
+    string text = 1;
+
+    // Настройки фильтрации текста
+    Settings settings = 2;
+    message Settings {
+      // Описывает, как производится поиск.
+      ResumeSearchLogic logic = 1;
+
+      // Описывает, где должны встречаться слова из поисковой фразы text.
+      ResumeSearchFields field = 2;
+
+      // Период опыта работы.
+      // Параметр имеет смысл только при field имеет одно из следующих значений:
+      // - EXPERIENCE
+      // - EXPERIENCE_COMPANY
+      // - EXPERIENCE_POSITION
+      // - EXPERIENCE_DESCRIPTION
+      //
+      // Но указывать его необходимо всегда при указании других field
+      // Если параметр не имеет смысла, то его значение можно оставить пустым
+      ResumeSearchExperiencePeriod period = 3;
+
+      // Размер компании, в которой у соискателя имеется опыт работы.
+      // Параметр применяется только в случае,
+      // если field имеет одно из следующих значений:
+      // - EXPERIENCE
+      // - EXPERIENCE_ORGANIZATION
+      // - EXPERIENCE_POSITION
+      // - EXPERIENCE_DESCRIPTION
+      CompanySize company_size = 4;
+      enum CompanySize {
+        COMPANY_SIZE_UNSPECIFIED = 0;
+        // Любой размер компании
+        COMPANY_SIZE_ANY = 1;
+        // Компании численностью до 100 человек
+        COMPANY_SIZE_SMALL = 2;
+        // Компании численностью 100-1000 человек
+        COMPANY_SIZE_MEDIUM = 3;
+        // Компании численностью более 1000 человек
+        COMPANY_SIZE_LARGE = 4;
+      }
+    }
+  }
+
+  // Фильтр по возрасту
+  // По умолчанию в выдачу добавляются также резюме с неуказанным возрастом.
+  // Для выдачи резюме только с указанным возрастом передайте значение only_with_age в параметре label
+  AgeFilter age = 6;
+  message AgeFilter {
+    // Нижняя граница возраста соискателя в годах.
+    int32 min = 1;
+    // Верхняя граница возраста соискателя в годах.
+    int32 max = 2;
+  }
+
+  // Фильтр по регионам
+  AreaFilter area = 7;
+  message AreaFilter {
+    // ID регионов. Выбираются резюме, в которых соискатели живут в указанных регионах или готовы в них переехать.
+    // Поменять это поведение поиска можно, указав параметр relocation
+    repeated string area_ids = 1;
+    // Готовность к переезду
+    ResumeSearchRelocation relocation = 2;
+  }
+
+  // Фильтр по дате публикации резюме
+  DateFilter date = 8;
+  message DateFilter {
+    oneof filter {
+      // Поиск ведется по резюме, опубликованным за указанный период в днях. Если указать 0, то поиск ведется без ограничений по дате публикации
+      int32 days = 1;
+      // Временной промежуток публикации резюме. Если указать пустым, то поиск ведется без ограничений по дате публикации
+      DateRange date_range = 2;
+    }
+
+    message DateRange {
+      // Дата, от которой нужно начать поиск
+      google.protobuf.Timestamp min = 1;
+      // Дата, до которой нужно искать
+      google.protobuf.Timestamp max = 2;
+    }
+  }
+
+  // Требуемые значения типа занятости
+  repeated Employment employment = 9;
+
+  // Требуемые значения опыта работы
+  repeated Experience experience = 10;
+
+  // ID требуемых навыком
+  repeated string skill_ids = 11;
+
+  // Требуемвый пол соискателя
+  Gender gender = 12;
+
+  // Фильтр по лейблам резюме (необходимые фичи/теги)
+  repeated ResumeSearchLabel label = 13;
+
+  // Фильтр по языкам
+  repeated LanguageFilter language = 14;
+  message LanguageFilter {
+    // ID языка
+    string language_id = 1;
+    // Уровень владения языком
+    LanguageLevel level = 2;
+  }
+
+  // ID линии или станции метро. Можно указать несколько значений.
+  repeated string metro_ids = 15;
+
+  // Зарплата
+  // По умолчанию в выдачу добавляются также резюме с неуказанной ЗП.
+  // Для выдачи резюме только с указанной ЗП передайте параметр label=only_with_salary
+  optional SalaryFilter salary = 16;
+  message SalaryFilter {
+    // Код валюты
+    Currency currency = 1;
+
+    // Нижняя граница желаемой заработной платы (ЗП).
+    int32 min = 2;
+    // Верхняя граница желаемой заработной платы (ЗП).
+    int32 max = 3;
+  }
+
+  // Требуемый график работы
+  repeated Schedule schedule = 17;
+
+  // Требуемые страны гражданства кандидата. Необходимо указывать ID стран.
+  repeated string citizenship_ids = 18;
+
+  // Требуемые страны c разрешением на работу. Необходимо указывать ID стран.
+  repeated string work_ticket_ids = 19;
+
+  // Требуемые учебные заведение кандидата. Необходимо указывать ID университетов.
+  repeated string educational_institution_ids = 20;
+
+  // Дополнительные параметры
+  // Если true, то поиск осуществляется только по резюме, которыми соискатели откликались на вакансии компании текущего пользователя,
+  // если false - поиск осуществляется по всем резюме
+  bool search_in_responses = 21;
+  // Если true, включается поиск по префиксу.
+  // Для каждого параметра text будут находиться не только полные совпадения слов, но еще и слова, начинающиеся с text.
+  bool by_text_prefix = 22;
+
+  // Требуемвые водительские права кандидата
+  repeated DriverLicenseTypes driver_license_types = 23;
+
+  // Требуемые профессиональная роли. Необходимо указывать ID ролей.
+  repeated string professional_role_ids = 24;
+
+  // Требуемые районы. Необходимо указывать ID районов.
+  repeated string district_ids = 25;
+
+  // Требуемые статусы поиска работы.
+  repeated JobSearchStatusesEmployer job_search = 26;
+
+  // Требуемый уровень образования соискателя.
+  // Если параметр не указан, поиск ведется без ограничений на уровень образования
+  repeated EducationLevel education_levels = 27;
+
+  // Готовность соискателя к переезду
+  repeated BusinessTripReadiness business_trip_readiness = 28;
+
+  // Идентификатор отрасли, в которой у соискателя должен присутствовать опыт работы
+  ExperienceIndustryFilter experience_industry = 29;
+  message ExperienceIndustryFilter {
+    // Идентификатор отрасли, в которой у соискателя должен присутствовать опыт работы
+    repeated string industry_ids = 1;
+    // Период, за который у соискателя должен присутствовать опыт работы в отрасли, указанной в параметре industry_ids
+    ResumeSearchExperiencePeriod period = 2;
+  }
+}
+
+enum SearchCampaignStatus {
+  SEARCH_CAMPAIGN_STATUS_UNSPECIFIED = 0;
+  // Создана, но еще не запущена
+  SEARCH_CAMPAIGN_STATUS_CREATED = 1;
+  // Активна
+  SEARCH_CAMPAIGN_STATUS_ACTIVE = 2;
+  // Завершена
+  SEARCH_CAMPAIGN_STATUS_COMPLETED = 3;
+  // Провалена
+  SEARCH_CAMPAIGN_STATUS_FAILED = 4;
+}
+
+// Запросы и ответы
+
+message InitOAuthFlowRequest {
+  // Внешний идентификатор пользователя
+  string user_id = 1;
+  // URL для перенаправления после авторизации
+  string redirect_url = 2;
+}
+
+message InitOAuthFlowResponse {
+  // Ссылка на страницу авторизации
+  string authorization_url = 1;
+}
+
+message CompleteOAuthFlowRequest {
+  // Секретный код из колбека авторизации
+  string secret_code = 1;
+  // Зашифрованный state из колбека авторизации
+  string encrypted_state = 2;
+  // URL для перенаправления (необходимло для Headhunter, не имеет эффекта, но должно совпадать с redirect_url из InitOAuthFlowRequest)
+  string redirect_uri = 3;
+}
+
+message CompleteOAuthFlowResponse {
+  // Была ли авторизация успешной
+  bool success = 1;
+  // Внешний идентификатор пользователя для которого была начала и завершена авторизация
+  string user_id = 2;
+}
+
+message GetUserRequest {
+  // Внешний идентификатор пользователя
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  // Внешний идентификатор пользователя
+  string user_id = 1;
+  // ID менеджера в Headhunter
+  string hh_manager_id = 2;
+  // ID работодателя в Headhunter
+  string hh_employer_id = 3;
+  // Имя пользователя
+  string name = 4;
+  // Email пользователя
+  string email = 5;
+}
+
+message GetResponseCollectionPreviewRequest {
+  // ID вакансии на Headhunter
+  string hh_vacancy_id = 1;
+  // Внешний идентификатор пользователя
+  string user_id = 2;
+}
+
+message GetResponseCollectionPreviewResponse {
+  // Название вакансии на Headhunter
+  string vacancy_title = 1;
+  // Регион (город) вакансии на Headhunter
+  optional string vacancy_area = 2;
+  // Список коллекций и данных о них
+  repeated NegotiationCollection collections = 3;
+  // Сумма кандидатов в всех коллекциях
+  int32 total = 4;
+
+  message NegotiationCollection {
+    // ID коллекции на Headhunter
+    string id = 1;
+    // Название коллекции на Headhunter
+    string name = 2;
+    // Количество кандидатов в коллекции
+    int32 total = 3;
+    // Количество кандидатов в коллекции с обновлениями с последнего просмотра
+    int32 with_updates = 4;
+  }
+}
+
+message InitResponseCollectionRequest {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+  // Идентификатор вакансии на Headhunter
+  string hh_vacancy_id = 2;
+  // Список коллекций из которых собирать отклики
+  repeated string hh_collections = 3;
+  // Внешний идентификатор пользователя
+  string user_id = 4;
+}
+
+message InitResponseCollectionResponse {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+}
+
+message CompleteResponseCollectionRequest {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+}
+
+message CompleteResponseCollectionResponse {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+}
+
+message GetSearchCampaignPreviewRequest {
+  SearchCampaign campaign = 1;
+}
+
+message GetSearchCampaignPreviewResponse {
+  // Всего кандидатов по фильтрам (из HH API found)
+  int32 found_total_candidates = 1;
+  // Интервал между запусками в секундах
+  int32 interval_seconds = 2;
+  // Кандидатов за один запуск (ceil(daily_limit / scans_per_day))
+  int32 candidates_per_run = 3;
+}
+
+message CreateSearchCampaignRequest {
+  // Поисковая кампания
+  SearchCampaign campaign = 1;
+}
+
+message CreateSearchCampaignResponse {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+}
+
+message InitSearchCampaignExecutionRequest {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+}
+
+message InitSearchCampaignExecutionResponse {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+}
+
+message CompleteSearchCampaignExecutionRequest {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+}
+
+message CompleteSearchCampaignExecutionResponse {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+}
+
+message GetSearchCampaignStatusRequest {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+}
+
+message GetSearchCampaignStatusResponse {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+  // Статус
+  SearchCampaignStatus status = 2;
+  // Сколько уже собрано за сегодня
+  int32 collected_current = 3;
+  // Сколько всего можно собрат за день
+  int32 collected_maximum = 4;
+  // До какого числа кампания активна
+  google.protobuf.Timestamp active_until = 5;
+}
+
+message ExtractSearchCampaignRequest {
+  // ЮРЛ холодного поиска хедхантера
+  string url = 1;
+}
+
+message ExtractSearchCampaignResponse {
+  // Параметры поисковой кампании
+  SearchCampaign campaign = 1;
+}
+
+message GetHeadhunterSuggestionsRequest {
+  // Поле для которого ищутся подсказки
+  Field field = 1;
+  enum Field {
+    FIELD_UNSPECIFIED = 0;
+    // Навыки
+    FIELD_SKILL = 1;
+    // Линия или станция метро
+    FIELD_METRO = 2;
+    // Гражданство
+    FIELD_CITIZENSHIP = 3;
+    // Разрешение на работу
+    FIELD_WORK_TICKET = 4;
+    // Институт
+    FIELD_EDUCATIONAL_INSTITUTION = 5;
+    // Профессиональная роль
+    FIELD_PROFESSIONAL_ROLE = 6;
+    // Регион
+    FIELD_AREA = 7;
+    // Язык
+    FIELD_LANGUAGE = 8;
+    // Район города
+    FIELD_DISTRICT = 9;
+    // Сфера деятельности/отрасль
+    FIELD_INDUSTRY = 10;
+  }
+
+  // Префикс для поиска
+  string text = 2;
+}
+
+message GetHeadhunterSuggestionsResponse {
+  // Список подсказок
+  repeated Suggestion suggestions = 1;
+
+  message Suggestion {
+    // Идентификатор подсказки, который понимает хедхантер.
+    string hh_id = 1;
+    // Полный текст подсказки
+    string text = 2;
+  }
+}
+
+message GetHeadhunterVacancyRequest {
+  // Идентификатор вакансии на хедхантере
+  string hh_vacancy_id = 1;
+  // Идентификатор пользователя
+  string user_id = 2;
+}
+
+message GetHeadhunterVacancyResponse {
+  // Название вакансии
+  string title = 1;
+  // Описание вакансии
+  string description = 2;
+  // Профессиональные роли
+  repeated string professional_roles = 3;
+  // Заархивирована ли вакансия
+  bool archived = 4;
+  // Дата публикации вакансии
+  google.protobuf.Timestamp published_at = 5;
+  // Требуемые ключевые навыки
+  repeated string key_skills = 6;
+  // Город вакансии
+  optional string address_city = 7;
+  // Минимальная зарплата
+  optional int32 salary_from = 8;
+  // Максимальная зарплата
+  optional int32 salary_to = 9;
+  // Валюта зарплаты
+  optional Currency salary_currency = 10;
+  // До вычетов налогов
+  optional bool salary_gross = 11;
+  // Форма занятости
+  optional EmploymentForm employment_form = 12;
+  // Формат работы
+  repeated WorkFormat work_format = 13;
+  // График работы
+  repeated WorkScheduleByDays work_schedule_by_days = 14;
+  // Часы работы
+  repeated WorkingHours working_hours = 15;
+  // Требуемый опыт работы
+  optional Experience experience = 16;
+
+  bool internship = 17;
+}
+
+message GetHeadhunterSearchCampaignAccessRequest {
+  // Идентификатор пользователя
+  string user_id = 1;
+}
+
+message GetHeadhunterSearchCampaignAccessResponse {
+  // Есть ли доступ к базе резюме
+  bool access = 1;
+  // Когда истекает доступ
+  google.protobuf.Timestamp expires_at = 2;
+  // Имя пользователя на хедхантере
+  string hh_account_name = 3;
+  // Электронная почта пользователя на хедхантере
+  string hh_account_email = 4;
+}
+
+message GetSearchCampaignSettingsRequest {
+  // Внешний идентификатор вакансии
+  string vacancy_id = 1;
+}
+
+message GetSearchCampaignSettingsResponse {
+  // Настройки поисковой кампании (payload + daily_limit + active_until)
+  SearchCampaign campaign = 1;
+}

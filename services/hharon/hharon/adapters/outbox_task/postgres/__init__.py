@@ -1,0 +1,1 @@
+from .adapter import PostgresOutboxTaskRepositoryAdapter as PostgresOutboxTaskRepositoryAdapter

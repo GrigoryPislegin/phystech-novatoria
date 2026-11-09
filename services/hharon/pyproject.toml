@@ -1,0 +1,170 @@
+[project]
+name = "hharon"
+dynamic = ["version"]
+description = "Сервис интеграции с HeadHunter - возит души грешников в ад ([hh.ru](https://hh.ru)) и обратно"
+readme = "readme.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic[email]>=2.12.5",
+    "eciespy>=0.4.6",
+    "structlog>=25.5.0",
+    "dishka>=1.7.2",
+    "alembic>=1.17.2",
+    "asyncpg>=0.31.0",
+    "pydantic-settings>=2.12.0",
+    "python-dotenv>=1.2.1",
+    "sqlalchemy[asyncio]>=2.0.45",
+    "pytest>=9.0.2",
+    "psycopg2-binary>=2.9.11",
+    "httpx>=0.27.0",
+    "pydantic-settings>=2.6.1",
+    "html2text>=2024.2.26",
+    "grpclib[protobuf]>=0.4.9",
+    "humanize>=4.11.0",
+    "valkey-glide>=2.2.3; platform_system != 'Windows'",
+    "aio-pika>=9.5.8",
+    "betterproto2[all]>=0.9.1",
+    "pytimeparse>=1.1.8",
+    "transliterate>=1.10.2",
+    "jinja2>=3.1.6",
+    "pytest-xdist>=3.8.0",
+]
+authors = [
+    { name = "Anton Kudryavtsev", email = "dartt0n@ya.ru" },
+    { name = "Andrew Podvigin", email = "podviginandrej@gmail.com" },
+    { name = "Gleb Bednarsky", email = "gleb.nanimai@gmail.com" },
+
+]
+
+[dependency-groups]
+cicd = [
+    "basedpyright>=1.36.1",
+    "mypy>=1.19.1",
+    "ty>=0.0.2",
+]
+dev = [
+    "basedpyright>=1.36.1",
+    "hatch>=1.16.2",
+    "mypy>=1.19.1",
+    "ruff>=0.14.9",
+    "rust-just>=1.45.0",
+    "types-protobuf>=5.28.0",
+]
+testing = [
+    "diff-cover>=10.2.0",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cache>=1.0",
+    "pytest-cov>=7.0.0",
+    "pytest-icdiff>=0.9",
+    "pytest-mock>=3.15.1",
+]
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+skip-excluded-dirs = true
+
+[tool.hatch.build.targets.wheel]
+only-packages = true
+packages = ["hharon"]
+
+
+[tool.hatch.version]
+path = "hharon/__version__.py"
+
+[tool.uv]
+package = true
+
+[tool.basedpyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.13"
+pythonPlatform = "Linux"
+reportMissingImports = "error"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+exclude = ["**/.venv", "**/__pycache__", "hharon/pkg", "hharon_api", "alembic", "tests", "hharon/tests", "scripts"]
+typeCheckingMode = "recommended"
+
+[tool.ty.src]
+exclude = ["hharon/pkg", "hharon_api", "scripts"]
+
+[tool.mypy]
+exclude = ["hharon/pkg", ".*_test.py", "hharon_api", "scripts"]
+plugins = "pydantic.mypy"
+
+[tool.ruff]
+exclude = [".venv", "hharon/pkg", "hharon_api", "scripts"]
+line-length = 120
+indent-width = 4
+target-version = "py313"
+fix = true
+
+[tool.coverage.run]
+omit = ["hharon/pkg", "hharon_api", "scripts"]
+
+[tool.coverage.report]
+omit = ["hharon/pkg", "hharon_api", "scripts"]
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+fixable = ["ALL"]
+ignore = ["ANN", "D", "EM101", "RUF001", "BLE001", "SIM103", "ASYNC109", "TRY003", "PLW0602", "TC001", "ISC003", "COM812", "RUF003", "RUF002", "TRY301"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402", "F401", "TID252", "PLC0414"]
+"**/{tests,docs,tools}/*" = ["E402"]
+"tests/**/*" = ["S101"]
+"*_test.py" = ["ANN", "S", "S101", "TRY", "PGH003", "FBT", "PT012", "N801", "ARG002", "SLF001", "PLR", "SIM"]
+"scripts/*" = ["T201", "ASYNC", "A004", "A001", "TRY003", "SLF001"]
+"alembic/*" = ["INP001"]
+
+[tool.ruff.lint.flake8-bandit]
+check-typed-exception = true
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 128
+
+[tool.ruff.lint.isort]
+case-sensitive = true
+force-single-line = false
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = []
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "pydantic_settings.BaseSettings",
+]
+
+[tool.pytest.ini_options]
+pythonpath = "."
+testpaths = [
+    "hharon",
+]
+addopts = [
+    "-m not real_api",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+python_files = "*_test.py"
+python_classes = "Test_*"
+asyncio_mode = "auto"
+markers = [
+    "unit: marks tests as unit tests",
+    "integration: marks tests as integration tests",
+    "real_api: marks tests that call real HH API (excluded by default; use -m real_api to run)",
+]

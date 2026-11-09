@@ -1,0 +1,259 @@
+syntax = "proto3";
+
+package platform_api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "platform_api/v1/common.proto";
+
+service CandidateService {
+  rpc CreateCandidate(CreateCandidateRequest) returns (CreateCandidateResponse);
+  rpc ReadCandidate(ReadCandidateRequest) returns (ReadCandidateResponse);
+  rpc UpdateCandidate(UpdateCandidateRequest) returns (UpdateCandidateResponse);
+  rpc DeleteCandidate(DeleteCandidateRequest) returns (DeleteCandidateResponse);
+
+  rpc ReadManyCandidateCards(ReadManyCandidateCardsRequest) returns (ReadManyCandidateCardsResponse);
+}
+
+enum ContactType {
+  CONTACT_TYPE_UNSPECIFIED = 0;
+  CONTACT_TYPE_EMAIL = 1;
+  CONTACT_TYPE_PHONE = 2;
+  CONTACT_TYPE_TELEGRAM = 3;
+  CONTACT_TYPE_WHATSAPP = 4;
+}
+
+enum CandidateAnalysisStatus {
+  CANDIDATE_ANALYSIS_STATUS_UNSPECIFIED = 0;
+  CANDIDATE_ANALYSIS_STATUS_PENDING = 1;
+  CANDIDATE_ANALYSIS_STATUS_STARTED = 2;
+  CANDIDATE_ANALYSIS_STATUS_SUCCESS = 3;
+  CANDIDATE_ANALYSIS_STATUS_FAILED = 4;
+  CANDIDATE_ANALYSIS_STATUS_REJECTED = 5;
+}
+
+enum CandidateSource {
+  CANDIDATE_SOURCE_UNSPECIFIED = 0;
+  CANDIDATE_SOURCE_NANIMAI = 1;
+  CANDIDATE_SOURCE_HH = 2;
+  CANDIDATE_SOURCE_HH_SEARCH_CAMPAIGN = 3;
+  CANDIDATE_SOURCE_NANIMAI_JOBBOARD = 4;
+}
+
+enum CriterionStatus {
+  CRITERION_STATUS_UNSPECIFIED = 0;
+  CRITERION_STATUS_FULL = 1;
+  CRITERION_STATUS_PARTIAL = 2;
+  CRITERION_STATUS_FAIL = 3;
+  CRITERION_STATUS_UNKNOWN = 4;
+}
+
+message ExpectedSalary {
+  // ISO 4217, например "RUB"
+  string currency = 1;
+  // expected salary в этой валюте
+  int64 value = 2;
+}
+
+message CriterionAnalysis {
+  // score of candidate in [0,1]
+  optional float score = 1;
+  // status of candidate
+  CriterionStatus status = 2;
+  // description of criterion analysis
+  optional string description = 3;
+}
+
+message StopFactorAnalysis {
+  // if candidate has stop-factor or not
+  optional bool status = 1;
+  // description of stop-factor analysis
+  optional string description = 2;
+}
+
+message Candidate {
+  // CandidateID
+  string id = 1;
+  // UserID
+  string user_id = 2;
+  // ProjectID
+  string project_id = 3;
+  // VacancyID
+  string vacancy_id = 4;
+
+  string resume = 5;
+  string name = 6;
+  optional string phone_number = 7;
+  optional string email = 8;
+  optional string website = 9;
+  optional string city = 10;
+  optional string country = 11;
+  string thumbnail_url = 12;
+  int32 experience = 13; // in months
+  optional ExpectedSalary expected_salary = 14;
+  string notes = 15;
+  bool dirty = 16;
+  CandidateSource source = 17;
+  repeated Skill skills = 18;
+
+  VacancyStage status = 19;
+  repeated VacancyStage status_history = 20;
+
+  // map by id (CriterionID)
+  map<string, CriterionAnalysis> criteria = 21;
+  // map by id (StopFactorID)
+  map<string, StopFactorAnalysis> stop_factors = 22;
+
+  CandidateAnalysisStatus analysis_status = 23;
+  // contacts map: ContactTypeEnum -> str
+  map<string, string> contacts = 24;
+
+  google.protobuf.Timestamp created_at = 100;
+  google.protobuf.Timestamp updated_at = 101;
+  optional google.protobuf.Timestamp deleted_at = 102;
+}
+
+message CandidateCard {
+  // CandidateID
+  string id = 1;
+  // UserID
+  string user_id = 2;
+  // ProjectID
+  string project_id = 3;
+  // VacancyID
+  string vacancy_id = 4;
+
+  string name = 5;
+  // in months
+  int32 experience = 6;
+  optional ExpectedSalary expected_salary = 7;
+  string thumbnail_url = 8;
+  CandidateSource source = 9;
+  VacancyStage status = 10;
+  repeated VacancyStage status_history = 11;
+  string notes_preview = 12;
+  bool dirty = 13;
+
+  // map by id (CriterionID)
+  map<string, CriterionAnalysis> criteria = 14;
+  // map by id (StopFactorID)
+  map<string, StopFactorAnalysis> stop_factors = 15;
+  CandidateAnalysisStatus analysis_status = 16;
+  // contacts map: ContactTypeEnum -> str
+  map<string, string> contacts = 17;
+
+  google.protobuf.Timestamp created_at = 100;
+  google.protobuf.Timestamp updated_at = 101;
+  optional google.protobuf.Timestamp deleted_at = 102;
+}
+
+message CreateCandidateRequest {
+  // UserID
+  string user_id = 1;
+  // ProjectID
+  string project_id = 2;
+  // VacancyID
+  string vacancy_id = 3;
+
+  string resume = 4;
+  string name = 5;
+  optional string city = 6;
+  optional string country = 7;
+  optional string phone_number = 8;
+  optional string email = 9;
+  optional string website = 10;
+
+  int32 experience = 11;
+  optional ExpectedSalary expected_salary = 12;
+
+  string notes = 13;
+  bool dirty = 14;
+  CandidateSource source = 15;
+
+  repeated Skill skills = 16;
+  VacancyStage status = 17;
+
+  map<string, CriterionAnalysis> criteria = 18;
+  map<string, StopFactorAnalysis> stop_factors = 19;
+  map<string, string> contacts = 20;
+}
+
+message CreateCandidateResponse {
+  Candidate candidate = 1;
+}
+
+message ReadCandidateRequest {
+  // CandidateID
+  string id = 1;
+}
+
+message ReadCandidateResponse {
+  Candidate candidate = 1;
+}
+
+message DeleteCandidateRequest {
+  // CandidateID
+  string id = 1;
+}
+
+message DeleteCandidateResponse {
+  Candidate candidate = 1;
+}
+
+message ReadManyCandidateCardsRequest {
+  // VacancyID
+  string vacancy_id = 1;
+
+  optional string resume = 2;
+  optional string name = 3;
+  optional string phone = 4;
+  optional string email = 5;
+  optional string city = 6;
+  optional string country = 7;
+  optional string notes = 8;
+}
+
+message ReadManyCandidateCardsResponse {
+  repeated CandidateCard items = 1;
+}
+
+message UpdateCandidateRequest {
+  // CandidateID
+  string id = 1;
+
+  optional PatchString resume = 2;
+  optional PatchString name = 3;
+  optional PatchOptionalString city = 4;
+  optional PatchOptionalString country = 5;
+  optional PatchOptionalString phone_number = 6;
+  optional PatchOptionalString email = 7;
+  optional PatchOptionalString website = 8;
+  optional PatchString thumbnail_url = 9;
+  optional PatchInt32 experience = 10;
+  optional PatchOptionalExpectedSalary expected_salary = 11;
+  optional PatchString notes = 12;
+  optional PatchBool dirty = 13;
+  optional PatchCandidateSource source = 14;
+  optional PatchRepeatedSkill skills = 15;
+  optional PatchVacancyStage status = 16;
+  optional PatchMapStringString contacts = 17;
+
+  message PatchOptionalExpectedSalary {
+    optional ExpectedSalary new_value = 1;
+  }
+
+  message PatchCandidateSource {
+    CandidateSource new_value = 1;
+  }
+
+  message PatchRepeatedSkill {
+    repeated Skill new_value = 1;
+  }
+
+  message PatchVacancyStage {
+    VacancyStage new_value = 1;
+  }
+}
+
+message UpdateCandidateResponse {
+  Candidate candidate = 1;
+}

@@ -1,0 +1,150 @@
+[project]
+name = "nanimai-platform"
+dynamic = ["version"]
+description = "NanimAI platform"
+readme = "readme.md"
+authors = [
+    { name = "Anton Kudryavtsev", email = "dartt0n@ya.ru" },
+    { name = "Smirnov Dmitriy", email = "smirnov.dmitriy.a@gmail.com" },
+    { name = "Andrew Podvigin", email = "podviginandrej@gmail.com" },
+]
+
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aio-pika>=9.5.7",
+    "aiobotocore>=2.14,<2.15",
+    "argon2-cffi>=23.1.0",
+    "asgi-correlation-id>=4.3.4",
+    "beanie>=1.29.0,<2.0.0",
+    "betterproto2-compiler>=0.9.0",
+    "botocore>=1.35.0,<1.36",
+    "cachetools>=5.5.2",
+    "cryptography>=45.0.5",
+    "dishka>=1.7.2",
+    "docxpy>=0.8.5",
+    "eciespy>=0.4.6",
+    "fastapi-camelcase>=2.0.0",
+    "fastapi[standard]>=0.116.1",
+    "grpcio>=1.74.0",
+    "grpcio-tools>=1.71.2",
+    "grpclib>=0.4.8",
+    "h11>=0.16.0",
+    "hhsdk",
+    "html2text>=2025.4.15",
+    "jinja2>=3.1.6",
+    "motor>=3.7.0",
+    "ocrmypdf>=16.10.0",
+    "opencv-python-headless>=4.11.0.86",
+    "pdf4llm>=0.0.9",
+    "phonenumbers>=9.0.0",
+    "pillow>=11.1.0",
+    "pycountry>=24.6.1",
+    "pydantic>=2.10.6",
+    "pydantic-extra-types>=2.10.2",
+    "pydantic-settings>=2.8.1",
+    "pyinstrument>=5.0.3",
+    "pyjwt>=2.10.1",
+    "pymustache>=0.3",
+    "pypandoc-binary>=1.15",
+    "python-datauri>=3.0.2",
+    "python-magic>=0.4.27",
+    "python-multipart>=0.0.20",
+    "python-socketio>=5.12.1",
+    "redis[hiredis]>=5.2.1",
+    "sqids>=0.5.2",
+    "structlog>=25.1.0",
+    "typing-extensions>=4.12.2",
+    "urllib3>=2.5.0",
+    "uvicorn>=0.35.0",
+    "websockets>=15.0.1",
+    "yandex-cloud-ml-sdk>=0.15.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+skip-excluded-dirs = true
+
+[tool.hatch.build.targets.wheel]
+only-packages = true
+packages = ["nanimai_platform"]
+
+[tool.hatch.version]
+path = "nanimai_platform/__version__.py"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+hhsdk = { path = "dist/hhsdk-1.0.1-py3-none-any.whl" }
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+pythonPlatform = "Linux"
+reportUnknownMemberType = false
+exclude = ["**/__pycache__", "**/.*", "dist", "nanimai_platform/external_clients", "platform_api"]
+
+[tool.ruff]
+exclude = [".mypy_cache", ".ruff_cache", ".venv", "venv", "build", "dist",
+    "nanimai_platform/external_clients", "platform_api"]
+line-length = 120
+indent-width = 4
+target-version = "py312"
+fix = true
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint]
+select = ["E", "F", "Q", "B", "I", "UP", "C"]
+ignore = []
+fixable = ["ALL"]
+unfixable = []
+
+[tool.mypy]
+exclude = [".*/__pycache__/.*", "dist", "nanimai_platform/external_clients", "platform_api"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402", "F401"]
+"**/{tests,docs,tools}/*" = ["E402"]
+
+[tool.ruff.lint.flake8-bandit]
+check-typed-exception = true
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 128
+
+[tool.ruff.lint.isort]
+case-sensitive = true
+force-single-line = false
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "pydantic_settings.BaseSettings",
+]
+
+[dependency-groups]
+cicd = [
+    "mypy>=1.19.1",
+    "pip>=25.2",
+    "pylance>=0.33.0",
+    "pyrefly>=0.29.2",
+    "pyright>=1.1.404",
+    "ruff>=0.9.10",
+]
+dev = [
+    "hatch>=1.14.0",
+    "pytest>=8.4.0",
+    "pytest-asyncio>=0.24.0",
+]

@@ -1,0 +1,63 @@
+{
+  "import_date": "2026-11-09",
+  "destination": "private team repository",
+  "sources": [
+    {
+      "directory": "services/platform",
+      "archive": "platform-main.zip"
+    },
+    {
+      "directory": "services/hharon",
+      "archive": "hharon-main.zip"
+    }
+  ],
+  "excluded": [
+    "platform-main/.github/assets/banner.png",
+    "platform-main/.github/workflows/build-docker.yml",
+    "platform-main/.github/workflows/generate-changelog.yml",
+    "platform-main/.github/workflows/linter.yml",
+    "platform-main/scripts/impersonate.py",
+    "platform-main/scripts/impersonate.py.lock",
+    "hharon-main/.github/assets/deploy-button.gif",
+    "hharon-main/.github/assets/hharon.jpg",
+    "hharon-main/.github/workflows/build-docker.yml",
+    "hharon-main/.github/workflows/deploy-staging.yml",
+    "hharon-main/.github/workflows/generate-changelog.yml",
+    "hharon-main/.github/workflows/linter.yml",
+    "hharon-main/.github/workflows/pr-deploy-comment.yml",
+    "hharon-main/.github/workflows/testing.yml"
+  ],
+  "modified": [
+    {
+      "file": "services/platform/example.config.toml",
+      "reason": "Clear credential/key values; replace RabbitMQ credential-bearing DSN with localhost URI without userinfo"
+    },
+    {
+      "file": "services/hharon/config.toml.example",
+      "reason": "Clear credential/key values; align example grpc_server port to Compose port 50054"
+    },
+    {
+      "file": "services/platform/nanimai_platform/tests/services/test_candidate_service.py",
+      "reason": "Replace personal-looking test email literals with deterministic example.com fixtures"
+    }
+  ],
+  "wheel_scan": [
+    {
+      "file": "services/platform/dist/hhsdk-1.0.1-py3-none-any.whl",
+      "credential_pattern_matches": []
+    }
+  ],
+  "source_counts": {
+    "services/platform": 410,
+    "services/hharon": 334
+  },
+  "confirmed_modified_files": [
+    "services/platform/example.config.toml",
+    "services/platform/nanimai_platform/tests/services/test_candidate_service.py",
+    "services/hharon/config.toml.example"
+  ],
+  "bundled_sdk_sha256": "a9f432b8dd374e9b5271a3639646c358d0c15612c8a87535d50e205f608d3804",
+  "executable_files": [
+    "services/hharon/hharon/infra/postgres_init.sh"
+  ]
+}

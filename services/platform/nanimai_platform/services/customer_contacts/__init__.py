@@ -1,0 +1,11 @@
+from . import service as service
+from .service import CustomerContactService as CustomerContactService
+from .service import CustomerContactServiceCreateError as CustomerContactServiceCreateError
+from .service import (
+    CustomerContactServiceCustomerContactNotFoundError as CustomerContactServiceCustomerContactNotFoundError,
+)
+from .service import CustomerContactServiceDeleteError as CustomerContactServiceDeleteError
+from .service import CustomerContactServiceError as CustomerContactServiceError
+from .service import CustomerContactServiceInvalidDataError as CustomerContactServiceInvalidDataError
+from .service import CustomerContactServiceReadError as CustomerContactServiceReadError
+from .service import CustomerContactServiceUpdateError as CustomerContactServiceUpdateError

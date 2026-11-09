@@ -1,0 +1,2 @@
+from . import constant_skill_recommendation as constant_skill_recommendation
+from .constant_skill_recommendation import ConstantSkillRecommendationAdapter as ConstantSkillRecommendationAdapter
