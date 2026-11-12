@@ -19,6 +19,7 @@ async def execute(args):
         try:
             report = await run_pipeline(resume, jobs, model, privacy)
             report['mode'] = 'synthetic_replay_NOT_model_output' if replay else ('live_synthetic' if args.command == 'demo' else 'live_certum')
+            if args.command == 'demo': report['demo_scenario'] = args.scenario
             report['model'] = None if replay else args.model
             if not replay:
                 report['usage'] = model.usage
@@ -29,7 +30,7 @@ async def execute(args):
         finally:
             if not replay: await model.close()
     if args.command == 'demo':
-        return await process(*demo_inputs(), SyntheticPrivacy(), replay=not args.live)
+        return await process(*demo_inputs(args.scenario), SyntheticPrivacy(), replay=not args.live)
     resume = read_document(args.resume)
     files = sorted(p for p in args.jobs.iterdir() if p.is_file() and not p.name.startswith('.'))
     jobs = [(f'job-{i:03}', read_document(p)) for i,p in enumerate(files, 1)]
@@ -47,7 +48,9 @@ def main():
         p.add_argument('--model', choices=list(RATES), default='gpt-6-luna')
         p.add_argument('--budget', type=float, default=1.0, help='Консервативный резерв USD на процесс, максимум 5')
         p.add_argument('--out', type=Path, default=Path('data/private/prototype-runs'))
-        if command == 'demo': p.add_argument('--live', action='store_true', help='Платный вызов на встроенном синтетическом примере')
+        if command == 'demo':
+            p.add_argument('--live', action='store_true', help='Платный вызов на встроенном синтетическом примере')
+            p.add_argument('--scenario', choices=['success', 'disputed'], default='success')
         else:
             p.add_argument('--resume', required=True, type=Path)
             p.add_argument('--jobs', required=True, type=Path)
