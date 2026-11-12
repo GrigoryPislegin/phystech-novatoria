@@ -23,27 +23,39 @@ async def run_pipeline(resume, jobs, model, privacy):
     safe_resume = await privacy.redact(resume)
     # Complete privacy preflight before the very first model call.
     safe_jobs = [(jid, await privacy.redact(text)) for jid, text in jobs]
-    facts = await model.ask(Facts, 'facts', {'text':safe_resume})
-    facts.validate_source(safe_resume)
     results, errors = [], []
+    def finish(facts):
+        return {'schema_version':'0.1', 'facts':facts.model_dump(), 'ranking':rank(results, len(jobs)),
+                'errors':errors, 'unprocessed_job_ids':[jid for jid,_ in jobs if jid not in {r['job_id'] for r in results}],
+                'safe_resume_sha256':hashlib.sha256(safe_resume.encode()).hexdigest()}
+    stage = 'facts'
+    try:
+        facts = await model.ask(Facts, 'facts', {'text':safe_resume})
+        stage = 'facts_validation'
+        facts.validate_source(safe_resume)
+    except Exception as exc:
+        errors.append({'job_id':None, 'code':'facts_failed', 'stage':stage, 'type':type(exc).__name__})
+        return finish(Facts(items=[]))
     for jid, text in safe_jobs:
+        stage = 'requirements'
         try:
             requirements = await model.ask(Requirements, 'requirements', {'text':text})
+            stage = 'requirements_validation'
             requirements.validate_source(text)
+            stage = 'evaluation'
             evaluation = await model.ask(Evaluation, 'evaluation', {
                 'requirements':requirements.model_dump(), 'facts':facts.model_dump()})
+            stage = 'evaluation_validation'
             validate_pair(requirements, facts, evaluation)
             results.append({'job_id':jid, 'requirements':requirements.model_dump(),
                             'evaluation':evaluation.model_dump(), 'score':score(requirements, evaluation),
                             'safe_source_sha256':hashlib.sha256(text.encode()).hexdigest()})
         except Exception as exc:
             # Never serialize exception messages: upstream errors may contain text/keys/DSNs.
-            errors.append({'job_id':jid, 'code':'evaluation_failed', 'type':type(exc).__name__})
+            errors.append({'job_id':jid, 'code':stage.split('_')[0]+'_failed', 'stage':stage, 'type':type(exc).__name__})
             # Stop after a failure: no paid retries or requests after a privacy/budget incident.
             break
-    return {'schema_version':'0.1', 'facts':facts.model_dump(), 'ranking':rank(results, len(jobs)),
-            'errors':errors, 'unprocessed_job_ids':[jid for jid,_ in jobs if jid not in {r['job_id'] for r in results}],
-            'safe_resume_sha256':hashlib.sha256(safe_resume.encode()).hexdigest()}
+    return finish(facts)
 
 
 def write_report(report, root: Path):
@@ -70,6 +82,30 @@ def write_report(report, root: Path):
              'full — полное соответствие; partial — частичное соответствие; fail — явное несоответствие; unknown — информация не указана.', '']
     if missing:
         lines += ['Не оценены (ошибка или остановка до обработки): ' + ', '.join(literal(jid) for jid in missing), '']
+    ranked = report['ranking']['jobs']
+    recommendation = report['ranking']['recommendation']
+    actions = {
+        'review_top': 'Проверьте вакансии первого места и их доказательства перед передачей менеджеру.',
+        'clarify': 'Сначала уточните неизвестные или частично подтверждённые требования у кандидата.',
+        'review_none_fit': 'Проверьте выявленные обязательные несоответствия; автоматический отказ недопустим.',
+        'incomplete': 'Завершите обработку пропущенных вакансий; окончательный выбор по этому отчёту невозможен.',
+    }
+    if recommendation == 'clarify' and not any(
+        row['status'] in {'unknown', 'partial'} for job in ranked if job['rank'] == 1
+        for row in job['evaluation']['rows']
+    ):
+        actions['clarify'] = 'Подтверждённого соответствия недостаточно. Проверьте выявленные несоответствия и релевантность доказательств; автоматический отказ недопустим.'
+    lines += [actions.get(recommendation, 'Проверьте результат вручную.')]
+    if ranked:
+        label = 'Первое место' if report['ranking']['complete'] else 'Первое место среди обработанных (предварительно)'
+        lines += [label + ': ' + ', '.join(literal(j['job_id']) for j in ranked if j['rank'] == 1)]
+        lines += ['Сводка порядка:']
+        for job in ranked:
+            s = job['score']
+            lines.append(f"- Место {job['rank']}: {literal(job['job_id'])}; обязательные {s['mandatory']}; L={s['lower']}, H={s['upper']}, известность={s['coverage']}%.")
+    for error in report['errors']:
+        lines.append(f"Ошибка: {literal(error.get('job_id') or 'все вакансии')}; стадия: {literal(error.get('stage', 'unknown'))}; код: {literal(error['code'])}.")
+    lines.append('')
     records = []
     facts = {f['id']:f for f in report['facts']['items']}
     for job in report['ranking']['jobs']:
@@ -84,8 +120,15 @@ def write_report(report, root: Path):
                             row['status'],evidence,row['comment'],row['question'] or ''])
             lines += [f"- {literal(req['text'])} — **{row['status']}**. {literal(row['comment'])}",
                       f"  Требование: {literal(req['quote'])}", f"  Резюме: {literal(evidence or 'не указано')}"]
+            if req['mandatory_quote']:
+                lines.append(f"  Обязательность предложена моделью — подтвердите: {literal(req['mandatory_quote'])}")
             if row['question']: lines.append(f"  Вопрос: {literal(row['question'])}")
-        lines += ['', 'Сильные стороны: строки full; частичное соответствие: partial; пробелы/риски: fail и unknown.',
+        lines.append('')
+        for status, label in [('full', 'Сильные стороны'), ('partial', 'Частичное соответствие'),
+                              ('fail', 'Выявленные несоответствия'), ('unknown', 'Не хватает сведений')]:
+            names = [literal(reqs[row['requirement_id']]['text']) for row in job['evaluation']['rows'] if row['status'] == status]
+            lines.append(label + ': ' + (', '.join(names) if names else 'не выявлены по оценке'))
+        lines += ['Риск интерпретации: статусы предложены моделью; дословность цитат не доказывает правильность вывода.',
                   'Действие рекрутера: проверить обоснования и уточнить открытые вопросы; решение остаётся за человеком.', '']
     if report['errors']: lines += ['Есть ошибки: рейтинг неполный. Подробности в report.json.']
     write('report.md', '\n'.join(lines))

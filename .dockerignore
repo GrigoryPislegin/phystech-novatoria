@@ -1,0 +1,18 @@
+# Allowlist: never send personal data, keys, reports, Git or legacy services to the builder.
+**
+!Dockerfile
+!prototype/
+prototype/**
+!prototype/__init__.py
+!prototype/__main__.py
+!prototype/contracts.py
+!prototype/demo.py
+!prototype/documents.py
+!prototype/model.py
+!prototype/pipeline.py
+!prototype/privacy.py
+!prototype/scoring.py
+!prototype/requirements.lock.txt
+!prototype/tests/
+prototype/tests/**
+!prototype/tests/test_core.py

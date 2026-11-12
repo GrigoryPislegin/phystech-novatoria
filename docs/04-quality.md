@@ -1,5 +1,57 @@
 # Качество и резерв
 
+## Интеграция после ревью Егора и настоящие проверки — 13 ноября 2026
+
+Ветка `codex/cli-integration-consultation`. Чужие изменения MULTIAGENT_OPTIONS.md, READY.md, scripts/doctor.py, tmp/ сохранены. PR Егора #2 (head b6aeff41bb5358666f3031289268b1a9a6a2ae3d) прочитан через GitHub; три файла docs/reviews перенесены без изменения текста, сам PR не сливался. GitHub на момент проверки показывает ветки main, codex/team-repository, codex/cli-recruiter-prototype и egor/product-review; PR Вани и ветки парсинга не найдены. Это не утверждение об отсутствии его локальной работы.
+
+### Исправления и локальные проверки
+
+- Структурная привязка mandatory_quote к quote, минимум 8 символов; точные дубли text+quote отклоняются. Исходные примеры п. 1 Егора больше не проходят.
+- Отчёт содержит конкретные сильные стороны/несоответствия/неизвестное, первые вакансии, цитаты обязательности и сводку порядка. При incomplete результат явно предварительный; стадия сбоя сохраняется. Ошибка facts даёт пустой отчёт без невалидных фактов.
+- Действие clarify при всех необязательных fail не выдумывает unknown/partial. Формула не менялась.
+- `.venv/bin/python -m unittest discover -s prototype/tests -q`: **36 PASS**; тесты инструментов `-s tests -q`: **10 PASS**. `git diff --check`: PASS. Новый тест ветки clarify сначала FAIL, после исправления PASS. Первые регрессии по ревью также наблюдались красными до исправлений.
+- `.venv/bin/python docs/reviews/egor_review_repro.py`: исходные п. 1/4/5 и точные дубли не воспроизводятся; п. 2/3 и дополнительный спорный порядок остаются. Однословные/нерелевантные доказательства и широкий mandatory_quote через раздел «Желательно» — известные смысловые ограничения. Пункт 1 не закрыт в общем случае.
+- Независимое ревью предыдущего изменения выявило дефекты Docker-контекста и действия clarify; исправлены. Сводный блок вопросов пока отложен, вопросы присутствуют в строках требований. Подробности решений — docs/reviews/integration-followup.md.
+
+### Первый live OpenAI — действительно выполнен
+
+Официальные [модель](https://developers.openai.com/api/docs/models/gpt-6-luna) и [тариф](https://developers.openai.com/api/docs/pricing) сверены 13 ноября: стандартные $0.10/$0.50 за миллион входных/выходных токенов. Локальный процесс загрузил только OPENAI_API_KEY из .env; значение не выводилось и не включалось в контекст чата. SDK logging отключён. Только фиксированный вымышленный текст demo_inputs, без реальных CV.
+
+Первая попытка в сетевой песочнице: exit 2, APIConnectionError на facts, usage пустой, отчёт 0/3 incomplete `20261112T233046Z-ba71dcc4`; локальный резерв $0.0047175, не счёт. DNS-сбой подтверждён отдельно. После разрешённого запуска вне песочницы TLS с certifi прошёл; проверку сертификатов не отключали. Следующему процессу выделен оставшийся лимит **$0.995**, сумма лимитов/резерва не превышает $1.
+
+Эквивалент успешной команды при ключе в окружении:
+
+```sh
+.venv/bin/python -m prototype demo --live --model gpt-6-luna --budget 0.995
+```
+
+Фактически **exit 0**, live_synthetic, **3/3**, review_top, **7 API-запросов**, 3893 input + 875 output tokens. Стандартная расчётная стоимость **$0.0008268**, резерв приложения $0.0332668; биллинг аккаунта отдельно не проверялся. Отчёт `data/private/prototype-runs/20261112T233159Z-1d7c12e4` прочитан: job-001 full L/H=100/100; job-002 unknown 0/100; job-003 fail 0/0, требование SQL 3 года против указанного 1 года. Это один пример, не оценка общей точности. Certum в этом прогоне не участвовал. Sol и повторный платный прогон не выполнялись.
+
+### Docker — действительно проверен
+
+OrbStack запущен вне песочницы; Docker Server 29.4.0. Предыдущий вывод kLSNoExecutableErr оказался ограничением запуска приложения из песочницы, а не доказательством поломки установки.
+
+`docker build -t recruiter-cli:local .`: PASS, Linux arm64; внутри сборки 8 core-тестов PASS. База Python 3.13 закреплена digest e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90. Первая фактическая проверка состава обнаружила, что отрицание директорий в .dockerignore возвращает лишние файлы; исправлены порядок исключений и COPY. Повторная проверка внутри образа подтвердила точный список: 9 модулей, requirements.lock.txt, tests/test_core.py. Секреты/данные в образ не включены.
+
+Оба `docker run --rm --network none --user "$(id -u):$(id -g)" --mount "type=bind,src=$(pwd)/data/private/prototype-runs,dst=/app/data/private/prototype-runs" recruiter-cli:local demo` и вариант `demo --scenario disputed`: PASS. Отчёты на хосте `20261112T233622Z-667daec8` (review_top) и `20261112T233623Z-680c2cf3` (clarify), complete=true, synthetic_replay_NOT_model_output. Docker не содержит Certum. Второй компьютер не проверен.
+
+### Настоящий Certum — локальный smoke пройден
+
+Изолированная копия core, CPython 3.12.16, зависимости по uv.lock, отдельный PostgreSQL на 127.0.0.1:55439, новые tenant/vault и секреты. Миграции и создание tenant PASS; NER Slovnet/Navec скачаны штатным downloader с проверкой хешей. Личная инфраструктура Certum не использовалась.
+
+```sh
+data/private/certum-sandbox/core/.venv/bin/python scripts/certum_smoke.py \
+  --env-file data/private/certum-sandbox/core/.env \
+  --tenant-file data/private/certum-sandbox/tenant-id \
+  --models-dir data/private/certum-sandbox/models
+```
+
+**exit 0**, real_certum=true, synthetic_only=true, redaction=pass, outbound_scan=pass, untrusted_reference_block=pass, openai_calls=0. Проверены вымышленные ФИО, телефон, email; реальный NER, база и сейф использованы. Не доказывает полной анонимности. Инструкция/остановка: docs/17-certum-local-setup.md.
+
+Финальный Sol-ревьюер выявил два недостатка самого smoke: разрешён произвольный DSN и любой RuntimeError принимался за доказательство блокировки ссылки. Исправлено: допускается только 127.0.0.1:55439/certum без query overrides, проверяется точный сигнал privacy_untrusted_reference, минимум три ссылки и сохранность профессионального текста. Три регрессии сначала FAIL, после исправлений PASS; реальный smoke повторён с тем же успешным результатом. Повторного ревью не запускали.
+
+**Ещё не подтверждено:** общий Certum → OpenAI в одном запуске; единое окружение (SDK core 3.29.0 против CLI 2.54.0), полнота защиты и смысловая точность, результаты Вани/второй компьютер, Docker защищённого пути, права/доступ жюри к core, ответы консультации и окончательная формула. Прежние записи ниже — исторические, не текущие блокеры.
+
 ## Проверка CLI и командного пакета — 12 ноября 2026
 
 Ветка: codex/cli-recruiter-prototype. Среда: macOS arm64, Python 3.13.5, отдельное .venv. Точные версии библиотек — prototype/requirements.lock.txt. Перед передачей ветки на GitHub повторно выполнены все 22 локальных теста; проходят. Реальные API/Certum при этом не запускались.

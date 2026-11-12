@@ -22,10 +22,19 @@ class Requirements(StrictModel):
 
     def validate_source(self, source):
         unique_ids(self.items)
+        seen = set()
         for item in self.items:
             exact_quote(item.quote, source)
+            identity = (item.text.strip().casefold(), item.quote.strip().casefold())
+            if identity in seen:
+                raise ValueError('duplicate_requirement')
+            seen.add(identity)
             if item.mandatory_quote is not None:
                 exact_quote(item.mandatory_quote, source)
+                # A heading must be quoted together with its requirement, not alone.
+                # This binds spans structurally; semantic mandatory status still needs review.
+                if len(item.mandatory_quote.strip()) < 8 or item.quote not in item.mandatory_quote:
+                    raise ValueError('unbound_mandatory_quote')
 
 
 class Fact(StrictModel):
