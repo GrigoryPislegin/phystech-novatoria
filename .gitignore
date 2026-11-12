@@ -31,3 +31,8 @@ vendor/superpowers/
 
 # Local copies of development tools; not part of the team project
 /vendor/
+
+# Generated project skill links/config; recreate with scripts/setup_* after cloning.
+/.agents/skills/
+/.claude/skills/
+/.codex/config.toml
