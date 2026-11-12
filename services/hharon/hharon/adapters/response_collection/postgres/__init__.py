@@ -1,0 +1,1 @@
+from .adapter import PostgresResponseCollectionRepositoryAdapter as PostgresResponseCollectionRepositoryAdapter

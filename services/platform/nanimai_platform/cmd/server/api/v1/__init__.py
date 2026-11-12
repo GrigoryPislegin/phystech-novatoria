@@ -1,0 +1,16 @@
+from . import auth as auth
+from . import balance as balance
+from . import candidate as candidate
+from . import contacts as contacts
+from . import criterion as criterion
+from . import health as health
+from . import hh_oauth2 as hh_oauth2
+from . import hh_search_campaign as hh_search_campaign
+from . import hook as hook
+from . import llm as llm
+from . import operation as operation
+from . import project as project
+from . import skills as skills
+from . import stop_factor as stop_factor
+from . import user as user
+from . import vacancy as vacancy

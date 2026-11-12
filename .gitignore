@@ -36,3 +36,14 @@ vendor/superpowers/
 /.agents/skills/
 /.claude/skills/
 /.codex/config.toml
+
+# Private runtime configuration, datasets and local checkouts
+**/config.toml
+.envrc
+*.zip
+*.safetensors
+*.onnx
+*.pt
+*.pth
+!services/platform/dist/
+!services/platform/dist/hhsdk-1.0.1-py3-none-any.whl

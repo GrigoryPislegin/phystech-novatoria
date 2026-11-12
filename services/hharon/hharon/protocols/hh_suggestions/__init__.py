@@ -1,0 +1,2 @@
+from hharon.protocols.hh_suggestions.protocol import HHSuggestionsError as HHSuggestionsError
+from hharon.protocols.hh_suggestions.protocol import HHSuggestionsProtocol as HHSuggestionsProtocol

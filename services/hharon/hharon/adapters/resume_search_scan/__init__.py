@@ -1,0 +1,2 @@
+from .hh_api import HeadHunterResumeSearchScanAdapter as HeadHunterResumeSearchScanAdapter
+from .postgres import PostgresResumeSearchScanRepositoryAdapter as PostgresResumeSearchScanRepositoryAdapter

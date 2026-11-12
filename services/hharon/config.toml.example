@@ -1,0 +1,62 @@
+debug = true
+
+[postgres]
+host="hharon_postgres"
+port=5432
+username="hharon"
+password=""
+database="hharon"
+
+[crypt]
+private_key_hex=""
+public_key_hex=""
+
+[hh_client]
+user_agent="hharon/1.0"
+timeout=30.0
+
+[hh_oauth2]
+client_id="your_client_id"
+client_secret=""
+
+[cache]
+host="hharon_valkey"
+port=6379
+use_tls=false
+cache_ttl_seconds=600
+
+[response_collection]
+max_responses_per_session=300
+max_retries=5
+
+[grpc_server]
+host="0.0.0.0"
+port=50054
+log_requests=true
+log_responses=true
+
+[rabbitmq]
+host="hharon_rabbitmq"
+port=5672
+username="hharon"
+password=""
+vhost="hharon"
+exchange_name="hharon_messages"
+connection_timeout=10.0
+prefetch_count=1
+max_retries=3
+
+[resume_search_scan]
+scans_per_day=3
+max_resumes_per_day=300
+max_retries=5
+[resume_search_scan.initial_delay]
+strategy="constant"
+value="1m"
+# or random
+# strategy="random"
+# min="1m"
+# max="10m"
+
+[token_update]
+max_retries=3

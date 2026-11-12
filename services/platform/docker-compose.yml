@@ -1,0 +1,223 @@
+networks:
+  nanimai-network:
+    external: true
+  platform-network:
+    name: platform-network
+    internal: true
+
+services:
+  platform_hh_worker:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: nanimai-platform-hh-worker-v2
+    restart: unless-stopped
+    volumes:
+      - ./config.toml:/app/config.toml
+    command:
+      ["uv", "-q", "run", "python3", "-m", "nanimai_platform", "hh_worker"]
+
+    networks:
+      - platform-network
+      - nanimai-network
+
+    depends_on:
+      platform_mongodb_master:
+        condition: service_healthy
+      platform_mongodb_slave_1:
+        condition: service_healthy
+      platform_redis:
+        condition: service_healthy
+
+  platform_oauth2_token_worker:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: nanimai-platform-oauth2-token-worker
+    restart: unless-stopped
+    volumes:
+      - ./config.toml:/app/config.toml
+    command:
+      [
+        "uv",
+        "-q",
+        "run",
+        "python3",
+        "-m",
+        "nanimai_platform",
+        "oauth2_token_worker",
+      ]
+
+    networks:
+      - platform-network
+      - nanimai-network
+
+    depends_on:
+      platform_mongodb_master:
+        condition: service_healthy
+      platform_mongodb_slave_1:
+        condition: service_healthy
+      platform_redis:
+        condition: service_healthy
+
+  platform_server:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: nanimai-platform-server
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:9704:8080
+    volumes:
+      - ./config.toml:/app/config.toml
+    command: ["uv", "-q", "run", "python3", "-m", "nanimai_platform", "server"]
+
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - nanimai-network
+      - platform-network
+
+    depends_on:
+      platform_mongodb_master:
+        condition: service_healthy
+      platform_mongodb_slave_1:
+        condition: service_healthy
+      platform_redis:
+        condition: service_healthy
+
+  platform_mongodb_master:
+    image: mongo:8.0.3
+    container_name: nanimai-platform-mongodb-master
+    restart: unless-stopped
+    command: mongod --replSet rs0 --bind_ip_all
+    volumes:
+      - platform_database_master:/data/db
+    ports:
+      - 127.0.0.1:27017:27017
+
+    networks:
+      - platform-network
+
+    healthcheck:
+      test: >
+        mongosh --eval '
+        try {
+          rs.status();
+          db.runCommand("ping").ok;
+        } catch(err) {
+          exit(1);
+        }
+        '
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  platform_mongodb_slave_1:
+    image: mongo:8.0.3
+    container_name: nanimai-platform-mongodb-slave_1
+    restart: unless-stopped
+    command: mongod --replSet rs0 --bind_ip_all
+    volumes:
+      - platform_database_slave_1:/data/db
+    ports:
+      - 127.0.0.1:27018:27017
+
+    networks:
+      - platform-network
+
+    healthcheck:
+      test: >
+        mongosh --eval '
+        try {
+          rs.status();
+          db.runCommand("ping").ok;
+        } catch(err) {
+          exit(1);
+        }
+        '
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  platform_mongodb_setup:
+    image: mongo:8.0.3
+    container_name: nanimai-platform-mongodb-setup
+    restart: "no"
+    depends_on:
+      platform_mongodb_master:
+        condition: service_started
+      platform_mongodb_slave_1:
+        condition: service_started
+
+    networks:
+      - platform-network
+
+    command: >
+      bash -c '
+      sleep 10 &&
+      mongosh --host platform_mongodb_master:27017 --eval "
+      config = {
+        _id: \"rs0\",
+        members: [
+          {_id: 0, host: \"platform_mongodb_master:27017\", priority: 2},
+          {_id: 1, host: \"platform_mongodb_slave_1:27017\", priority: 1}
+        ]
+      };
+      while (true) {
+        try {
+          rs.initiate(config);
+          break;
+        } catch (err) {
+          print(\"Retrying...\");
+          sleep(500);
+        }
+      }
+      "
+      '
+
+  platform_redis:
+    image: docker.io/library/redis:7-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf
+    restart: unless-stopped
+    container_name: nanimai-platform-redis
+    environment:
+      - MALLOC=jemalloc
+    sysctls:
+      - net.core.somaxconn=65535
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+
+    networks:
+      - platform-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      start_period: 10s
+      interval: 10s
+      retries: 3
+      timeout: 2s
+    ports:
+      - 127.0.0.1:6379:6379
+    volumes:
+      - platform_redis:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+
+volumes:
+  platform_database_master:
+    driver: local
+  platform_database_slave_1:
+    driver: local
+  platform_redis:
+    driver: local

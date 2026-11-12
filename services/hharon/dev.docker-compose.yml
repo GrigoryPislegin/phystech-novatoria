@@ -1,0 +1,13 @@
+services:
+  hharon_valkey:
+    ports:
+      - "6379:6379"
+
+  hharon_postgres:
+    ports:
+      - "5432:5432"
+
+  hharon_rabbitmq:
+    ports:
+      - "5672:5672"
+      - "15672:15672"

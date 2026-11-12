@@ -1,0 +1,5 @@
+from .protocol import HeadHunterAccessDeniedError as HeadHunterAccessDeniedError
+from .protocol import HeadHunterRateLimitError as HeadHunterRateLimitError
+from .protocol import HeadHunterResumeSearchScanError as HeadHunterResumeSearchScanError
+from .protocol import ResumeSearchScanHHApiProtocol as ResumeSearchScanHHApiProtocol
+from .protocol import ResumeSearchScanRepositoryProtocol as ResumeSearchScanRepositoryProtocol
