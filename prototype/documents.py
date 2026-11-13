@@ -26,14 +26,23 @@ def read_document(path: Path) -> str:
             with ZipFile(path) as archive:
                 if sum(x.file_size for x in archive.infolist()) > 20_000_000:
                     raise ValueError('document_expansion_limit')
-            document = Document(path)
+            try:
+                document = Document(path)
+            except ValueError:
+                raise ValueError('document_unreadable') from None
             parts = []
+            has_text = False
             for block in document.iter_inner_content():
                 if hasattr(block, 'rows'):
-                    parts.extend(' | '.join(c.text for c in r.cells) for r in block.rows)
+                    for row in block.rows:
+                        cells = [cell.text for cell in row.cells]
+                        has_text = has_text or any(cell.strip() for cell in cells)
+                        parts.append(' | '.join(cells))
                 else:
-                    parts.append(block.text)
-            text = '\n'.join(parts)
+                    paragraph = block.text
+                    has_text = has_text or bool(paragraph.strip())
+                    parts.append(paragraph)
+            text = '\n'.join(parts) if has_text else ''
         else:
             raise ValueError('unsupported_format')
     except ImportError:
