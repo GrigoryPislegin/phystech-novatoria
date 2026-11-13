@@ -414,10 +414,11 @@
   show.addEventListener('click', () => setRunCenterOpen(center.hidden));
   reload.addEventListener('click', refreshRuns);
   start.addEventListener('click', startRun);
-  byId('dismiss-review').addEventListener('click', () => reviewDialog.close());
+  for (const button of document.querySelectorAll('[data-dismiss-dialog]')) {
+    button.addEventListener('click', () => button.closest('dialog').close());
+  }
   byId('save-review').addEventListener('click', () => reviewDialog.close('confirm'));
   removal.addEventListener('close', () => { toRemove = null; });
-  byId('dismiss-run-removal').addEventListener('click', () => removal.close());
   byId('remove-run').addEventListener('click', async event => {
     const id = toRemove;
     if (!id || removalBusy) return;

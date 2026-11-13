@@ -313,8 +313,41 @@ thead th:nth-child(2) { width: 27%; }
 .confirm-dialog h2 { font-size: 21px; }
 .confirm-dialog p { margin: 11px 0 17px; }
 .dialog-actions { justify-content: flex-end; }
-.button-danger { background: #b7274f; color: #fff; }
-.button-danger:hover { background: #a51f43; }
+.report-confirm {
+  --dialog-top: min(250px, 21.2dvh);
+  inset-block: var(--dialog-top) auto;
+  margin-block: 0;
+  width: 516px;
+  min-height: min(224px, 62dvh);
+  max-width: calc(100% - 30px);
+  max-height: calc(100dvh - var(--dialog-top) - 16px);
+  padding: 24px 20px 28px 28px;
+  box-shadow: 12px 12px 104px rgb(0 0 0 / .25);
+}
+.report-confirm[open] { display: flex; flex-direction: column; }
+.report-confirm::backdrop { background: rgb(0 0 0 / .5); }
+.report-confirm h2 { padding-right: 28px; font-size: 20px; line-height: 28px; }
+.report-confirm p { margin: 16px 8px 24px 0; line-height: 22px; }
+.report-confirm .dialog-actions { margin-top: auto; gap: 12px; }
+.report-confirm .button { width: 120px; min-height: 48px; padding-inline: 10px; }
+.report-confirm .button-secondary { border-color: transparent; color: var(--ink); }
+.report-confirm .button-secondary:hover { background: var(--soft); }
+.dialog-close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 20px;
+}
+.dialog-close:hover { background: var(--soft); }
+.button-danger { background: #f3125f; color: #fff; }
+.button-danger:hover { background: #e11158; }
 .run-center .error, #review-message.error { color: var(--danger); }
 #review-message:empty { display: none; }
 

@@ -95,20 +95,22 @@
       <p id="runs-message" class="support" role="status" aria-live="polite"></p>
       <ul id="saved-runs" class="saved-runs"></ul>
     </section>
-    <dialog id="confirm-run-removal" class="confirm-dialog" aria-labelledby="delete-run-title">
+    <dialog id="confirm-run-removal" class="confirm-dialog report-confirm" aria-labelledby="delete-run-title" aria-describedby="delete-run-copy">
+      <button type="button" class="dialog-close" data-dismiss-dialog aria-label="Закрыть">×</button>
       <h2 id="delete-run-title">Удалить запуск?</h2>
-      <p>Отчёт и результаты проверки этого запуска будут удалены из локального хранилища.</p>
+      <p id="delete-run-copy">Отчёт и результаты проверки этого запуска будут удалены из локального хранилища.</p>
       <div class="dialog-actions">
-        <button type="button" id="dismiss-run-removal" class="button button-secondary" autofocus>Отмена</button>
+        <button type="button" id="dismiss-run-removal" class="button button-secondary" data-dismiss-dialog autofocus>Отмена</button>
         <button type="button" id="remove-run" class="button button-danger">Удалить</button>
       </div>
     </dialog>
 
-    <dialog id="confirm-review" class="confirm-dialog" aria-labelledby="review-dialog-title" aria-describedby="review-dialog-copy">
+    <dialog id="confirm-review" class="confirm-dialog report-confirm" aria-labelledby="review-dialog-title" aria-describedby="review-dialog-copy">
+      <button type="button" class="dialog-close" data-dismiss-dialog aria-label="Закрыть">×</button>
       <h2 id="review-dialog-title">Подтвердите действие</h2>
       <p id="review-dialog-copy"></p>
       <div class="dialog-actions">
-        <button type="button" id="dismiss-review" class="button button-secondary" autofocus>Отмена</button>
+        <button type="button" id="dismiss-review" class="button button-secondary" data-dismiss-dialog autofocus>Отмена</button>
         <button type="button" id="save-review" class="button button-primary">Подтвердить</button>
       </div>
     </dialog>
