@@ -139,6 +139,43 @@ class ScenarioTests(unittest.TestCase):
             self.assertNotEqual(report_sha256(changed), report_sha256(report), field)
 
 
+class SkillListModel:
+    """E9c repro: a CV skill list makes the matching row disputed (heading_context)."""
+    CV = 'Навыки:\n- Python 5 лет\nРаботал в команде из 5 человек.'
+    JOBS = [('job-a', 'Python обязателен.'), ('job-b', 'Опыт работы в команде.')]
+
+    async def ask(self, schema, task, payload):
+        if task == 'facts':
+            facts = [{'id': 'f1', 'text': 'Python', 'quote': 'Python 5 лет'},
+                     {'id': 'f2', 'text': 'команда', 'quote': 'Работал в команде из 5 человек.'}]
+            empty = {'summary': [], 'stack': [], 'last_position': None, 'achievements': [],
+                     'missing': ['summary', 'stack', 'last_position', 'achievements']}
+            return schema.model_validate({'items': facts, 'profile': empty})
+        if task == 'requirements':
+            text = payload['text']
+            return Requirements(items=[{'id': 'r1', 'text': text, 'quote': text,
+                                        'mandatory_quote': text if 'обязателен' in text else None}])
+        fact = 'f1' if 'Python' in payload['requirements']['items'][0]['quote'] else 'f2'
+        row = {'requirement_id': 'r1', 'status': 'full', 'fact_ids': [fact], 'comment': 'c', 'question': None}
+        return schema.model_validate({'rows': [row], 'conditions': {'items': []}})
+
+
+class E9cFindingTests(unittest.TestCase):
+    def test_top_stays_open_while_a_doubted_lower_job_could_reach_it(self):
+        report = asyncio.run(run_pipeline(SkillListModel.CV, SkillListModel.JOBS, SkillListModel(),
+                                          SyntheticPrivacy()))
+        places = {j['job_id']: (j['rank'], j['score']['disputed_ids']) for j in report['ranking']['jobs']}
+        self.assertEqual(places, {'job-b': (1, []), 'job-a': (2, ['r1'])})
+        self.assertEqual(report['ranking']['recommendation'], 'clarify')  # was review_top
+
+    @unittest.expectedFailure
+    def test_p2_clarify_action_names_the_real_cause(self):
+        # Top job-a: both rows full, one disputed. report.md tells the recruiter to check «выявленные
+        # несоответствия», but there is no fail; the cause is the disputed evidence (pipeline.py:234-239).
+        head = markdown(load('disputed')).split('\n## ', 1)[0]
+        self.assertNotIn('выявленные несоответствия', head.lower())
+
+
 class IntegrationFindingTests(unittest.TestCase):
     """Reproductions of findings in pipeline.py (owned by the integrator). See the contract doc."""
 

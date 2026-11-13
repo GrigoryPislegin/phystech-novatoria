@@ -56,6 +56,8 @@ CLOSED_BY = {
     'condition_conflict': 'accept_condition',
     'condition_review': 'read_context',
     'profile_review': 'read_context',
+    'mandatory_partial': 'read_context',
+    'condition_unknown': 'read_context',
 }
 _VERSIONED = ('report_sha256', 'resume_sha256', 'source_sha256', 'requirements_sha256', 'policy_version')
 
