@@ -29,6 +29,7 @@ from prototype.review_queue import build_review_queue
 MODES = {'synthetic_replay', 'sdk_mock', 'live'}
 # The mode each report declares (prototype CLI / application) -> the manifest mode it belongs to.
 REPORT_MODES = {'synthetic_replay_NOT_model_output': 'synthetic_replay', 'synthetic_replay': 'synthetic_replay',
+                'synthetic_sdk_mock_NOT_model_output': 'sdk_mock',
                 'sdk_mock': 'sdk_mock', 'live_synthetic': 'live', 'live_local_privacy': 'live', 'live': 'live'}
 REPORT_SCHEMA = '0.1'
 STATUSES = ('full', 'partial', 'fail', 'unknown')
@@ -162,9 +163,36 @@ def evaluate_case(case: dict, report: dict | None, problem: str | None = None) -
     return result
 
 
+def _unique(ids: list, code: str) -> None:
+    if len(ids) != len(set(ids)) or not all(isinstance(i, str) and i for i in ids):
+        raise _Setup(code)
+
+
+def _check_shape(report: dict) -> None:
+    """The actual report is validated on its own, before any metric and without reading expectations:
+    a dict would silently keep one of two duplicate ids, and an unknown status could pass as allowed."""
+    _unique([f['id'] for f in report['facts']['items']], 'duplicate_fact_ids')
+    jobs = report['ranking']['jobs']
+    _unique([j['job_id'] for j in jobs], 'duplicate_job_ids')
+    _unique([e['job_id'] for e in report['unprocessed']], 'duplicate_unprocessed_ids')
+    for job in jobs:
+        rank = job['rank']
+        if not isinstance(rank, int) or isinstance(rank, bool) or not 1 <= rank <= len(jobs):
+            raise _Setup('invalid_rank')
+        _unique([r['id'] for r in job['requirements']['items']], 'duplicate_requirement_ids')
+        rows = job['evaluation']['rows']
+        _unique([r['requirement_id'] for r in rows], 'duplicate_row_ids')
+        if {r['requirement_id'] for r in rows} != {r['id'] for r in job['requirements']['items']}:
+            raise _Setup('rows_do_not_cover_requirements')
+        for row in rows:
+            if row['status'] not in STATUSES or not isinstance(row['fact_ids'], list):
+                raise _Setup('invalid_row')
+
+
 def _evaluate(case: dict, report: dict, result: dict) -> None:
     if report.get('schema_version') != REPORT_SCHEMA:
         raise _Setup('unknown_report_version')
+    _check_shape(report)
     jobs = {j['job_id']: j for j in report['ranking']['jobs']}
     failed = {e['job_id'] for e in report['unprocessed']}  # the pipeline lists every failed job here
     facts = {f['id']: f['quote'] for f in report['facts']['items']}
@@ -346,10 +374,13 @@ def run(cases: list[dict], mode: str, reports: dict[str, dict | None], problems:
     metrics.append(_metric('equivalent_wording_consistent', group_items))
     load = [r['review_load'] for r in results if r['review_load']]
     return {'schema_version': 'egor-e9-evaluation-0.1', 'mode': mode,
-            'quality_measured': mode == 'live',
+            # live AND something was actually evaluated; an empty or unusable live run measures nothing
+            'quality_measured': mode == 'live' and any(r['setup'] == 'ok' for r in results),
             'note': ('Ожидания — черновик команды (draft), не ответы эксперта. Доли — прошедшие проверки, '
-                     'не вероятность истинности.') + ('' if mode == 'live' else
-                                                      ' Режим не live: качество модели не измерено.'),
+                     'не вероятность истинности.') + (
+                ' Режим не live: качество модели не измерено.' if mode != 'live' else
+                '' if any(r['setup'] == 'ok' for r in results) else
+                ' Режим live, но ни один отчёт не оценён: качество модели не измерено.'),
             'cases': len(cases), 'unknown_report_ids': unknown_ids,
             'row_outcomes': dict(Counter(row['outcome'] for _, row in rows)), 'metrics': metrics,
             'by_domain': by_domain,

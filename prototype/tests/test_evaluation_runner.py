@@ -188,6 +188,34 @@ class FalsePerfectTests(unittest.TestCase):
                 self.assertEqual(summary['results'][0]['setup'], 'malformed_report')
                 self.assertIsNone(metric(summary, 'status_allowed')['value'])
 
+    def test_actual_shape_is_validated_before_metrics(self):
+        base = make_report('E6-FE-01')
+        def edited(change):
+            report = copy.deepcopy(base)
+            change(report)
+            return report
+        job = lambda r: r['ranking']['jobs'][0]
+        broken = {
+            'duplicate_job_ids': lambda r: r['ranking']['jobs'].append(copy.deepcopy(job(r))),
+            'duplicate_requirement_ids': lambda r: job(r)['requirements']['items'].append(
+                copy.deepcopy(job(r)['requirements']['items'][0])),
+            'duplicate_row_ids': lambda r: job(r)['evaluation']['rows'].append(
+                copy.deepcopy(job(r)['evaluation']['rows'][0])),
+            'duplicate_fact_ids': lambda r: r['facts']['items'].append(copy.deepcopy(r['facts']['items'][0])),
+            'invalid_row': lambda r: job(r)['evaluation']['rows'][0].update(status='excellent'),
+            'rows_do_not_cover_requirements': lambda r: job(r)['evaluation']['rows'].pop(),
+        }
+        for code, change in broken.items():
+            with self.subTest(code):
+                summary = evaluate({'E6-FE-01': edited(change)})
+                self.assertEqual(summary['results'][0]['setup'], code)
+                self.assertIsNone(metric(summary, 'status_allowed')['value'])
+                self.assertIn(f'E6-FE-01:{code}', metric(summary, 'rank_relations')['unmeasured'])
+        for rank in (0, '1', True, 3, 1.0):
+            with self.subTest(rank=rank):
+                summary = evaluate({'E6-FE-01': edited(lambda r: job(r).update(rank=rank))})
+                self.assertEqual(summary['results'][0]['setup'], 'invalid_rank')
+
     def test_single_member_group_is_unmeasured(self):
         summary = evaluate({'E6-FE-04': make_report('E6-FE-04')})
         self.assertIsNone(metric(summary, 'equivalent_wording_consistent')['value'])
@@ -286,6 +314,22 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(self.cli(), 0)
         data = json.loads((self.dir / 'out' / 'evaluation.json').read_text(encoding='utf-8'))
         self.assertTrue(data['quality_measured'])
+
+    def test_sdk_mock_mode_is_mapped(self):
+        self.write('sdk_mock', {'E6-FE-01': make_report('E6-FE-01', mode='synthetic_sdk_mock_NOT_model_output')})
+        self.assertEqual(self.cli(), 0)
+        data = json.loads((self.dir / 'out' / 'evaluation.json').read_text(encoding='utf-8'))
+        self.assertFalse(data['quality_measured'])
+
+    def test_live_run_with_nothing_evaluated_measures_nothing(self):
+        report = make_report('E6-FE-01', mode='live_local_privacy')
+        report['schema_version'] = '9.9'  # unusable
+        self.write('live', {'E6-FE-01': report})
+        self.assertEqual(self.cli(), 0)
+        data = json.loads((self.dir / 'out' / 'evaluation.json').read_text(encoding='utf-8'))
+        self.assertFalse(data['quality_measured'])
+        self.assertIn('ни один отчёт не оценён', data['note'])
+        self.assertEqual(metric(data, 'cases_evaluated')['numerator'], 0)
 
     def test_bad_manifests_are_refused(self):
         self.write('synthetic_replay', {'E6-FE-01': make_report('E6-FE-01')})
