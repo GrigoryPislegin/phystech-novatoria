@@ -1,5 +1,6 @@
 """Adapter for Gleb's actual core. No regex fallback and no external relay."""
 import os
+import logging
 import re
 import uuid
 from contextlib import asynccontextmanager
@@ -7,6 +8,48 @@ from contextlib import asynccontextmanager
 # Matches core's reference grammar at reviewed revision 156c229.
 # This rejects untrusted references; it is NOT a replacement PII detector.
 REF_TOKEN = re.compile(r'[A-Za-zА-Яа-яЁё_]+#\d+')
+
+
+def protect_dependency_logs():
+    """Redact dependency diagnostics before handlers/formatters see their contents.
+
+    Process-wide for this CLI/service: even late-created child loggers and exception
+    tracebacks must not expose payloads, response bodies or database credentials.
+    Application progress uses explicit safe events instead of dependency messages.
+    """
+    previous = logging.getLogRecordFactory()
+    if getattr(previous, '_prototype_private', False):
+        return
+    namespaces = ('openai', 'httpx', 'httpcore', 'certum_core', 'sqlalchemy', 'asyncpg', 'psycopg')
+
+    def factory(name, level, pathname, lineno, msg, args, exc_info, func=None, sinfo=None, **kwargs):
+        if any(name == prefix or name.startswith(prefix + '.') for prefix in namespaces):
+            msg, args, exc_info, sinfo = '[dependency diagnostic suppressed]', (), None, None
+        return previous(name, level, pathname, lineno, msg, args, exc_info, func, sinfo, **kwargs)
+
+    factory._prototype_private = True
+    logging.setLogRecordFactory(factory)
+
+
+async def check_data(privacy, value):
+    """Check decoded JSON strings, including keys; escaping is transport syntax.
+
+    Separate fields by actual newlines, avoiding artificial concatenated reference
+    tokens while retaining the source context for the core's detectors.
+    """
+    def strings(item):
+        if isinstance(item, str):
+            yield item
+        elif isinstance(item, dict):
+            for key, child in item.items():
+                yield from strings(key)
+                yield from strings(child)
+        elif isinstance(item, (list, tuple)):
+            for child in item:
+                yield from strings(child)
+        elif item is not None:
+            yield str(item)
+    await privacy.check('\n\n'.join(strings(value)))
 
 
 class CertumPrivacy:
@@ -33,6 +76,7 @@ class CertumPrivacy:
 
 @asynccontextmanager
 async def certum_privacy():
+    protect_dependency_logs()
     required = ('CERTUM_DATABASE_URL', 'CERTUM_MASTER_KEY', 'CERTUM_TENANT_ID')
     if not all(os.environ.get(k) for k in required):
         raise RuntimeError('certum_configuration_missing')

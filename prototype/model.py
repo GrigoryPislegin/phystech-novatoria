@@ -1,6 +1,7 @@
 import json
 import os
 from decimal import Decimal
+from .privacy import check_data, protect_dependency_logs
 
 # USD / 1M tokens, official model pages checked 2026-11-12. Conservative reservation, not billing.
 RATES = {'gpt-6-luna': (Decimal('0.10'), Decimal('0.50')),
@@ -41,6 +42,7 @@ class Budget:
 
 class Model:
     def __init__(self, model, privacy, budget=1.0):
+        protect_dependency_logs()
         self.model, self.privacy = model, privacy
         self.budget = Budget(model, budget)
         self.usage = []
@@ -53,9 +55,9 @@ class Model:
         await self.client.close()
 
     async def ask(self, schema, task, payload):
+        protect_dependency_logs()
+        await check_data(self.privacy, payload)
         text = json.dumps({'task':task, 'data':payload}, ensure_ascii=False)
-        # The complete dynamic payload is checked again, including prior model outputs.
-        await self.privacy.check(text)
         schema_text = json.dumps(schema.model_json_schema())
         upper_input = len((SYSTEM + text + schema_text).encode('utf-8')) + 4096
         self.budget.reserve(upper_input, 8000)
@@ -68,5 +70,5 @@ class Model:
                                'output_tokens':response.usage.output_tokens})
         if response.status != 'completed' or response.output_parsed is None:
             raise ValueError('model_refusal_or_incomplete')
-        await self.privacy.check(response.output_parsed.model_dump_json())
+        await check_data(self.privacy, response.output_parsed.model_dump(mode='json'))
         return response.output_parsed
