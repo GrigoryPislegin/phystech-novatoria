@@ -6,8 +6,7 @@
   const statuses = ['full', 'partial', 'unknown', 'fail'];
   const modes = {
     synthetic_replay_NOT_model_output: ['Синтетический replay', 'Заранее подготовленные ответы'],
-    sdk_mock: ['Mock SDK', 'Локальный тест без запросов к модели'],
-    mock_sdk: ['Mock SDK', 'Локальный тест без запросов к модели'],
+    synthetic_sdk_mock_NOT_model_output: ['Mock SDK', 'Локальный тест без запросов к модели'],
     live_synthetic: ['Live · Синтетические данные', 'Ответы модели'],
     live_local_privacy: ['Live · Защищённый анализ', 'Ответы модели'],
     live_certum: ['Live · Защищённый анализ', 'Ответы модели']
@@ -360,6 +359,30 @@
     return /^job-\d{3}$/.test(id) ? id : '№' + (index + 1);
   }
 
+  function readReviewItems(queue, jobs) {
+    if (queue?.schema_version !== 'review-queue-0.1' || !Array.isArray(queue.items)) return [];
+    return queue.items.slice(0, 2000).filter(item => isRecord(item) && isText(item.id) &&
+      (item.job_id === null || jobs.has(item.job_id)) && isText(item.explanation)).map(item => ({
+        id: item.id, job_id: item.job_id, action: isText(item.action) ? item.action : null, explanation: item.explanation,
+        refs: Array.isArray(item.refs) ? item.refs.filter(ref => isRecord(ref) && isText(ref.quote) &&
+          ['cv', 'vacancy'].includes(ref.source) && isOptionalText(ref.sentence) && isOptionalText(ref.heading)) : [],
+        contexts: Array.isArray(item.contexts) ? item.contexts.filter(isText) : []
+      }));
+  }
+
+  function readHandoff(input, jobs) {
+    if (!Array.isArray(input)) return [];
+    return input.slice(0, 20).filter(item => isRecord(item) && jobs.has(item.job_id)).map(item => ({
+      job_id: item.job_id, state: isText(item.state) ? item.state : null, requirements_confirmed: item.requirements_confirmed === true,
+      blockers: Array.isArray(item.blockers) ? item.blockers.filter(isText) : [],
+      acknowledged: Array.isArray(item.acknowledged) ? item.acknowledged.filter(isText) : [],
+      accepted_exceptions: Array.isArray(item.accepted_exceptions) ? item.accepted_exceptions.filter(isText) : [],
+      allowed_actions: isRecord(item.allowed_actions) ? item.allowed_actions : null,
+      can_confirm_requirements: item.can_confirm_requirements === true,
+      can_mark_for_handoff: item.can_mark_for_handoff === true
+    }));
+  }
+
   function parseReport(source) {
     let report;
     try {
@@ -415,11 +438,13 @@
       jobs, unprocessed, processed: jobs.length, total,
       complete: report.ranking.complete, recommendation: report.ranking.recommendation,
       requirementsConfirmed: report.ranking.complete && jobs.every(job => job.requirementsReview === 'confirmed'),
+      runId: typeof report.run_id === 'string' && /^[0-9a-f]{32}$/.test(report.run_id) ? report.run_id : null,
+      revision: Number.isSafeInteger(report.revision) && report.revision > 0 ? report.revision : null,
       finalAllowed: false,
       schemaVersion: report.schema_version,
       mode: report.mode, model: versionLabel(report.model), scenario: report.demo_scenario || null,
       resumeDigest, modelDigest: digest(report.model_sha256),
-      profile,
+      profile, reviewItems: readReviewItems(report.review_queue, rankedJobs), handoff: readHandoff(report.handoff, rankedJobs),
       privacyWarning: report.privacy?.professional_information_may_be_hidden === true
     };
   }

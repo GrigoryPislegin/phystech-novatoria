@@ -31,6 +31,7 @@
   let activeJob = null;
   let filter = 'all';
   let loadSequence = 0;
+  let runContext = null;
 
   function setText(id, value) {
     byId(id).textContent = value;
@@ -159,6 +160,7 @@
       : '';
     renderConditions(job.conditions);
     renderRows();
+    renderReview(job);
   }
 
   function quoteCard(title, quotes, emptyText) {
@@ -171,6 +173,82 @@
 
   function sourceText(source) {
     return source.heading ? source.heading + '\n' + source.sentence : source.sentence;
+  }
+
+  const handoffStates = {
+    draft: 'Черновик', reviewed_for_handoff: 'Проверено для передачи', blocked: 'Передача заблокирована',
+    stale: 'Проверка устарела', invalid: 'Проверка недействительна'
+  };
+  const queueActions = {
+    complete_run: 'Завершите обработку', fix_source: 'Сверьте исходный документ',
+    read_context: 'Проверьте контекст', check_list: 'Проверьте список требований',
+    ask_candidate: 'Уточните у кандидата', decide_condition: 'Согласуйте условия',
+    compare_with_original: 'Сверьте с оригиналом'
+  };
+
+  function reviewButton(label, action, itemId, jobId) {
+    const button = element('button', 'button button-secondary compact', label);
+    button.type = 'button';
+    button.addEventListener('click', () => runContext?.decide(jobId, action, itemId));
+    return button;
+  }
+
+  function renderReview(job) {
+    const jobItems = report.reviewItems.filter(item => item.job_id == null || item.job_id === job.id);
+    const handoff = report.handoff.find(item => item.job_id === job.id);
+    const panel = byId('review-panel');
+    panel.hidden = !jobItems.length && !handoff;
+    const list = byId('review-list');
+    const controls = byId('review-controls');
+    list.replaceChildren();
+    controls.replaceChildren();
+    setText('review-message', '');
+    if (panel.hidden) return;
+
+    const base = Object.hasOwn(handoffStates, handoff?.state) ? handoffStates[handoff.state] : 'Черновик';
+    const state = handoff?.requirements_confirmed === true ? base + ' · Состав подтверждён' : base;
+    setText('review-state', runContext?.decide ? state : state + ' · Просмотр без изменений');
+    if (runContext?.decide && handoff?.can_confirm_requirements === true) {
+      controls.append(reviewButton('Подтвердить состав', 'confirm_requirements', null, job.id));
+    }
+    if (runContext?.decide && handoff?.can_mark_for_handoff === true) {
+      controls.append(reviewButton('Отметить для передачи', 'mark_for_handoff', null, job.id));
+    }
+
+    for (const item of jobItems) {
+      const details = element('details', 'source-disclosure');
+      const summary = element('summary', 'source-heading');
+      const blocked = handoff?.blockers?.includes(item.id);
+      const closed = handoff?.acknowledged?.includes(item.id);
+      const accepted = handoff?.accepted_exceptions?.includes(item.id);
+      const instruction = Object.hasOwn(queueActions, item.action) ? queueActions[item.action] : 'Проверьте замечание';
+      summary.append(element('span', null, instruction));
+      if (blocked) summary.append(tag('Блокирует передачу', 'danger'));
+      if (closed) summary.append(tag('Ознакомились', 'neutral'));
+      if (accepted) summary.append(tag('Исключение принято', 'warning'));
+      details.append(summary, element('p', 'source-note', item.explanation));
+      if (item.refs.length) {
+        const quotes = element('div', 'evidence-grid source-body');
+        for (const source of ['vacancy', 'cv']) {
+          const refs = item.refs.filter(ref => ref.source === source);
+          if (!refs.length) continue;
+          quotes.append(quoteCard(source === 'cv' ? 'Фрагменты резюме' : 'Фрагменты вакансии',
+            refs.map(ref => ref.heading ? ref.heading + '\n' + (ref.sentence || ref.quote) : ref.sentence || ref.quote)));
+        }
+        details.append(quotes);
+      }
+      if (item.contexts.length) details.append(quoteCard('Возможные контексты', item.contexts));
+      if (runContext?.decide && handoff?.allowed_actions && Object.hasOwn(handoff.allowed_actions, item.id)) {
+        const action = handoff.allowed_actions[item.id];
+        if (['read_context', 'accept_condition'].includes(action)) {
+          const label = action === 'read_context' ? 'Отметить ознакомление' : 'Принять исключение';
+          const area = element('div', 'review-controls source-body');
+          area.append(reviewButton(label, action, item.id, job.id));
+          details.append(area);
+        }
+      }
+      list.append(details);
+    }
   }
 
   function renderConditions(conditions) {
@@ -410,18 +488,42 @@
     openReport(next, 'Открыт ' + file.name);
   }
 
-  function openReport(next, label) {
+  function openReport(next, label, context = null, selectedJob = null, view = 'ranking') {
+    runContext = context;
     report = next;
     renderSummary();
     renderRanking();
-    selectJob(report.jobs[0] || null);
+    selectJob(report.jobs.find(job => job.id === selectedJob) || report.jobs[0] || null);
     renderOverview();
     renderProfile();
-    selectView('ranking');
+    selectView(view);
     byId('welcome').hidden = true;
     byId('report-workspace').hidden = false;
     setFileStatus(label);
   }
+
+  window.RecruiterViewer = {
+    beginLoad: () => ++loadSequence,
+    isLatest: sequence => sequence === loadSequence,
+    getContext: () => runContext,
+    openServerReport(next, context) {
+      const staysOpen = runContext?.id === context.id;
+      const view = staysOpen ? views.find(button => button.getAttribute('aria-pressed') === 'true').dataset.view : 'ranking';
+      openReport(next, 'Открыт отчёт локального запуска', context, staysOpen ? activeJob?.id : null, view);
+    },
+    closeServerReport(id) {
+      if (runContext?.id !== id) return;
+      ++loadSequence;
+      runContext = null;
+      report = null;
+      activeJob = null;
+      byId('report-workspace').hidden = true;
+      byId('welcome').hidden = false;
+      for (const container of ['job-list', 'requirement-rows', 'profile-list', 'overview-list',
+        'condition-list', 'review-list', 'review-controls', 'skipped-jobs']) byId(container).replaceChildren();
+      setFileStatus('Локальный запуск удалён.');
+    }
+  };
 
   byId('open-demo').addEventListener('click', () => {
     ++loadSequence;

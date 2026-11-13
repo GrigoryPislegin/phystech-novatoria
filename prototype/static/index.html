@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; connect-src 'self'; base-uri 'none'; form-action 'none'">
   <title>Вакансии · AI-рекрутер</title>
   <link rel="stylesheet" href="report.css">
   <script src="report.js" defer></script>
   <script src="manager-report.js" defer></script>
   <script src="demo-report.js" defer></script>
   <script src="viewer.js" defer></script>
+  <script src="run-api.js" defer></script>
+  <script src="runs.js" defer></script>
 </head>
 <body>
   <header class="masthead">
@@ -29,6 +31,7 @@
         <p>Сравнение вакансий по одному резюме</p>
       </div>
       <div class="intro-actions">
+        <button class="button button-secondary" id="show-runs" type="button" aria-controls="run-center" aria-expanded="false" hidden>Запуски</button>
         <label class="button button-primary upload">
           <span class="icon-plus" aria-hidden="true">＋</span> Открыть отчёт
           <input id="report-file" type="file" accept=".json,application/json" aria-label="Открыть отчёт">
@@ -46,6 +49,41 @@
         <pre><code>python -m prototype demo --scenario disputed</code></pre>
       </details>
     </section>
+
+    <section id="run-center" class="view-panel run-center" aria-labelledby="runs-title" hidden>
+      <div class="requirements-heading">
+        <h2 id="runs-title">Локальные запуски</h2>
+        <button id="reload-runs" class="button button-secondary compact" type="button" hidden>Обновить</button>
+      </div>
+      <div id="start-run-form" class="run-form" hidden>
+        <label>Режим
+          <select id="run-type"></select>
+        </label>
+        <label>Сценарий
+          <select id="run-scenario"></select>
+        </label>
+        <button class="button button-primary" id="start-run" type="button">Запустить</button>
+      </div>
+      <p id="runs-message" class="support" role="status" aria-live="polite"></p>
+      <ul id="saved-runs" class="saved-runs"></ul>
+    </section>
+    <dialog id="confirm-run-removal" class="confirm-dialog" aria-labelledby="delete-run-title">
+      <h2 id="delete-run-title">Удалить запуск?</h2>
+      <p>Отчёт и результаты проверки этого запуска будут удалены из локального хранилища.</p>
+      <div class="dialog-actions">
+        <button type="button" id="dismiss-run-removal" class="button button-secondary" autofocus>Отмена</button>
+        <button type="button" id="remove-run" class="button button-danger">Удалить</button>
+      </div>
+    </dialog>
+
+    <dialog id="confirm-review" class="confirm-dialog" aria-labelledby="review-dialog-title" aria-describedby="review-dialog-copy">
+      <h2 id="review-dialog-title">Подтвердите действие</h2>
+      <p id="review-dialog-copy"></p>
+      <div class="dialog-actions">
+        <button type="button" id="dismiss-review" class="button button-secondary" autofocus>Отмена</button>
+        <button type="button" id="save-review" class="button button-primary">Подтвердить</button>
+      </div>
+    </dialog>
 
     <div id="report-workspace" hidden>
       <section class="run-summary" aria-label="Сведения об анализе">
@@ -132,6 +170,15 @@
               <tbody id="requirement-rows"></tbody>
             </table>
             <p id="empty-rows" class="empty-panel" hidden>По этому фильтру нет требований.</p>
+          </div>
+          <div id="review-panel" class="conditions-section" hidden>
+            <div class="requirements-heading">
+              <h3>Проверка рекрутером</h3>
+              <div id="review-controls" class="review-controls"></div>
+            </div>
+            <p id="review-state" class="support"></p>
+            <p id="review-message" class="support" role="status" aria-live="polite"></p>
+            <div id="review-list" class="source-list"></div>
           </div>
           <div class="conditions-section">
             <h3>Условия для HR</h3>
