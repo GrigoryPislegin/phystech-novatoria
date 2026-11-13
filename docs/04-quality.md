@@ -10,6 +10,8 @@
 
 Пакет ревью/ТЗ: repository check PASS — 858 файлов/685 Python; локальные ссылки изменённых Markdown PASS; git diff --check PASS. CSV содержит 17 технических подпунктов, сумма 100. Изменённые инструкции и график — план будущей реализации, не результат выполнения V3–V10/C1–C4/E5–E7.
 
+Интеграционная ветка опубликована, [draft PR #5](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/pull/5), пакет `25fcadc`. По поручению владельца создана [задача Вани #6](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/issues/6), назначена автору PR #4 `choiceaistartup-cloud`; включает полный кодовый пакет V3–V10 и ссылки на неизменяемый срез документов. Создание/назначение подтверждено GitHub. PR участников не сливались; их данные не заменяют фактическую приёмку общего runtime.
+
 ## Два примера псевдонимизации для эксперта — 13 ноября
 
 Реальный локальный privacy_core обработал два полностью вымышленных мини-резюме: разработчик Python и аналитик данных. Команда: `data/private/certum-sandbox/core/.venv/bin/python data/private/expert-examples/anonymization/generate.py`. Использованы отдельная тестовая БД 127.0.0.1:55439 и существующие модели; значения конфигурации не выводились. Внешних API-вызовов 0. HTML/Markdown и точные входы/выходы сохранены локально в `data/private/expert-examples/anonymization/` и не входят в Git.
