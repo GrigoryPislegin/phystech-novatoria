@@ -795,7 +795,8 @@
      "explanation": "Обработаны не все вакансии; окончательный общий рейтинг невозможен.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "b4f1792201769d2b",
@@ -829,7 +830,8 @@
      ],
      "detail_codes": [
       "ambiguous_location"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "ab4b0174aacfad44",
@@ -845,21 +847,8 @@
      "contexts": [],
      "detail_codes": [
       "model_invalid"
-     ]
-    },
-    {
-     "id": "fb9ccd24523a3293",
-     "job_id": null,
-     "requirement_id": null,
-     "condition_kind": null,
-     "reason_code": "privacy_may_hide",
-     "kind": "missing_info",
-     "priority": 2,
-     "action": "compare_with_original",
-     "explanation": "Защита данных могла заменить названия технологий; «не указано» может быть потерей данных.",
-     "refs": [],
-     "contexts": [],
-     "detail_codes": []
+     ],
+     "decisive": false
     },
     {
      "id": "8f645475392d2f41",
@@ -890,7 +879,8 @@
      "contexts": [],
      "detail_codes": [
       "evidence_not_linked"
-     ]
+     ],
+     "decisive": true
     },
     {
      "id": "c5313fab23a19b86",
@@ -914,7 +904,23 @@
      "contexts": [],
      "detail_codes": [
       "mandatory_spans_segments"
-     ]
+     ],
+     "decisive": true
+    },
+    {
+     "id": "fb9ccd24523a3293",
+     "job_id": null,
+     "requirement_id": null,
+     "condition_kind": null,
+     "reason_code": "privacy_may_hide",
+     "kind": "missing_info",
+     "priority": 2,
+     "action": "compare_with_original",
+     "explanation": "Защита данных могла заменить названия технологий; «не указано» может быть потерей данных.",
+     "refs": [],
+     "contexts": [],
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "5615c023603dd1f7",
@@ -945,7 +951,8 @@
      "contexts": [],
      "detail_codes": [
       "condition_conflict"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "55d1a04a5e8c7e45",
@@ -959,7 +966,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "ca0ee031ca9631a5",
@@ -975,7 +983,8 @@
      "contexts": [
       "Работа в офисе"
      ],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "19b34f4f680a53fb",
@@ -989,7 +998,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "0ac818eb0ab192f3",
@@ -1003,7 +1013,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "3d06bef7223e9d96",
@@ -1025,7 +1036,8 @@
       }
      ],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     }
    ],
    "by_reason": {
@@ -1711,14 +1723,6 @@
    "action": "complete_run"
   },
   {
-   "job_id": null,
-   "requirement_id": null,
-   "condition_kind": null,
-   "reason_code": "privacy_may_hide",
-   "priority": 2,
-   "action": "compare_with_original"
-  },
-  {
    "job_id": "job-b",
    "requirement_id": "r1",
    "condition_kind": null,
@@ -1733,6 +1737,14 @@
    "reason_code": "mandatory_unbound",
    "priority": 2,
    "action": "check_list"
+  },
+  {
+   "job_id": null,
+   "requirement_id": null,
+   "condition_kind": null,
+   "reason_code": "privacy_may_hide",
+   "priority": 2,
+   "action": "compare_with_original"
   },
   {
    "job_id": "job-a",

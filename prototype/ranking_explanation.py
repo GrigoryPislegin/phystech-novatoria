@@ -353,7 +353,7 @@ def explain_leader(report: dict) -> LeaderExplanation | None:
     text = f'{names}: {_STATE_TEXT[leader["state"]]}'
     if factors and leader['state'] != 'none_fit':
         text += ' Решающие основания: ' + '; '.join(
-            f'«{r.requirement_quote}» — {r.status}, {r.effect} п.' for r in factors) + '.'
+            f'«{r.requirement_quote}» — {r.status}, {r.effect} п' for r in factors) + '.'
     if limits:
         text += ' Ограничения: ' + '; '.join(
             f'«{r.requirement_quote}» — {"спорно" if r.disputed else r.status}' for r in limits) + '.'

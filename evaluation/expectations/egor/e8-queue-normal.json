@@ -719,7 +719,8 @@
      "contexts": [],
      "detail_codes": [
       "evidence_not_checked"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "92b27a2cd471f758",
@@ -733,7 +734,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "0faac10644568e6c",
@@ -747,7 +749,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "a11a9bbf709ca06b",
@@ -769,7 +772,8 @@
       }
      ],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "579a5a3f946a6ab7",
@@ -783,7 +787,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     }
    ],
    "by_reason": {

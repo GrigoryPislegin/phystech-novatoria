@@ -669,7 +669,8 @@
      ],
      "detail_codes": [
       "ambiguous_location"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "9cfb6290b313c4de",
@@ -700,7 +701,8 @@
      "contexts": [],
      "detail_codes": [
       "evidence_not_linked"
-     ]
+     ],
+     "decisive": true
     },
     {
      "id": "d9c027fd4303f4c9",
@@ -724,7 +726,8 @@
      "contexts": [],
      "detail_codes": [
       "mandatory_spans_segments"
-     ]
+     ],
+     "decisive": true
     },
     {
      "id": "e65e01c6d8c1ad01",
@@ -755,7 +758,8 @@
      "contexts": [],
      "detail_codes": [
       "condition_conflict"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "d9836c8c87a4f586",
@@ -772,7 +776,8 @@
      "detail_codes": [
       "needs_review",
       "ambiguous_location"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "c00ffa69ea1b203f",
@@ -786,7 +791,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "01365f003d4f8824",
@@ -803,7 +809,8 @@
       "Работа в офисе",
       "Зарплата: до 250 000 рублей в месяц"
      ],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "9b5512ed72a73cfc",
@@ -834,7 +841,8 @@
      "contexts": [],
      "detail_codes": [
       "salary_terms_unverified"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "b04f751c429f8382",
@@ -848,7 +856,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     }
    ],
    "by_reason": {

@@ -523,7 +523,8 @@
      "explanation": "Обработаны не все вакансии; окончательный общий рейтинг невозможен.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "9a9051251e54f074",
@@ -539,7 +540,8 @@
      "contexts": [],
      "detail_codes": [
       "model_invalid"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "f99ef8e63fc1b556",
@@ -570,7 +572,8 @@
      "contexts": [],
      "detail_codes": [
       "evidence_not_checked"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "92b27a2cd471f758",
@@ -584,7 +587,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "579a5a3f946a6ab7",
@@ -598,7 +602,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     }
    ],
    "by_reason": {
