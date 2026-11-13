@@ -2,7 +2,8 @@
 import asyncio
 from pathlib import Path
 import unittest
-from prototype.privacy_core import Detector, LocalPrivacy
+from unittest.mock import patch
+from prototype.privacy_core import Detector, LocalPrivacy, REFERENCE
 from prototype.privacy_core.models import load
 
 
@@ -35,9 +36,13 @@ class RealPrivacyTests(unittest.TestCase):
         ]
         for text, values in examples:
             with self.subTest(case=examples.index((text, values))):
-                privacy = LocalPrivacy(self.detector)
+                # Deliberately include short address/date digits in the opaque
+                # nonce: their occurrence inside an issued reference is not PII.
+                with patch('prototype.privacy_core.secrets.token_hex', return_value='1231451990abcdef'):
+                    privacy = LocalPrivacy(self.detector)
                 safe = asyncio.run(privacy.redact(text))
-                for value in values: self.assertNotIn(value, safe)
+                visible = REFERENCE.sub(lambda m: '' if m.group() in privacy.issued_refs else m.group(), safe)
+                for value in values: self.assertNotIn(value, visible)
                 privacy.close()
 
     def test_professional_skills_and_negation_survive(self):
