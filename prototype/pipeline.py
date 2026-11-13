@@ -297,7 +297,7 @@ def _write_report_files(report, out):
                                   (('резюме', item.get('cv_span')), ('вакансия', item.get('vacancy_span'))) if span)
                 lines.append(f"- Условие {literal(item['kind'])}: {literal(item['state'])}; {sides}. Решает HR, это не отказ.")
         lines.append('')
-        disputed = set(job['score'].get('disputed_ids', []))
+        disputed = set(job['score'].get('disputed_ids', [])) | set(job['score'].get('conflict_ids', []))
         for status, label in [('full', 'Сильные стороны'), ('partial', 'Частичное соответствие'),
                               ('fail', 'Выявленные несоответствия'), ('unknown', 'Не хватает сведений')]:
             names = [literal(display_label(reqs[row['requirement_id']])) for row in job['evaluation']['rows']

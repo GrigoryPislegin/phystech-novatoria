@@ -89,10 +89,12 @@
   }
 
   function evidenceLabel(row) {
+    if (row.scoreConflict) return 'Оценки одного требования противоречат друг другу';
     return evidenceLabels[row.evidence?.state] || 'Доказательство требует проверки';
   }
 
   function evidenceNeedsReview(row) {
+    if (row.scoreConflict) return true;
     if (row.status === 'unknown') {
       return ['needs_review', 'invalid'].includes(row.evidence?.state);
     }
@@ -105,6 +107,7 @@
     const grounds = [];
     for (const item of rows) {
       const { row } = item;
+      if (row.scoreConflict) { groups.review.push(item); continue; }
       const evidenceChecked = row.evidence?.state === 'structure_ok';
       if (row.status === 'full' && evidenceChecked) grounds.push(item);
 
@@ -423,7 +426,7 @@
       const v3 = policy === 'draft-2026-11-14-v3' &&
         jobs.every(job => job.score.policyVersion === policy);
       const close = v3 && item.close === true && item.reason === 'lower_bound' && outcome !== 'tie' &&
-        a.score.lower > 0 && b.score.lower > 0 && a.score.resolution !== null && b.score.resolution !== null &&
+        [a, b].every(job => job.score.lower > 0 || job.excluded.length || job.disputed.length || job.conflicts.length) && a.score.resolution !== null && b.score.resolution !== null &&
         Number.isFinite(item.margin) && item.margin >= 0 &&
         item.margin <= Math.max(a.score.resolution, b.score.resolution) + 0.0001 &&
         Math.abs(item.margin - Math.abs(a.score.lower - b.score.lower)) < 0.00011;
@@ -470,8 +473,9 @@
     const unassessed = jobList(input.unassessed);
     if ([factors, limits, canChange, closeTo, challengers, unassessed].some(values =>
       values === null || values.some(value => value === null))) return null;
-    if (unassessed.some(job => job.rank === 1 || job.score.lower !== 0) ||
-        [...challengers, ...closeTo].some(job => job.rank === 1 || job.score.lower <= 0) ||
+    if (unassessed.some(job => job.rank === 1 || job.score.lower !== 0 || job.excluded.length || job.disputed.length || job.conflicts.length) ||
+        [...challengers, ...closeTo].some(job => job.rank === 1 ||
+          (job.score.lower <= 0 && !job.excluded.length && !job.disputed.length && !job.conflicts.length)) ||
         factors.some(ref => ['unknown', 'fail'].includes(ref.row.status) || (ref.row.evidence?.state === 'needs_review' || ref.row.scoreConflict)) ||
         (input.state === 'stable' && (canChange.length || closeTo.length || challengers.length))) return null;
     return {state:input.state, jobs:top, factors, limits, canChange, closeTo, challengers, unassessed};

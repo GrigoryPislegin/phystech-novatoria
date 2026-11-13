@@ -32,6 +32,7 @@ def build_presentation(report):
         evidence = {r['requirement_id']:r for r in job.get('evidence_check', {}).get('rows', [])}
         mandatory_checks = {r['requirement_id']:r for r in job.get('evidence_check', {}).get('mandatory', [])}
         excluded = job.get('score_review', {}).get('excluded_mandatory_ids', [])
+        conflicts = set(job['score'].get('conflict_ids', []))
         rows = []
         for row in job['evaluation']['rows']:
             req = requirements[row['requirement_id']]
@@ -43,17 +44,19 @@ def build_presentation(report):
                          'status_verification':'model_proposed',
                          'evidence_check':evidence.get(req['id']),
                          'resume_quotes':[facts[f]['quote'] for f in row['fact_ids']],
-                         'explanation':EXPLANATIONS[row['status']],
-                         'question':gap_question(row['status'], req['quote'])})
+                         'score_conflict':req['id'] in conflicts,
+                         'explanation':('Повторы одного требования получили противоречивые оценки; сверка рекрутером нужна до вывода.'
+                                        if req['id'] in conflicts else EXPLANATIONS[row['status']]),
+                         'question':None if req['id'] in conflicts else gap_question(row['status'], req['quote'])})
         jobs.append({'job_id':job['job_id'], 'rank':job['rank'], 'score':job['score'], 'rows':rows,
                      'score_review':job.get('score_review'),
                      'requirements_draft':job.get('requirements_draft'),
                      'requirements_review':job.get('requirements_review'),
                      'manager_brief':{'state':'draft_requires_review', 'final_allowed':False,
                          'processing_complete':report['ranking']['complete'],
-                         'grounds':[r for r in rows if r['status']=='full'
+                         'grounds':[r for r in rows if r['status']=='full' and not r['score_conflict']
                                     and (r.get('evidence_check') or {}).get('state')=='structure_ok'][:3],
-                         'risks':[r for r in rows if r['status']!='full'
+                         'risks':[r for r in rows if r['status']!='full' or r['score_conflict']
                                   or (r.get('evidence_check') or {}).get('state')!='structure_ok'],
                          'questions':[r['question'] for r in sorted(rows, key=lambda r: not bool(r['mandatory_quote'])) if r['question']][:5]}})
     return {'version':'0.1', 'jobs':jobs, 'final_allowed':False}

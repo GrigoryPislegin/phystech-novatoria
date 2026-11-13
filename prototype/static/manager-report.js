@@ -14,7 +14,7 @@
   const escape = value => String(value).replace(/[&<>"']/g, character => htmlEntities[character]);
 
   function reference({ row, number }, includeStatus = false) {
-    const status = includeStatus ? ' — ' + assessments[row.status][0] : '';
+    const status = includeStatus ? ' — ' + (row.scoreConflict ? 'Требует сверки' : assessments[row.status][0]) : '';
     return '<a href="#evidence-' + number + '">[' + number + '] ' + escape(shortText(row.label)) + '</a>' + status;
   }
 
@@ -265,7 +265,7 @@
     const profile = profileSections(report.profile);
     const risks = fit.risks.slice(0, 3);
     if (fit.priority && !risks.includes(fit.priority)) risks.splice(2, 1, fit.priority);
-    const questions = fit.risks.filter(({ row }) => row.status !== 'full').slice(0, 5);
+    const questions = fit.risks.filter(({ row }) => row.status !== 'full' && !row.scoreConflict).slice(0, 5);
     const showQuestions = questions.length
       ? '<section><h2>Вопросы кандидату</h2><ol>' + questions.map(item =>
         '<li class="manager-question">' + reference(item) +
