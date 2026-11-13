@@ -17,7 +17,7 @@ Different vacancies usually have different requirement lists or weights; L is a 
 vacancy's own weight, so the comparison carries the caveat 'different_requirement_lists'. For a
 report scored without evidence (v1), rows E3 sent to review are marked disputed and kept out of
 `deciding`, with the caveat 'evidence_not_applied'. A malformed report raises ValueError.
-Not wired into the pipeline yet (INTEGRATED = False).
+Wired into the pipeline; see docs/28-local-app-runbook.md.
 """
 from typing import Literal
 
@@ -27,7 +27,7 @@ from .contracts import Evaluation, Requirements, StrictModel
 from .evidence import PairCheck
 from .scoring import POLICY_VERSION, rank, score
 
-INTEGRATED = False
+INTEGRATED = True
 MAX_DECIDING = 3
 
 Status = Literal['full', 'partial', 'fail', 'unknown']

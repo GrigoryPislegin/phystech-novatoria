@@ -126,8 +126,8 @@ class CompareTests(unittest.TestCase):
         compare(report, 'job-001', 'job-003')
         self.assertEqual(report, before)
 
-    def test_not_integrated(self):
-        self.assertFalse(INTEGRATED)
+    def test_integrated(self):
+        self.assertTrue(INTEGRATED)
 
 
 def manual_report(*jobs):

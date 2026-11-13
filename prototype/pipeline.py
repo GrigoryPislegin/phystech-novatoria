@@ -233,7 +233,14 @@ def _write_report_files(report, out):
         'review_none_fit': 'Проверьте выявленные обязательные несоответствия; автоматический отказ недопустим.',
         'incomplete': 'Завершите обработку пропущенных вакансий; окончательный выбор по этому отчёту невозможен.',
     }
-    if recommendation == 'clarify' and not any(
+    if recommendation == 'clarify' and any(
+        j['score'].get('disputed_ids') or j['score'].get('excluded_mandatory_ids') for j in ranked
+    ):
+        actions['clarify'] = ('Подтверждённого соответствия недостаточно для окончательного порядка: '
+                              'есть спорные доказательства или неприменённые маркеры '
+                              'обязательности. Прочитайте их контекст и сравните вакансии до вывода; '
+                              'автоматический отказ недопустим.')
+    elif recommendation == 'clarify' and not any(
         row['status'] in {'unknown', 'partial'} for job in ranked if job['rank'] == 1
         for row in job['evaluation']['rows']
     ):

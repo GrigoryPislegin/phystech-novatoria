@@ -19,7 +19,7 @@ never changes the model's evaluation: decisions are a separate layer on top of i
   the whole store) or a record that is not a recruiter action recorded by the service makes the
   assessment invalid; a malformed record cannot be attributed, so it fails every assessment closed. Two identical
   decisions are one decision. There is no bulk approval and no automatic rejection.
-Not wired into the pipeline or the service yet (INTEGRATED = False).
+Wired into the pipeline and versioned local service; see docs/28-local-app-runbook.md.
 """
 import hashlib
 import json
@@ -31,7 +31,7 @@ from .contracts import Requirements, StrictModel
 from .requirements_review import requirements_sha256
 from .review_queue import ReviewItem, build_review_queue
 
-INTEGRATED = False
+INTEGRATED = True
 
 Action = Literal['confirm_requirements', 'read_context', 'accept_condition', 'mark_for_handoff']
 State = Literal['draft', 'reviewed_for_handoff', 'blocked', 'stale', 'invalid']

@@ -300,8 +300,8 @@ class DecisionValidityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unknown_job'):
             assess_handoff(self.report, [], 'job-404')
 
-    def test_not_integrated(self):
-        self.assertFalse(INTEGRATED)
+    def test_integrated(self):
+        self.assertTrue(INTEGRATED)
 
 
 

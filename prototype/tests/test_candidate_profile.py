@@ -242,8 +242,8 @@ class FactorTests(unittest.TestCase):
 
 
 class FlagTests(unittest.TestCase):
-    def test_not_integrated(self):
-        self.assertFalse(INTEGRATED)
+    def test_integrated(self):
+        self.assertTrue(INTEGRATED)
 
 
 if __name__ == '__main__':

@@ -1,9 +1,9 @@
 """E9: the integrated pipeline against the E5/E7/E8 contract. Synthetic fixtures only.
 
 Fixtures are produced by the real run_pipeline with synthetic models (make_e9_contract.py).
-Expectations here are written by hand. Tests marked expectedFailure reproduce findings in files
-the integrator owns (pipeline.py); they start passing when the proposed fix lands, and the marker
-must then be removed (docs/reviews/egor-e9-integration-contract.md).
+Expectations here are written by hand. Regression tests reproduce resolved findings in files
+the integrator owns (pipeline.py); all accepted findings now run as normal regressions
+(docs/reviews/egor-e9-integration-contract.md).
 """
 import asyncio
 import copy
@@ -168,7 +168,6 @@ class E9cFindingTests(unittest.TestCase):
         self.assertEqual(places, {'job-b': (1, []), 'job-a': (2, ['r1'])})
         self.assertEqual(report['ranking']['recommendation'], 'clarify')  # was review_top
 
-    @unittest.expectedFailure
     def test_p2_clarify_action_names_the_real_cause(self):
         # Top job-a: both rows full, one disputed. report.md tells the recruiter to check «выявленные
         # несоответствия», but there is no fail; the cause is the disputed evidence (pipeline.py:234-239).

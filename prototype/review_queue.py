@@ -19,7 +19,7 @@ Item ids are stable: they depend on the processed resume and vacancy hashes, job
 (or condition kind) and reason, not on the order of jobs or files, and the same signal never yields
 two items. A decision about an item must also be bound to the report version (see the E8b contract):
 a rerun may change the model's verdict while keeping the id.
-Not wired into the pipeline yet (INTEGRATED = False).
+Wired into the pipeline; see docs/28-local-app-runbook.md.
 """
 import hashlib
 from collections import Counter
@@ -28,7 +28,7 @@ from typing import Literal
 from .contracts import StrictModel
 from .evidence import MandatoryCheck, RowCheck
 
-INTEGRATED = False
+INTEGRATED = True
 SCHEMA_VERSION = 'review-queue-0.1'
 
 ReasonCode = Literal[

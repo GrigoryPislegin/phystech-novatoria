@@ -14,7 +14,7 @@ A conflict is highlighted for the recruiter. It never rejects the candidate or c
 Salary comparisons always go to review: currency, period and gross/net are not compared here.
 
 Passing checks mean the structure holds; the meaning stays a model claim.
-Pure and local. Not wired into the pipeline, see docs/reviews/egor-scoring-policy.md.
+Pure and local. Wired into pipeline and local service; see docs/28-local-app-runbook.md.
 """
 import re
 from typing import Literal
@@ -24,7 +24,7 @@ from pydantic import Field
 from .contracts import Facts, StrictModel
 from .evidence import Located, Source, Span, locate
 
-INTEGRATED = False
+INTEGRATED = True
 SCHEMA_VERSION = 'candidate-profile-0.1'
 
 Section = Literal['summary', 'stack', 'last_position', 'achievements']
