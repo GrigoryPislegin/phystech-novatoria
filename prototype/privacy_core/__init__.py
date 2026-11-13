@@ -10,7 +10,7 @@ import re
 import secrets
 import unicodedata
 
-POLICY_VERSION = 'local-privacy-0.1'
+POLICY_VERSION = 'local-privacy-0.2'
 REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
 RESERVED = '[[PRIV:'
 
@@ -44,6 +44,12 @@ _PATTERNS = [
 # Russian news NER does not reliably recognize English name headers. This
 # conservative structural rule may also hide title-case headings; no allowlist.
 _NAME_LINE = re.compile(r'(?m)^\s*([A-Z][a-z]+(?:[-\x27][A-Z]?[a-z]+)?(?:[ \t]+[A-Z][a-z]+){1,3})[ \t]*$')
+# Explicit English self-identification, bounded to the name before punctuation.
+# Do not consume the following professional sentence or treat arbitrary prose as a name.
+_EN_NAME_TOKEN = r"(?:[A-Z][a-z]+(?:[-'][A-Z]?[a-z]+)*|[A-Z](?:[-'][A-Z][a-z]+)+|[A-Z]\.)"
+_INTRODUCED_NAME = re.compile(
+    rf"(?i:\bmy name is)[ \t]+({_EN_NAME_TOKEN}(?:[ \t]+{_EN_NAME_TOKEN}){{1,5}})"
+    r"(?=[ \t]*(?:[.,;!?\r\n]|(?i:and\b)|$))")
 
 
 class Detector:
@@ -57,6 +63,7 @@ class Detector:
         found.extend(Finding(m.start(1), m.end(1), 'IDENTITY') for m in _LABELS.finditer(text))
         found.extend(Finding(m.start(1), m.end(1), 'CONTACT') for m in _CONTACT_LABELS.finditer(text))
         found.extend(Finding(m.start(1), m.end(1), 'PERSON') for m in _NAME_LINE.finditer(text))
+        found.extend(Finding(m.start(1), m.end(1), 'PERSON') for m in _INTRODUCED_NAME.finditer(text))
         if not text.strip():
             return found
         # NER sees natural text; replacements are blanked by the caller.

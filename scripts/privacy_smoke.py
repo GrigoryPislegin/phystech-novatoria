@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 async def check():
     from prototype.privacy import local_privacy
+    from prototype.privacy_core import POLICY_VERSION
     async with local_privacy() as privacy:
         source = 'Иван Иванов. Телефон: +7 (999) 123-45-67. Email: ivan.synthetic@example.com. Разрабатывал на Python 3 года.'
         safe = await privacy.redact(source)
@@ -27,10 +28,11 @@ async def check():
             protected = await privacy.redact(text)
             if ('SQL' in protected) or ('Excel' in protected):
                 raise RuntimeError('ambiguous_organization_not_protected')
-    return {'status':'pass', 'backend':'local-privacy-0.1', 'synthetic_only':True, 'openai_network_calls':0}
+    return {'status':'pass', 'backend':POLICY_VERSION, 'synthetic_only':True, 'openai_network_calls':0}
 
 
 async def check_model_boundary():
+    from prototype.privacy_core import POLICY_VERSION
     import httpx
     from openai import AsyncOpenAI
     from prototype.application import analyze_protected
@@ -71,7 +73,7 @@ async def check_model_boundary():
         if result.exit_code != 0 or len(calls) != 7:
             return {'status':'failed', 'reason':'protected_mock_incomplete', 'openai_network_calls':0,
                     'mock_requests':len(calls), 'errors':[{'stage':e['stage'], 'code':e['code']} for e in result.report['errors']]}
-    return {'status':'pass', 'backend':'local-privacy-0.1', 'real_sdk':True, 'model_transport':'local_mock',
+    return {'status':'pass', 'backend':POLICY_VERSION, 'real_sdk':True, 'model_transport':'local_mock',
             'synthetic_only':True, 'openai_network_calls':0, 'mock_requests':len(calls),
             'completed_jobs':len(result.report['ranking']['jobs']), 'protected_live_verified':False}
 
