@@ -5,9 +5,10 @@ python -m evaluation.runner --reports DIR --expectations evaluation/expectations
 
 DIR holds `manifest.json` and one report per case:
     {"mode": "synthetic_replay" | "sdk_mock" | "live", "reports": {"E6-FE-01": "E6-FE-01.json", ...}}
-Every report must be a pipeline report (schema 0.1) whose own `mode`, if present, agrees with the
-manifest; mixed modes are refused. Actual values are read only from the reports, never from the
-expectations. Only `live` reports can say anything about model quality; replay and mock runs check
+Every report must be a pipeline report (schema 0.1) that declares its own `mode` (the CLI values
+are mapped: live_* -> live, synthetic_replay_NOT_model_output -> synthetic_replay); a missing or
+unknown mode, or one that disagrees with the manifest, is refused, so modes are never mixed.
+Actual values are read only from the reports, never from the expectations. Only `live` reports can say anything about model quality; replay and mock runs check
 the pipeline and this runner.
 
 Each metric has a numerator, a denominator and the cases behind every failure, skip and
@@ -26,6 +27,9 @@ from pathlib import Path
 from prototype.review_queue import build_review_queue
 
 MODES = {'synthetic_replay', 'sdk_mock', 'live'}
+# The mode each report declares (prototype CLI / application) -> the manifest mode it belongs to.
+REPORT_MODES = {'synthetic_replay_NOT_model_output': 'synthetic_replay', 'synthetic_replay': 'synthetic_replay',
+                'sdk_mock': 'sdk_mock', 'live_synthetic': 'live', 'live_local_privacy': 'live', 'live': 'live'}
 REPORT_SCHEMA = '0.1'
 STATUSES = ('full', 'partial', 'fail', 'unknown')
 ROW_OUTCOMES = ('pass', 'wrong_status', 'wrong_evidence', 'wrong_mandatory', 'missed_requirement', 'error',
@@ -43,7 +47,7 @@ def load_cases(path: Path, split: str) -> list[dict]:
     cases = data['cases']
     if split == 'holdout':
         holdout = [c for c in cases if c['split'] == 'holdout']
-        recorded, *ids = (path.parent / 'holdout.sha256').read_text().split()
+        recorded, *ids = (path.parent / 'holdout.sha256').read_text().split() or ['']
         canon = json.dumps(holdout, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
         if hashlib.sha256(canon.encode()).hexdigest() != recorded or [c['case_id'] for c in holdout] != ids:
             raise RunnerError('holdout_digest_mismatch')
@@ -53,23 +57,40 @@ def load_cases(path: Path, split: str) -> list[dict]:
     return [c for c in cases if c['split'] == 'dev']
 
 
+def _strict_json(text: str):
+    def pairs(items):
+        keys = [k for k, _ in items]
+        if len(keys) != len(set(keys)):
+            raise RunnerError('duplicate_keys')
+        return dict(items)
+    return json.loads(text, object_pairs_hook=pairs)
+
+
 def load_reports(directory: Path) -> tuple[str, dict[str, dict | None], dict[str, str]]:
-    manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf-8'))
+    manifest = _strict_json((directory / 'manifest.json').read_text(encoding='utf-8'))
+    if not isinstance(manifest, dict) or not isinstance(manifest.get('reports'), dict):
+        raise RunnerError('malformed_manifest')
     mode = manifest.get('mode')
     if mode not in MODES:
         raise RunnerError('unknown_mode')
+    names = list(manifest['reports'].values())
+    if not all(isinstance(n, str) for n in names) or len(names) != len(set(names)):
+        raise RunnerError('ambiguous_mapping')  # one report per case and one case per report
     reports, problems = {}, {}
-    for case_id, name in manifest.get('reports', {}).items():
+    for case_id, name in manifest['reports'].items():
         path = (directory / name).resolve()
         if directory.resolve() not in path.parents:
             raise RunnerError('report_outside_directory')
         try:
-            report = json.loads(path.read_text(encoding='utf-8'))
-        except (OSError, json.JSONDecodeError):
+            report = _strict_json(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError, RunnerError):
             reports[case_id], problems[case_id] = None, 'unreadable_report'
             continue
-        if report.get('mode') not in (None, mode):
-            raise RunnerError('mixed_modes')
+        if not isinstance(report, dict):
+            reports[case_id], problems[case_id] = None, 'malformed_report'
+            continue
+        if REPORT_MODES.get(report.get('mode')) != mode:
+            raise RunnerError('mixed_or_missing_mode')
         reports[case_id] = report
     return mode, reports, problems
 
@@ -105,32 +126,54 @@ def match_requirements(expected: list[dict], extracted: list[dict], text: str) -
 
 # ---------- one case ---------------------------------------------------------------------------
 
+class _Setup(Exception):
+    """The case cannot be evaluated: every check of it is listed as unmeasured with this code."""
+
+
+def _blank(case: dict) -> dict:
+    return {'case_id': case['case_id'], 'domain': case['domain'], 'split': case['split'],
+            'decision_status': case['decision_status'], 'setup': 'ok', 'rows': [], 'extra': [],
+            'references': [], 'relations': [], 'recommendation': None, 'conditions': [],
+            'review_load': None, 'manual_checks': list(case['forbidden_conclusions'])}
+
+
 def evaluate_case(case: dict, report: dict | None, problem: str | None = None) -> dict:
-    result = {'case_id': case['case_id'], 'domain': case['domain'], 'split': case['split'],
-              'decision_status': case['decision_status'], 'setup': 'ok', 'rows': [], 'extra': [],
-              'references': [], 'relations': [], 'recommendation': None, 'conditions': [],
-              'review_load': None, 'manual_checks': list(case['forbidden_conclusions'])}
-    if report is None:
-        result['setup'] = problem or 'missing_report'
-        return result
-    if report.get('schema_version') != REPORT_SCHEMA:
-        result['setup'] = 'unknown_report_version'
-        return result
+    result = _blank(case)
     try:
-        jobs = {j['job_id']: j for j in report['ranking']['jobs']}
-        failed = {e['job_id'] for e in report.get('unprocessed', [])}
-        facts = {f['id']: f['quote'] for f in report['facts']['items']}
-    except (KeyError, TypeError):
-        result['setup'] = 'malformed_report'
+        if report is None:
+            raise _Setup(problem or 'missing_report')
+        _evaluate(case, report, result)
+    except _Setup as setup:
+        code = str(setup)
+    except (KeyError, TypeError, ValueError, AttributeError, IndexError):  # incl. pydantic ValidationError
+        code = 'malformed_report'
+    else:
         return result
+    # Nothing of this case is measured, but every check stays visible as unmeasured, never dropped.
+    result = _blank(case)
+    result['setup'] = code
+    skipped = set(case['unprocessed_job_ids'])
+    result['rows'] = [{'job_id': e['job_id'], 'key': e['key'], 'outcome': code} for e in case['requirements']
+                      if e['job_id'] not in skipped]
+    result['relations'] = [{**rel, 'outcome': code} for rel in case['ranking']['relations']]
+    result['recommendation'] = {'actual': None, 'outcome': code}
+    result['conditions'] = [{'job_id': c['job_id'], 'kind': c['kind'], 'outcome': code, 'actual': None}
+                            for c in case['conditions']]
+    return result
+
+
+def _evaluate(case: dict, report: dict, result: dict) -> None:
+    if report.get('schema_version') != REPORT_SCHEMA:
+        raise _Setup('unknown_report_version')
+    jobs = {j['job_id']: j for j in report['ranking']['jobs']}
+    failed = {e['job_id'] for e in report['unprocessed']}  # the pipeline lists every failed job here
+    facts = {f['id']: f['quote'] for f in report['facts']['items']}
     texts = {v['job_id']: v['text'] for v in case['vacancies']}
     if set(jobs) | failed != set(texts) or set(jobs) & failed:
-        result['setup'] = 'job_set_mismatch'
-        return result
+        raise _Setup('job_set_mismatch')
     expected_failed = set(case['unprocessed_job_ids'])
     if not expected_failed <= failed:
-        result['setup'] = 'expected_failure_not_reproduced'  # e.g. the job was simply left out of rank
-        return result
+        raise _Setup('expected_failure_not_reproduced')  # e.g. the job was simply left out of rank
     cv = case['cv_text']
 
     for fid, quote in facts.items():  # facts must come from the CV
@@ -205,16 +248,18 @@ def evaluate_case(case: dict, report: dict | None, problem: str | None = None) -
         result['conditions'].append({'job_id': expect['job_id'], 'kind': expect['kind'], 'outcome': outcome,
                                      'actual': found.get('state') if found else None})
     result['review_load'] = _load(report)
-    return result
 
 
 def _evidence_ok(row: dict, check: dict | None, facts: dict[str, str], cv: str, expected_quotes: list[str]) -> bool:
-    """The row cites at least one fact overlapping an expected CV quote, and E3 did not find it invalid."""
+    """A cited fact lies at least half inside an expected CV quote, and E3 did not find the row invalid.
+
+    Half of the cited span, not any overlap: a fact quoting a whole paragraph overlaps every expected quote.
+    """
     if check is not None and check.get('state') == 'invalid':
         return False
     wanted = [s for s in (_span(cv, q) for q in expected_quotes) if s]
     cited = [s for s in (_span(cv, facts.get(f, '')) for f in row['fact_ids']) if s]
-    return any(_overlap(w, c) for w in wanted for c in cited)
+    return any(2 * _overlap(w, c) >= c[1] - c[0] for w in wanted for c in cited)
 
 
 def _load(report: dict) -> dict:
@@ -248,29 +293,45 @@ def run(cases: list[dict], mode: str, reports: dict[str, dict | None], problems:
     results = [evaluate_case(c, reports.get(c['case_id']), problems.get(c['case_id'])) for c in cases]
     unknown_ids = sorted(set(reports) - {c['case_id'] for c in cases})
     rows = [(r['case_id'], row) for r in results for row in r['rows']]
-    paired = [(c, row) for c, row in rows if 'status' in row]
     expected_rows = [(c, row) for c, row in rows if row['outcome'] != 'not_applicable']
+    PROCESSING = {'pass', 'wrong_status', 'wrong_evidence', 'wrong_mandatory', 'missed_requirement'}
+
+    def row_checks(results_subset):
+        """Correctness of paired rows; rows that could not be checked stay listed under their reason."""
+        sub = [(c, row) for c, row in expected_rows if c in results_subset]
+        paired = [(c, row) for c, row in sub if 'status' in row]
+        open_ = [(c, row['outcome']) for c, row in sub if 'status' not in row]
+        return {
+            'status_allowed': [(c, _flag(row['status_ok'])) for c, row in paired] + open_,
+            'evidence_matches_expected_quote': [(c, _flag(row['evidence_ok'])) for c, row in paired
+                                                if row['status_ok']] + open_,
+            'mandatory_marking': [(c, _flag(row['mandatory_ok'])) for c, row in paired] + open_,
+            'row_fully_correct': [(c, 'pass' if row['outcome'] == 'pass' else 'fail') for c, row in paired] + open_,
+        }
+
+    case_ids = {r['case_id'] for r in results}
     metrics = [
         # completeness of processing
         _metric('cases_evaluated', [(r['case_id'], 'pass' if r['setup'] == 'ok' else 'fail') for r in results]),
         _metric('rows_without_processing_error',
-                [(c, 'fail' if row['outcome'] == 'error' else 'pass') for c, row in expected_rows]),
+                [(c, 'fail' if row['outcome'] == 'error' else 'pass' if row['outcome'] in PROCESSING
+                  else row['outcome']) for c, row in expected_rows]),
         _metric('requirement_extraction_coverage',
-                [(c, 'fail' if row['outcome'] == 'missed_requirement' else 'pass') for c, row in expected_rows
-                 if row['outcome'] != 'error']),
+                [(c, 'fail' if row['outcome'] == 'missed_requirement' else 'pass' if row['outcome'] in PROCESSING
+                  else row['outcome']) for c, row in expected_rows if row['outcome'] != 'error']),
         # correctness of what could be checked
-        _metric('status_allowed', [(c, _flag(row['status_ok'])) for c, row in paired]),
-        _metric('evidence_matches_expected_quote', [(c, _flag(row['evidence_ok'])) for c, row in paired
-                                                    if row['status_ok']]),
-        _metric('mandatory_marking', [(c, _flag(row['mandatory_ok'])) for c, row in paired]),
-        _metric('row_fully_correct', [(c, 'pass' if row['outcome'] == 'pass' else 'fail') for c, row in paired]),
+        *[_metric(name, items) for name, items in row_checks(case_ids).items()],
         _metric('rank_relations', [(r['case_id'], x['outcome']) for r in results for x in r['relations']]),
         _metric('recommendation_allowed', [(r['case_id'], r['recommendation']['outcome']) for r in results
                                            if r['recommendation']]),
         _metric('conditions', [(r['case_id'], x['outcome']) for r in results for x in r['conditions']]),
-        _metric('references_valid', [(r['case_id'], 'fail' if r['references'] else 'pass') for r in results
-                                     if r['setup'] == 'ok']),
+        _metric('references_valid', [(r['case_id'], ('fail' if r['references'] else 'pass') if r['setup'] == 'ok'
+                                      else r['setup']) for r in results]),
     ]
+    by_domain = {domain: [_metric(name, items) for name, items in
+                          row_checks({r['case_id'] for r in results if r['domain'] == domain}).items()
+                          if name in ('status_allowed', 'row_fully_correct')]
+                 for domain in sorted({r['domain'] for r in results})}
     groups = defaultdict(list)
     for case, r in zip(cases, results):
         if case['equivalence_group']:
@@ -278,7 +339,8 @@ def run(cases: list[dict], mode: str, reports: dict[str, dict | None], problems:
     group_items = []
     for name, members in sorted(groups.items()):
         statuses = [{row['key']: row.get('status') for row in m['rows']} for m in members]
-        measured = all(m['setup'] == 'ok' and all('status' in row for row in m['rows']) for m in members)
+        measured = len(members) > 1 and all(m['setup'] == 'ok' and all('status' in row for row in m['rows'])
+                                            for m in members)
         group_items.append((name, ('pass' if all(s == statuses[0] for s in statuses) else 'fail') if measured
                             else 'unmeasured'))
     metrics.append(_metric('equivalent_wording_consistent', group_items))
@@ -290,6 +352,7 @@ def run(cases: list[dict], mode: str, reports: dict[str, dict | None], problems:
                                                       ' Режим не live: качество модели не измерено.'),
             'cases': len(cases), 'unknown_report_ids': unknown_ids,
             'row_outcomes': dict(Counter(row['outcome'] for _, row in rows)), 'metrics': metrics,
+            'by_domain': by_domain,
             'review_load': {k: sum(x[k] for x in load) for k in ('queue_items', 'rows', 'unknown_rows', 'fail_rows',
                                                                  'needs_review_rows', 'condition_conflicts')}
             if load else None,
@@ -324,7 +387,7 @@ def main(argv=None) -> int:
     try:
         cases = load_cases(args.expectations, args.split)
         mode, reports, problems = load_reports(args.reports)
-    except (RunnerError, OSError, json.JSONDecodeError, KeyError) as exc:
+    except (RunnerError, OSError, ValueError, TypeError, KeyError) as exc:  # JSONDecodeError is a ValueError
         print(f'evaluation refused: {exc}', file=sys.stderr)
         return 2
     summary = run(cases, mode, reports, problems)

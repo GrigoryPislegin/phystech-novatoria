@@ -159,6 +159,39 @@ class FalsePerfectTests(unittest.TestCase):
         evaluated = metric(summary, 'cases_evaluated')
         self.assertEqual((evaluated['numerator'], evaluated['denominator']), (1, 2))
 
+    def test_missing_case_stays_unmeasured_in_every_check(self):
+        cases = [CASES['E6-FE-01'], CASES['E6-FE-02']]  # FE-01 has a rank pair; its report is missing
+        summary = run(cases, 'synthetic_replay', {'E6-FE-02': make_report('E6-FE-02')}, {})
+        for name in ('status_allowed', 'row_fully_correct', 'rank_relations', 'recommendation_allowed',
+                     'references_valid', 'requirement_extraction_coverage', 'conditions'):
+            with self.subTest(name):
+                self.assertIn('E6-FE-01:missing_report', metric(summary, name)['unmeasured'])
+        self.assertIsNone(metric(summary, 'rank_relations')['value'])  # never 100% on nothing
+
+    def test_whole_cv_fact_is_not_matching_evidence(self):
+        plan = copy.deepcopy(PLANS['E6-FE-01'])
+        plan['facts'] = [CASES['E6-FE-01']['cv_text']]  # one fact quoting the whole resume
+        plan['jobs']['job-fe'] = [('full', ['f1'])] * 3
+        plan.pop('conditions')
+        summary = evaluate({'E6-FE-01': make_report('E6-FE-01', plan)})
+        self.assertEqual(metric(summary, 'evidence_matches_expected_quote')['failures'], ['E6-FE-01'])
+
+    def test_malformed_report_is_a_setup_error_not_a_traceback(self):
+        base = make_report('E6-FE-04')
+        broken = [copy.deepcopy(base) for _ in range(3)]
+        del broken[0]['ranking']['jobs'][0]['evaluation']
+        broken[1]['ranking']['jobs'][0]['evaluation']['rows'][0].pop('status')
+        broken[2]['ranking']['jobs'][0]['evidence_check']['rows'][0]['state'] = 'nonsense'
+        for report in broken:
+            with self.subTest():
+                summary = evaluate({'E6-FE-04': report})
+                self.assertEqual(summary['results'][0]['setup'], 'malformed_report')
+                self.assertIsNone(metric(summary, 'status_allowed')['value'])
+
+    def test_single_member_group_is_unmeasured(self):
+        summary = evaluate({'E6-FE-04': make_report('E6-FE-04')})
+        self.assertIsNone(metric(summary, 'equivalent_wording_consistent')['value'])
+
     def test_empty_actual_is_not_perfect(self):
         empty = make_report('E6-FE-04')
         empty['ranking']['jobs'] = []
@@ -237,6 +270,45 @@ class CommandTests(unittest.TestCase):
         self.write('synthetic_replay', {'E6-FE-01': make_report('E6-FE-01', mode='live')})
         self.assertEqual(self.cli(), 2)
 
+    def test_a_report_without_its_own_mode_is_refused(self):
+        report = make_report('E6-FE-01')
+        del report['mode']
+        self.write('live', {'E6-FE-01': report})
+        self.assertEqual(self.cli(), 2)
+
+    def test_cli_mode_names_are_mapped(self):
+        report = make_report('E6-FE-01', mode='synthetic_replay_NOT_model_output')  # what `prototype demo` writes
+        self.write('synthetic_replay', {'E6-FE-01': report})
+        self.assertEqual(self.cli(), 0)
+        self.write('live', {'E6-FE-01': report})
+        self.assertEqual(self.cli(), 2)
+        self.write('live', {'E6-FE-01': make_report('E6-FE-01', mode='live_local_privacy')})
+        self.assertEqual(self.cli(), 0)
+        data = json.loads((self.dir / 'out' / 'evaluation.json').read_text(encoding='utf-8'))
+        self.assertTrue(data['quality_measured'])
+
+    def test_bad_manifests_are_refused(self):
+        self.write('synthetic_replay', {'E6-FE-01': make_report('E6-FE-01')})
+        manifest = self.dir / 'r' / 'manifest.json'
+        for text in ('{"mode": "synthetic_replay", "reports": ["E6-FE-01.json"]}',
+                     '{"mode": "synthetic_replay", "reports": {"E6-FE-01": "E6-FE-01.json", '
+                     '"E6-FE-02": "E6-FE-01.json"}}',
+                     '{"mode": "synthetic_replay", "reports": {"E6-FE-01": "a.json", "E6-FE-01": "b.json"}}',
+                     '[]'):
+            with self.subTest(text):
+                manifest.write_text(text, encoding='utf-8')
+                self.assertEqual(self.cli(), 2)
+
+    def test_non_object_report_is_not_measured(self):
+        self.write('synthetic_replay', {})
+        (self.dir / 'r' / 'E6-FE-01.json').write_text('[]', encoding='utf-8')
+        (self.dir / 'r' / 'manifest.json').write_text(
+            json.dumps({'mode': 'synthetic_replay', 'reports': {'E6-FE-01': 'E6-FE-01.json'}}), encoding='utf-8')
+        self.assertEqual(self.cli(), 0)
+        data = json.loads((self.dir / 'out' / 'evaluation.json').read_text(encoding='utf-8'))
+        result = next(r for r in data['results'] if r['case_id'] == 'E6-FE-01')
+        self.assertEqual(result['setup'], 'malformed_report')
+
     def test_holdout_needs_its_digest(self):
         self.write('synthetic_replay', {})
         self.assertEqual(self.cli('holdout'), 0)
@@ -249,6 +321,8 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(self.cli('holdout', broken / 'e6-cases.json'), 2)
         with self.assertRaises(RunnerError):
             load_cases(broken / 'e6-cases.json', 'holdout')
+        (broken / 'holdout.sha256').write_text('', encoding='utf-8')
+        self.assertEqual(self.cli('holdout', broken / 'e6-cases.json'), 2)
 
     def test_report_outside_the_directory_is_refused(self):
         self.write('synthetic_replay', {})
