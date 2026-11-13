@@ -86,11 +86,16 @@
     setText('ranking-count', report.jobs.length);
     byId('empty-ranking').hidden = report.jobs.length > 0;
     byId('score-help').hidden = report.jobs.length === 0;
-    const knownPolicy = report.jobs.length > 0 &&
-      report.jobs.every(job => job.score.policyVersion === 'draft-2026-11-12-v1');
+    const policy = report.jobs[0]?.score.policyVersion;
+    const knownPolicy = ['draft-2026-11-12-v1', 'draft-2026-11-13-v2', 'draft-2026-11-14-v3'].includes(policy) &&
+      report.jobs.every(job => job.score.policyVersion === policy);
     setText('ranking-method', knownPolicy
       ? 'Сначала идут вакансии без выявленного нарушения обязательных требований. Внутри группы порядок определяется нижней границей L. При равном балле вакансии делят место.'
       : 'Места и порядок взяты из отчёта.');
+    byId('score-policy').hidden = !knownPolicy;
+    setText('score-policy', policy === 'draft-2026-11-14-v3'
+      ? 'В этой версии обязательная группа получает 75 баллов шкалы, прочая — 25. Если группа одна, ей отводятся все 100. Это выбранные командой правила, не вероятность найма.'
+      : 'В этой версии вес применённого обязательного требования — 3, прочего — 1. Это выбранные командой правила, не вероятность найма.');
     const list = byId('job-list');
     list.replaceChildren();
     report.jobs.forEach(job => {
@@ -225,6 +230,7 @@
       const accepted = handoff?.accepted_exceptions?.includes(item.id);
       const instruction = Object.hasOwn(queueActions, item.action) ? queueActions[item.action] : 'Проверьте замечание';
       summary.append(element('span', null, instruction));
+      if (item.decisive) summary.append(tag('Может изменить первое место', 'warning'));
       if (blocked) summary.append(tag('Блокирует передачу', 'danger'));
       if (closed) summary.append(tag('Ознакомились', 'neutral'));
       if (accepted) summary.append(tag('Исключение принято', 'warning'));
@@ -256,7 +262,8 @@
   const comparisonCaveats = {
     different_requirement_lists: 'У вакансий разные требования или веса. Нижняя граница рассчитана по требованиям каждой вакансии.',
     incomplete_run: 'Обработаны не все вакансии.',
-    evidence_not_applied: 'Спорные цитаты отмечены для проверки. При расчёте балла они не учитывались отдельно.'
+    evidence_not_applied: 'Спорные цитаты отмечены для проверки. При расчёте балла они не учитывались отдельно.',
+    close_margin: 'Разница меньше одного шага оценки: превосходство по проценту не установлено. Сравните вакансии по существу.'
   };
   const swingOutcomes = {
     reversed: 'порядок может поменяться', tie: 'вакансии могут разделить место', breaks_tie: 'места могут разойтись'
@@ -387,7 +394,44 @@
     list.firstElementChild.open = true;
   }
 
+  function renderLeader() {
+    const leader = report.leader;
+    byId('leader-analysis').hidden = !leader;
+    const body = byId('leader-evidence');
+    body.replaceChildren();
+    if (!leader) return;
+    const states = {
+      stable: 'Первое место сохраняется в проверенных сценариях уточнения.',
+      tie: 'Несколько вакансий делят первое место.',
+      close: 'Оценки близки. Одного процента недостаточно, чтобы выбрать вакансию.',
+      open: 'Первое место предварительное: основания требуют уточнения.',
+      none_fit: 'В каждой вакансии отмечен обязательный пробел. Решение принимает HR.'
+    };
+    const names = jobs => jobs.map(job => job.title).join(', ');
+    setText('leader-title', report.complete ? 'Что определяет первое место' : 'Предварительный выбор среди обработанных');
+    setText('leader-summary', names(leader.jobs) + ' · ' + states[leader.state]);
+    setText('leader-scope', (report.complete ? '' : 'Обработаны не все вакансии. ') +
+      'Проверка по правилам отчёта охватывает спорные основания и не более двух ответов кандидата. Смысл цитат проверяет рекрутер.');
+    const groups = [
+      ['Основания выбора', leader.factors], ['Ограничения', leader.limits],
+      ['Что может изменить выбор', leader.canChange]
+    ];
+    for (const [heading, refs] of groups) {
+      if (!refs.length) continue;
+      const section = element('details', 'source-disclosure');
+      section.append(element('summary', 'source-heading', heading));
+      const rows = element('div', 'source-list source-body');
+      for (const ref of refs) rows.append(comparisonFactor(ref));
+      section.append(rows);
+      body.append(section);
+    }
+    if (leader.closeTo.length) body.append(element('p', 'support', 'Близкие вакансии: ' + names(leader.closeTo) + '.'));
+    if (leader.unassessed.length) body.append(element('p', 'support',
+      'Без подтверждённых совпадений: ' + names(leader.unassessed) + '. Сведений недостаточно; это не отказ.'));
+  }
+
   function renderOverview() {
+    renderLeader();
     const list = byId('overview-list');
     const entries = describeDashboard(report);
     const percent = value => numberFormat.format(value) + '%';

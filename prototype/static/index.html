@@ -152,6 +152,7 @@
         <details id="score-help" class="score-help">
           <summary>Как читать рейтинг</summary>
           <p id="ranking-method"></p>
+          <p id="score-policy" hidden></p>
           <p><strong>L</strong> — нижняя граница по известным сведениям. <strong>H</strong> — верхняя граница, если неизвестные требования подтвердятся.</p>
         </details>
 
@@ -233,6 +234,12 @@
       <section id="view-overview" class="view-panel" aria-labelledby="overview-title" hidden>
         <h2 id="overview-title">Сводка по вакансиям</h2>
         <p class="support">Диапазон L–H и доля известных данных взяты из отчёта. Статусы показывают число требований каждой категории.</p>
+        <section id="leader-analysis" class="comparison-section" aria-labelledby="leader-title" hidden>
+          <h3 id="leader-title">Что определяет первое место</h3>
+          <p id="leader-summary" class="support"></p>
+          <p id="leader-scope" class="support"></p>
+          <div id="leader-evidence" class="source-list"></div>
+        </section>
         <div id="overview-list"></div>
       </section>
 

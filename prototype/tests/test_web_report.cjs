@@ -206,3 +206,84 @@ test('comparison uses stored outcomes and references an existing quoted row', ()
   raw.comparisons[0].deciding = [];
   assert.equal(parseReport(JSON.stringify(raw)).comparisons[0].outcome, 'tie');
 });
+
+function leaderExample(name = 'success') {
+  const raw = example(name);
+  raw.policy_version = 'draft-2026-11-14-v3';
+  for (const job of raw.ranking.jobs) Object.assign(job.score, {policy_version:raw.policy_version, resolution:25});
+  const job = raw.ranking.jobs[0];
+  const row = raw.presentation.jobs[0].rows[0];
+  const ref = { job_id: job.job_id, requirement_id: row.requirement_id,
+    status: row.status, requirement_quote: row.requirement_quote,
+    cv_quotes: row.resume_quotes, effect: 75 };
+  raw.leader = { policy_version: raw.policy_version, job_ids: [job.job_id], state: name === 'success' ? 'stable' : 'open',
+    summary: '<script>Подтверждено HR</script>', factors: [ref], limits: [], can_change: [],
+    close_to: [], challengers: [], unassessed: [raw.ranking.jobs[1].job_id] };
+  return raw;
+}
+
+test('leader analysis resolves source rows without trusting prose or granting HR approval', () => {
+  const report = parseReport(JSON.stringify(leaderExample()));
+  assert.equal(report.leader.state, 'stable');
+  assert.equal(report.leader.factors[0].row, report.jobs[0].rows[0]);
+  assert.equal(report.leader.unassessed[0], report.jobs[1]);
+  assert.doesNotMatch(JSON.stringify(report.leader), /script|Подтверждено HR/);
+  assert.equal(report.finalAllowed, false);
+  assert.equal(parseReport(JSON.stringify(example('success'))).leader, null);
+});
+
+test('invalid leader references and policy versions cannot explain the ranking', () => {
+  const mutations = [
+    raw => { raw.leader.factors[0].requirement_quote = 'Подменённая цитата'; },
+    raw => { raw.leader.factors[0].job_id = raw.ranking.jobs[1].job_id; },
+    raw => { raw.leader.factors[0].effect = 101; },
+    raw => { raw.ranking.jobs[2].score.policy_version = 'draft-2026-11-13-v2'; },
+    raw => { raw.policy_version = 'unknown'; },
+    raw => { raw.leader.job_ids = [raw.ranking.jobs[1].job_id]; },
+    raw => { raw.leader.can_change = [{row: raw.leader.factors[0], kind: 'made_up', role: 'leader'}]; },
+    raw => { raw.leader.state = 'none_fit'; },
+    raw => { raw.leader.state = 'tie'; },
+    raw => { raw.leader.unassessed = raw.leader.job_ids; },
+    raw => { raw.leader.close_to = raw.leader.job_ids; },
+    raw => { raw.leader.challengers = raw.leader.job_ids; },
+    raw => { raw.leader.state = 'open'; raw.leader.can_change = [
+      {row:raw.leader.factors[0], kind:'unknown', role:'leader'}]; }
+  ];
+  for (const mutate of mutations) {
+    const raw = leaderExample();
+    mutate(raw);
+    const report = parseReport(JSON.stringify(raw));
+    assert.equal(report.leader, null);
+    assert.equal(report.jobs.length, 3);
+  }
+  const disputed = leaderExample('disputed');
+  disputed.leader.state = 'stable';
+  assert.equal(parseReport(JSON.stringify(disputed)).leader, null);
+  disputed.ranking.recommendation = 'review_top';
+  assert.equal(parseReport(JSON.stringify(disputed)).leader, null);
+});
+
+test('decisive flags are strict booleans and close margins must agree with stored scores', () => {
+  const raw = leaderExample('disputed');
+  const [a, b] = raw.ranking.jobs;
+  raw.leader.can_change = [{row:raw.leader.factors[0], kind:'partial', role:'leader'}];
+  raw.review_queue = {schema_version:'review-queue-0.1', policy_version:raw.policy_version, items:[
+    {id:'a', job_id:a.job_id, requirement_id:raw.leader.factors[0].requirement_id, explanation:'Уточнить', decisive:true},
+    {id:'b', job_id:b.job_id, explanation:'Проверить', decisive:'true'}
+  ]};
+  let report = parseReport(JSON.stringify(raw));
+  assert.deepEqual(report.reviewItems.map(item => item.decisive), [true, false]);
+  b.score.lower = 45;
+  raw.comparisons = [{job_a:a.job_id, job_b:b.job_id, outcome:'a_higher', reason:'lower_bound',
+    deciding:[], swings:[], close:true, margin:a.score.lower-b.score.lower, caveats:['close_margin']}];
+  report = parseReport(JSON.stringify(raw));
+  assert.deepEqual(report.comparisons[0].caveats, ['close_margin']);
+  raw.comparisons[0].margin = -1;
+  report = parseReport(JSON.stringify(raw));
+  assert.deepEqual(report.comparisons[0].caveats, []);
+  raw.comparisons[0].margin = a.score.lower-b.score.lower;
+  for (const job of raw.ranking.jobs) job.score.policy_version = 'draft-2026-11-13-v2';
+  report = parseReport(JSON.stringify(raw));
+  assert.deepEqual(report.comparisons[0].caveats, []);
+  assert.ok(report.reviewItems.every(item => item.decisive === false));
+});

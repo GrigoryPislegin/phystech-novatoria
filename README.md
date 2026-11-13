@@ -26,7 +26,7 @@
 
 Работает локальное приложение: загрузка/проверка документов, профиль и условия, объяснимый рейтинг с цитатами, сравнение вакансий, очередь проверки, решения HR, сохранение/повторное открытие и экспорт менеджеру. UI следует переданным Nanimai-макетам без логотипа. [Запуск UI/Docker и сценарий приёмки](docs/28-local-app-runbook.md).
 
-[Готовые Docker-образы arm64/amd64 и публичные веса](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-c1c1f4f): опубликованный срез c1c1f4f, запуск через `docker load`, ключ для replay/mock не нужен. Второй Mac подтвердил Docker/UI на коде 48268b2 через проверенный fallback весов; независимый Linux CI подтвердил amd64. Подробности и ограничения — [отчёт E10](docs/reviews/egor-e10-second-computer.md).
+[Готовые Docker-образы arm64/amd64 и публичные веса](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-a49a06e): опубликованный срез a49a06e (privacy_core 0.2, скоринг v2), запуск через `docker load`, ключ для replay/mock не нужен. Второй Mac подтвердил Docker/UI на коде 48268b2 через проверенный fallback весов; независимый Linux CI подтвердил amd64. Подробности и ограничения — [отчёт E10](docs/reviews/egor-e10-second-computer.md).
 
 ```sh
 .venv/bin/python -m prototype serve
@@ -36,7 +36,7 @@
 
 13 ноября первый live Luna прошёл на встроенной синтетике: 3/3 вакансии, 7 запросов, около $0,00083 по usage и стандартному тарифу. Отдельно настоящий адаптер Certum прошёл локальный smoke с Python 3.12, PostgreSQL/tenant/vault и NER на вымышленных контактах. Это исторический эксперимент, заменённый собственным модулем. Новый путь privacy_core → настоящий SDK с локальными ответами прошёл без внешних запросов; protected live ещё не проверен; реальные документы не отправлялись. Luna — модель по умолчанию, Sol выбирается явно.
 
-Консультация по последнему сообщению владельца: 13 ноября 2026, 14:00 МСК. Финальная сдача: 14 ноября, 23:59 МСК. Актуальная интеграция находится в ветке [`codex/cli-integration-consultation`](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/tree/codex/cli-integration-consultation). Второй физический компьютер и новая protected live-модель ещё требуют отдельного подтверждения. Новые задачи после handoff PR №3 начинаются от `codex/cli-integration-consultation`; в main изменения отдельно принимает тимлид.
+Консультация по последнему сообщению владельца: 13 ноября 2026, 14:00 МСК. Финальная сдача: 14 ноября, 23:59 МСК. Актуальная интеграция находится в ветке [`codex/cli-integration-consultation`](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/tree/codex/cli-integration-consultation). Второй физический Mac проверен на 48268b2; новая protected live-модель ещё требует отдельного подтверждения. Новые задачи после handoff PR №3 начинаются от `codex/cli-integration-consultation`; в main изменения отдельно принимает тимлид.
 
 ## Подключиться
 
