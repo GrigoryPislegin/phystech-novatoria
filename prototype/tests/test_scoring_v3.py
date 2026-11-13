@@ -377,6 +377,39 @@ class ReviewRegressionTests(unittest.TestCase):
                          [(True, 'disputed', ['r1', 'r2'])])
         self.assertEqual([f.requirement_id for f in text.factors], ['r3'])
 
+    def test_paired_comparison_uses_the_row_that_carries_the_unit_status(self):
+        row = lambda rid, status, quote: {'id': rid, 'text': 'Python', 'status': status, 'm': False, 'quote': quote}
+        report = report_of({'jobs': [
+            {'job_id': 'top', 'rows': [row('r1', 'unknown', 'Python'), row('r2', 'full', 'Python.')]},
+            {'job_id': 'low', 'rows': [row('r1', 'partial', 'Python'), row('r2', 'partial', 'Python.')]}]})
+        self.assertEqual([j['score']['lower'] for j in report['ranking']['jobs']], [100, 50])
+        c = compare(report, 'top', 'low')
+        self.assertEqual([(d.job_id, d.requirement_id, d.status, d.counterpart_status, d.effect) for d in c.deciding],
+                         [('low', 'r1', 'partial', 'full', 50)])
+        self.assertNotIn('unknown', c.summary)
+        factors = explain_leader(report).factors  # the confirmed row of the unit, with its fact
+        self.assertEqual([(f.requirement_id, f.status, f.effect, f.cv_quotes) for f in factors],
+                         [('r2', 'full', 100, ['цитата'])])
+
+    def test_fewest_answers_first_then_fewest_markers(self):
+        top = rows_job(('x', 'full'), ('y', 'full'), ('z', 'fail'))
+        rival = build_job({'job_id': 'rival', 'rows': [
+            {'id': 'r0', 'text': 'a', 'm': True, 'marker': 'review', 'status': 'full'},
+            {'id': 'r1', 'text': 'b', 'm': False, 'status': 'unknown'},
+            {'id': 'r2', 'text': 'c', 'm': False, 'status': 'unknown'},
+            {'id': 'r3', 'text': 'd', 'm': False, 'status': 'fail'}]})
+        leader = ranked(top=top, rival=rival)['leader']
+        self.assertEqual(leader['challengers'], [{'job_id': 'rival', 'answers_needed': 0}])
+        self.assertEqual([(d['requirement_id'], d['kind']) for d in leader['decisive']], [('r0', 'marker')])
+        # With equal answers the baseline wins: no marker is named when answers alone are as short.
+        same = build_job({'job_id': 'rival', 'rows': [
+            {'id': 'r0', 'text': 'a', 'm': True, 'marker': 'review', 'status': 'fail'},
+            {'id': 'r1', 'text': 'b', 'm': False, 'status': 'full'},
+            {'id': 'r2', 'text': 'c', 'm': False, 'status': 'unknown'}]})
+        leader = ranked(top=top, rival=same)['leader']
+        self.assertEqual(leader['challengers'], [{'job_id': 'rival', 'answers_needed': 1}])
+        self.assertEqual([(d['requirement_id'], d['kind']) for d in leader['decisive']], [('r2', 'unknown')])
+
     def test_rival_with_nothing_confirmed_is_not_close(self):
         ranking = ranked(top=rows_job(('a', 'partial'), ('b', 'fail'), ('c', 'fail'), ('d', 'fail')),
                          empty=rows_job(('x', 'unknown')))

@@ -89,7 +89,7 @@
 ## 7. Проверки
 
 ```
-python -m unittest discover -s prototype/tests        # 389 тестов, OK (6 пропущено)
+python -m unittest discover -s prototype/tests        # 391 тест, OK (6 пропущено)
 python -m unittest discover -s tests                  # 10 тестов, OK
 node --test prototype/tests/test_web_*.cjs            # 36 из 36
 python -m evaluation.policy_compare                   # таблица раздела 5

@@ -25,7 +25,7 @@ from pydantic import ValidationError
 
 from .contracts import Evaluation, Requirements, StrictModel
 from .evidence import PairCheck
-from .scoring import POLICIES, POLICY_VERSION, is_close, rank, score
+from .scoring import POLICIES, POLICY_VERSION, _norm, is_close, rank, score
 
 INTEGRATED = True
 MAX_DECIDING = 3
@@ -160,6 +160,16 @@ class _Job:
             return sorted(self.open_units | (self.unscored_review & set(self.status)))
         return sorted(rid for rid, st in self.status.items() if st == 'unknown' or rid in self.disputed)
 
+    def pairs_with(self, low: '_Job') -> list[tuple[str, str]]:
+        """(own row, row of `low`) for the same requirement. v3 pairs the representatives of units, which
+        carry the unit's status, so a silent repeat never stands for a confirmed requirement."""
+        if 'units' not in self.score:
+            return [(self.by_key[k], rid) for k, rid in sorted(low.by_key.items())]
+        mine = {_norm(self.quotes[i]): rep for rep in self.reps for i in self.unit[rep]}
+        found = {(mine[_norm(low.quotes[i])], rep) for rep in low.reps for i in low.unit[rep]
+                 if _norm(low.quotes[i]) in mine}
+        return sorted(found, key=lambda p: (p[1], p[0]))
+
     def open_reps(self) -> list[str]:
         open_rows = set(self.unresolved())
         return [rid for rid in sorted(self.reps) if rid in open_rows]
@@ -195,7 +205,7 @@ def _deciding(high: _Job, low: _Job, reason: str, paired: bool) -> list[RowRef]:
         refs += [loss(rid) for rid in low.known_reps()
                  if low.status[rid] == 'fail' and rid in low.mandatory and rid not in low.disputed]
     if paired:  # same requirements and weights: rows that differ, by the gap they make in L (equal rows give 0)
-        pairs = [(high.by_key[k], rid) for k, rid in sorted(low.by_key.items())]
+        pairs = high.pairs_with(low)
         candidates = [low.ref(lr, high.contribution(hr) - low.contribution(lr), counterpart=high.status[hr])
                       for hr, lr in pairs if hr not in high.unresolved() and lr in low.known_reps()]
         candidates.sort(key=lambda r: (-r.effect, r.requirement_id))
