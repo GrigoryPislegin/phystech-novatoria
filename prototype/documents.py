@@ -243,6 +243,24 @@ def read_document(path: Path) -> str:
 
         with path.open('rb') as stream:
             contents = stream.read(MAX_BYTES + 1)
+        return read_document_bytes(contents, suffix)
+    except DocumentReadError:
+        raise
+    except (FileNotFoundError, NotADirectoryError):
+        raise DocumentReadError('input_invalid') from None
+    except PermissionError:
+        raise DocumentReadError('input_access_denied') from None
+    except ImportError:
+        raise DocumentReadError('parser_dependency_missing') from None
+    except Exception:
+        raise DocumentReadError('document_unreadable') from None
+
+def read_document_bytes(contents: bytes, suffix: str) -> str:
+    """Parse an upload in memory using the same limits as local file reading."""
+    protect_dependency_logs()
+    if suffix not in {'.txt', '.md', '.pdf', '.docx'}:
+        raise DocumentReadError('input_unsupported')
+    try:
         if len(contents) > MAX_BYTES:
             raise DocumentReadError('input_too_large')
         if not contents:
@@ -259,10 +277,6 @@ def read_document(path: Path) -> str:
                 raise DocumentReadError('document_encoding_invalid') from None
     except DocumentReadError:
         raise
-    except (FileNotFoundError, NotADirectoryError):
-        raise DocumentReadError('input_invalid') from None
-    except PermissionError:
-        raise DocumentReadError('input_access_denied') from None
     except ImportError:
         raise DocumentReadError('parser_dependency_missing') from None
     except Exception:

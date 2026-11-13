@@ -142,7 +142,6 @@ class ScenarioTests(unittest.TestCase):
 class IntegrationFindingTests(unittest.TestCase):
     """Reproductions of findings in pipeline.py (owned by the integrator). See the contract doc."""
 
-    @unittest.expectedFailure
     def test_p1_invalid_profile_does_not_lose_the_ranking(self):
         gen = generator()
         invented = copy.deepcopy(gen.DISPUTED_PROFILE)
@@ -151,7 +150,6 @@ class IntegrationFindingTests(unittest.TestCase):
         self.assertEqual(len(report['ranking']['jobs']), 2)  # today: 0, the whole run fails at facts_validation
         self.assertEqual(report['profile']['state'], 'invalid')
 
-    @unittest.expectedFailure
     def test_p1_invalid_conditions_do_not_drop_the_vacancy(self):
         gen = generator()
         broken = copy.deepcopy(gen.JOB_A_CONDITIONS)
@@ -160,19 +158,16 @@ class IntegrationFindingTests(unittest.TestCase):
                                           SyntheticPrivacy()))
         self.assertIn('job-a', [j['job_id'] for j in report['ranking']['jobs']])  # today: job-a is unprocessed
 
-    @unittest.expectedFailure
     def test_p1_report_md_does_not_list_a_disputed_full_as_strength(self):
         text = section(markdown(load('disputed')), 'job-a')
         strengths = next(line for line in text.splitlines() if line.startswith('Сильные стороны'))
         self.assertNotIn('Python', strengths)  # «Python» stands under both «Работал с:» and «Не работал с:»
 
-    @unittest.expectedFailure
     def test_p2_report_md_does_not_list_a_disputed_fail_as_identified_mismatch(self):
         text = section(markdown(load('disputed')), 'job-b')
         mismatches = next(line for line in text.splitlines() if line.startswith('Выявленные несоответствия'))
         self.assertNotIn('Python', mismatches)  # the «evidence» is «SQL 2 года.»
 
-    @unittest.expectedFailure
     def test_p2_report_md_shows_condition_conflicts(self):
         self.assertIn('Рассматриваю только удалённую работу', section(markdown(load('disputed')), 'job-a'))
 

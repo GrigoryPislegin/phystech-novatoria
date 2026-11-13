@@ -42,6 +42,11 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     inspect = sub.add_parser('inspect', help='Извлечь текст локально, вывести только число символов')
     inspect.add_argument('file', type=Path)
+    web = sub.add_parser('serve', help='Локальный интерфейс, сохранённые запуски и решения HR')
+    web.add_argument('--host', default='127.0.0.1')
+    web.add_argument('--port', type=int, default=8765)
+    web.add_argument('--state-dir', type=Path, default=Path('data/private/local-app'))
+    web.add_argument('--allow-live', action='store_true', help='Явно разрешить платный внешний API для загруженных документов')
     for command in ['demo','run']:
         p = sub.add_parser(command)
         p.add_argument('--model', choices=list(RATES), default='gpt-6-luna')
@@ -56,6 +61,9 @@ def main():
             p.add_argument('--jobs', required=True, type=Path)
     args = parser.parse_args()
     try:
+        if args.command == 'serve':
+            from .web_app import serve
+            return serve(args)
         return asyncio.run(execute(args))
     except Exception as exc:
         print(f"Запуск остановлен: {error_code(exc)}. Проверьте входные файлы, зависимости и настройки по prototype/README.md.")

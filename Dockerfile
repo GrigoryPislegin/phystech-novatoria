@@ -19,13 +19,18 @@ RUN python -c "from prototype.privacy_core.models import load; load('/opt/privac
 
 FROM models-${PRIVACY_MODEL_SOURCE} AS final
 COPY prototype/__main__.py prototype/contracts.py prototype/demo.py prototype/documents.py prototype/model.py prototype/pipeline.py prototype/privacy.py prototype/scoring.py prototype/application.py prototype/errors.py prototype/presentation.py prototype/evidence.py prototype/requirements_review.py /app/prototype/
+COPY prototype/analysis_contracts.py prototype/candidate_profile.py prototype/ranking_explanation.py prototype/review_queue.py prototype/review_policy.py prototype/run_store.py prototype/local_service.py prototype/web_app.py /app/prototype/
+COPY prototype/static /app/prototype/static
 COPY scripts/privacy_smoke.py /app/scripts/privacy_smoke.py
 COPY prototype/tests/test_core.py /app/prototype/tests/test_core.py
+COPY prototype/tests/test_integrated_analysis.py prototype/tests/test_run_store.py prototype/tests/test_local_service.py prototype/tests/test_web_app.py /app/prototype/tests/
 RUN python -m unittest discover -s prototype/tests -p 'test_core.py' -v \
+    && python -m unittest prototype.tests.test_integrated_analysis prototype.tests.test_run_store prototype.tests.test_local_service prototype.tests.test_web_app -q \
     && python scripts/privacy_smoke.py --models-dir /opt/privacy-models \
     && python scripts/privacy_smoke.py --models-dir /opt/privacy-models --model-mock \
     && mkdir -p /app/data/private/prototype-runs \
     && chown -R 10001:10001 /app/data
 USER 10001:10001
+EXPOSE 8765
 ENTRYPOINT ["python", "-m", "prototype"]
-CMD ["demo"]
+CMD ["serve", "--host", "0.0.0.0", "--port", "8765", "--state-dir", "/app/data/private/local-app"]

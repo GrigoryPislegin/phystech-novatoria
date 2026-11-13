@@ -80,7 +80,7 @@ def refresh_derived(report, decisions=()):
     return report
 
 
-async def run_pipeline(resume, jobs, model, privacy, *, control=None):
+async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sink=None):
     if not jobs or len(jobs) > 20 or len({j[0] for j in jobs}) != len(jobs):
         raise ValueError('invalid_job_set')
     control = control or RunControl()
@@ -89,6 +89,8 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
     safe_resume = await control.call(lambda: privacy.redact(resume), 'privacy')
     # Complete privacy preflight before the very first model call.
     safe_jobs = [(jid, await control.call(lambda: privacy.redact(text), 'privacy', jid)) for jid, text in jobs]
+    if source_sink is not None:
+        source_sink({'resume':safe_resume, 'jobs':dict(safe_jobs)})
     cv_source = Source.of('cv', safe_resume)
     results, errors, review_checks = [], [], {}
     profile_check = None
@@ -119,10 +121,10 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
         extracted = ResumeAnalysis.model_validate(extracted.model_dump())
         facts = Facts(items=extracted.items)
         facts.validate_source(safe_resume)
-        checked = check_profile(extracted.profile, facts, cv_source)
-        if checked.state == 'invalid':
-            raise ModelOutputError('invalid_profile')
-        profile_check, profile_missing = checked, extracted.profile.missing
+        # An invalid profile is shown as «не удалось проверить» and queued (profile_review);
+        # it must not cost the ranking of every vacancy.
+        profile_check = check_profile(extracted.profile, facts, cv_source)
+        profile_missing = extracted.profile.missing
     except Exception as exc:
         errors.append({'job_id':None, 'code':error_code(exc, stage), 'stage':stage, 'type':type(exc).__name__})
         return finish(Facts(items=[]))
@@ -141,9 +143,8 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
             evaluation = Evaluation(rows=assessed.rows)
             validate_pair(requirements, facts, evaluation)
             job_source = Source.of(jid, text)
+            # Invalid conditions block this vacancy's handoff (queue: invalid_evidence) but keep it ranked.
             conditions = check_conditions(assessed.conditions, facts, cv_source, job_source)
-            if conditions.has_invalid:
-                raise ModelOutputError('invalid_conditions')
             evidence = check_pair(requirements, facts, evaluation, cv_source, job_source)
             if evidence.has_invalid:
                 raise ModelOutputError('invalid_evidence')
@@ -158,6 +159,7 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
                             'score_review':{'excluded_mandatory_ids':computed_score['excluded_mandatory_ids'],
                                 'rule':'evidence_applied_by_scoring_policy', 'version':POLICY_VERSION},
                             'safe_source_sha256':hashlib.sha256(text.encode()).hexdigest()})
+            control.emit('job_finished', jid)
         except Exception as exc:
             # Never serialize exception messages: upstream errors may contain text/keys/DSNs.
             code = error_code(exc, stage)
@@ -274,11 +276,21 @@ def _write_report_files(report, out):
             if req['mandatory_quote']:
                 lines.append(f"  Обязательность предложена моделью — подтвердите: {literal(req['mandatory_quote'])}")
             if question: lines.append(f"  Вопрос для уточнения: {literal(question)}")
+        for item in (job.get('conditions') or {}).get('items', []):
+            if item.get('state') == 'conflict' or item.get('check') == 'needs_review':
+                sides = '; '.join(f"{who}: {literal(span['quote'])}" for who, span in
+                                  (('резюме', item.get('cv_span')), ('вакансия', item.get('vacancy_span'))) if span)
+                lines.append(f"- Условие {literal(item['kind'])}: {literal(item['state'])}; {sides}. Решает HR, это не отказ.")
         lines.append('')
+        disputed = set(job['score'].get('disputed_ids', []))
         for status, label in [('full', 'Сильные стороны'), ('partial', 'Частичное соответствие'),
                               ('fail', 'Выявленные несоответствия'), ('unknown', 'Не хватает сведений')]:
-            names = [literal(display_label(reqs[row['requirement_id']])) for row in job['evaluation']['rows'] if row['status'] == status]
+            names = [literal(display_label(reqs[row['requirement_id']])) for row in job['evaluation']['rows']
+                     if row['status'] == status and row['requirement_id'] not in disputed]
             lines.append(label + ': ' + (', '.join(names) if names else 'не выявлены по оценке'))
+        if disputed:
+            lines.append('Спорное доказательство, проверить до вывода: ' + ', '.join(
+                literal(display_label(reqs[rid])) for rid in sorted(disputed)))
         lines += ['Риск интерпретации: статусы предложены моделью; дословность цитат не доказывает правильность вывода.',
                   'Действие рекрутера: проверить обоснования и уточнить открытые вопросы; решение остаётся за человеком.', '']
     if report['errors']: lines += ['Есть ошибки: рейтинг неполный. Подробности в report.json.']

@@ -458,7 +458,7 @@
       requireShape(Number.isInteger(job.rank) && job.rank > 0);
       const prepared = presentation?.get(job.job_id);
       requireShape(!presentation || (prepared && prepared.rank === job.rank));
-      const excluded = job.score_review?.excluded_mandatory_ids ?? [];
+      const excluded = job.score?.excluded_mandatory_ids ?? job.score_review?.excluded_mandatory_ids ?? [];
       requireShape(Array.isArray(excluded) && excluded.every(isText) && new Set(excluded).size === excluded.length);
       const rows = rowsFrom(job, facts, prepared, excluded);
       requireShape(rows.length > 0);

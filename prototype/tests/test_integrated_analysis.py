@@ -6,6 +6,20 @@ from prototype.pipeline import run_pipeline
 
 
 class IntegratedAnalysisTests(unittest.TestCase):
+    def test_snapshot_sink_receives_processed_sources_before_model(self):
+        captured = []
+        class Replacing(SyntheticPrivacy):
+            async def redact(self, text):
+                return text.replace('PRIVATE-NAME ', '')
+        model = ReplayModel()
+        resume, jobs = demo_inputs()
+        def sink(value):
+            self.assertEqual(model.calls, 0)
+            captured.append(value)
+        report = asyncio.run(run_pipeline('PRIVATE-NAME ' + resume, jobs, model, Replacing(), source_sink=sink))
+        self.assertTrue(report['ranking']['complete'])
+        self.assertEqual(captured, [{'resume':resume, 'jobs':dict(jobs)}])
+
     def test_actual_pipeline_has_sourced_profile_evidence_scores_and_comparisons(self):
         model = ReplayModel()
         report = asyncio.run(run_pipeline(*demo_inputs(), model, SyntheticPrivacy()))
@@ -67,8 +81,10 @@ class IntegratedAnalysisTests(unittest.TestCase):
                     value.profile.stack[0].sources[0].fact_id = 'not-a-fact'
                 return value
         report = asyncio.run(run_pipeline(*demo_inputs(), Forged(), SyntheticPrivacy()))
-        self.assertFalse(report['ranking']['complete'])
-        self.assertEqual(report['errors'][0]['code'], 'model_invalid')
+        self.assertTrue(report['ranking']['complete'])
+        self.assertEqual(report['profile']['state'], 'invalid')
+        self.assertTrue(any(i['reason_code'] == 'profile_review' for i in report['review_queue']['items']))
+        self.assertTrue(all(h['state'] != 'reviewed_for_handoff' for h in report['handoff']))
 
 
 if __name__ == '__main__':

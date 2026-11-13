@@ -71,7 +71,7 @@ class RunResult:
 
 
 async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=None, manifest=None, metadata=None,
-                  _defer_publication=False):
+                  _defer_publication=False, source_sink=None):
     """Run once and atomically publish. The caller explicitly selects data/mode.
 
     No retries, task queue, network listener or implicit live fallback. A web
@@ -89,7 +89,7 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
     preflight_output(out)
     model = model_factory()
     try:
-        report = await run_pipeline(resume, jobs, model, privacy, control=control)
+        report = await run_pipeline(resume, jobs, model, privacy, control=control, source_sink=source_sink)
         report.update(metadata or {})
         report['mode'] = mode
         if hasattr(privacy, 'summary'):
@@ -115,7 +115,8 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
             await model.close()
 
 
-async def analyze_protected(resume, jobs, *, privacy_context, model_factory, out, control=None, manifest=None):
+async def analyze_protected(resume, jobs, *, privacy_context, model_factory, out, control=None, manifest=None,
+                            source_sink=None, mode='live_local_privacy'):
     """Close the privacy session before publishing references in a report.
 
     Async startup observes the processing deadline; close/commit gets a separate
@@ -127,8 +128,8 @@ async def analyze_protected(resume, jobs, *, privacy_context, model_factory, out
     try:
         privacy = await control.call(lambda: stack.enter_async_context(privacy_context()), 'privacy_startup')
         result = await analyze(resume, jobs, model_factory=lambda:model_factory(privacy),
-            privacy=privacy, out=out, mode='live_local_privacy', control=control, manifest=manifest,
-            _defer_publication=True)
+            privacy=privacy, out=out, mode=mode, control=control, manifest=manifest,
+            _defer_publication=True, source_sink=source_sink)
     except BaseException:
         await asyncio.wait_for(stack.__aexit__(*sys.exc_info()), timeout=30)
         raise

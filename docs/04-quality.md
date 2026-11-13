@@ -300,3 +300,35 @@ docker run --rm --network none --entrypoint python recruiter-cli:privacy-local \
 - `git diff --check` — PASS.
 
 UI Sol: карточки вакансий, цитаты/критерии, профиль/условия, диаграммы L/H и известности, print. Визуальные проверки браузером пока выполнены исполнителем, отдельно интегратором ещё не приняты. HTTP/run_store/сохранённые решения и новый Docker ещё впереди; наличие функций E8 не выдаётся за действующее серверное подтверждение. Новых платных API-вызовов/чтения .env нет. Ваня ночью недоступен; UI выполняет локальный Sol, Егор получает E9 (#20) для независимой приёмки и evaluator.
+
+## 14 ноября, 00:08 МСК — локальное приложение и аварийное восстановление
+
+Приняты UI-коммиты Sol до 244c5ad (интеграционные 8e92bf9/caaaf28) и E9a Егора e791ed2 (merge 503b7b2). Добавлены run_store, local_service, web_app, serve, загрузка байтов в памяти, однопроцессная очередь, private snapshots, HMAC, ревизии HR, повторное открытие, удаление и API-источник доверия для manager HTML. Пять находок E9 R1–R5 исправлены; expectedFailure удалены. Invalid profile явно скрыт, пригодный рейтинг сохранён; invalid conditions блокируют передачу, не теряют вакансию. Решение привязано к run_id до построения derived/hash.
+
+Независимое ревью Sol выявило и исправлениями подтверждено:
+- Linux fd-cursor: второй start пропускал новый каталог и повторял работу. Отдельный Python 3.13/Linux repro дал `[]`, `[]`, `['abc']`; теперь каждый scan открывает новое описание каталога. Docker-тест сначала FAIL, после фикса PASS.
+- Atomic staging создания и tombstone удаления; инъекция ошибки записи/прерывания cleanup больше не повреждает соседнюю историю. Второй процесс не захватывает store.
+- Загруженный сырой документ не попадает во временный файл; 22 inspect подряд не исчерпывают UI. При выключенном live исходные тексты не кешируются; live-cache ограничен и потребляется при запуске. Повтор create после рестарта находит сохранённый запрос без исходных байтов.
+- Повторная отметка handoff не создаёт новую ревизию; слишком большой для HTTP отчёт отклоняется до публикации; нативный bind ограничен loopback. Docker штатно публикуется только на 127.0.0.1.
+- Protected SDK mock disputed: NER считал Go организацией в рукописном комментарии; fixture переформулирована без ослабления детектора. Incomplete теперь возвращает невалидный schema response вместо исключения внутри transport, сохраняя следующие вакансии.
+
+Команды и факты до отдельной интеграции E9b:
+
+```sh
+.venv/bin/python -m unittest discover -s prototype/tests -q
+node --test prototype/tests/test_web_*.cjs
+.venv/bin/python -m unittest discover -s tests -q
+.venv/bin/python scripts/check_repository.py
+.venv/bin/python -m pip check
+git diff --check
+```
+
+**311 Python PASS**, skips/expected failures нет; **36 Node PASS**; **10 repo PASS**; repository check 947 файлов/725 Python PASS; pip check и diff check PASS. Protected mock через настоящий LocalService/NER/SDK: success 3/3, disputed 3/3, incomplete 2/3 с model_invalid у Java; внешних API-вызовов 0. Это не замер качества модели.
+
+Фактический Chromium retest на текущем root worktree поверх 503b7b2, свежий 8477/live off: TXT inspect → success → confirm → mark → скачанный trusted manager HTML revision 3 → reopen с сохранённым решением → delete. Повторная mark скрыта. Protected mock disputed 3/3; incomplete 2/3, передача заблокирована в API и UI. Нет JS exceptions/CSP violations. Временные процессы закрыты. Локальные артефакты: `/private/tmp/nanimai-root-retest-media/result.json`, `ranking-comparison.png`, `protected-mock-partial.png`; интегратор просмотрел screenshot сравнения. Это проверка фактических UI/API-действий, не только DOM fixture. Точный шрифт исходных SVG не установлен, используется близкий системный sans.
+
+Docker **linux/arm64**, OrbStack на этом Mac, PRIVACY_MODEL_SOURCE=local: build PASS, 8 core +28 интеграционных тестов и оба privacy smoke PASS. Image manifest list `sha256:d1ff7b85b5ceb4ced4c570cf643aa7493f5098a577d47964076b9c356983e391`. Под UID10001 с --network none: 23 store/service/HTTP tests PASS, включая три NER/mock-сценария. Реальный published HTTP на 127.0.0.1:8766: success3/3 → confirm → mark rev3 → **docker restart** → rev3/reviewed_for_handoff сохранились → delete PASS. Проверка состава: certum_core отсутствует, /app/.env отсутствует, UI присутствует, каталог runs700. Тестовые контейнер/том не являются итоговой поставкой.
+
+Новый amd64 build и независимый физический компьютер на этот момент ещё не подтверждены. Веса в локальной сборке — проверенные публичные архивы; прежний CDN timeout не скрыт. [Точные команды и матрица критериев](28-local-app-runbook.md). Реальные CV/API-ключ не читались/не отправлялись, новых платных прогонов нет. Новая wire-схема с настоящим OpenAI, полнота privacy на реальных CV и семантическое качество модели не подтверждены. E9b принят отдельным этапом с явными незакрытыми проверками runner, не добавлен к приведённому числу тестов задним числом.
+
+Дополнение 00:11 МСК: Docker linux/amd64 build PASS на эмуляции OrbStack на том же Mac: 8 core +28 интеграционных тестов, privacy smoke и SDK mock PASS. Manifest list `sha256:eb23d3c85f1b70cfdc3a00ebce7d1fcbca71cffcc9f50dcfd2c0e0d9edd4d2a3`. Это подтверждает сборку архитектуры, не второй компьютер. E9b 91c2554 принят: 28 evaluator tests PASS. На review дополнительно переданы Егору actual mock mode alias, quality_measured при отсутствии пригодных live-отчётов, отклонение duplicate IDs/invalid statuses/rank до расчёта метрик.
