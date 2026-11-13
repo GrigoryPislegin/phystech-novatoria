@@ -1,11 +1,13 @@
 import base64
+import copy
 import os
 import tempfile
 import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from prototype.local_service import LocalService
+from prototype.local_service import LocalService, SyntheticSDKModel
+from prototype.demo import demo_inputs
 from prototype.run_store import StoreError
 
 
@@ -110,6 +112,46 @@ class LocalServiceTests(unittest.TestCase):
                 self.assertEqual(report['mode'], 'synthetic_sdk_mock_NOT_model_output')
                 self.assertEqual(completed['state'], 'partial' if scenario == 'incomplete' else 'complete')
                 self.assertNotIn('ivan.synthetic@example.com', str(report))
+
+    @unittest.skipUnless((Path(os.environ.get('PRIVACY_MODELS_DIR', 'data/private/privacy-models')) /
+                          'slovnet_ner_news_v1.tar').is_file(), 'Local NER weights unavailable')
+    def test_uploaded_synthetic_files_reach_protected_pipeline_and_review_without_network(self):
+        # Exercise the upload branch with real parsing/NER/SDK and a local
+        # transport injected ONLY by this test. This is not evidence of live API.
+        self.service.allow_live = True
+        resume, jobs = demo_inputs()
+        contact = 'upload.synthetic@example.com'
+        file = lambda name,text:{'name':name,'content_base64':base64.b64encode(text.encode()).decode()}
+        uploaded = self.service.inspect({'resume':file('synthetic-candidate.txt', 'Email: '+contact+'\n'+resume),
+            'jobs':[file('synthetic-vacancy-'+str(i)+'.md',text) for i,(_,text) in enumerate(jobs)]})
+        outgoing = []
+        class CapturingSDK(SyntheticSDKModel):
+            async def ask(self, schema, task, payload):
+                outgoing.append(copy.deepcopy(payload))
+                return await super().ask(schema, task, payload)
+        with patch('prototype.local_service.Model', side_effect=lambda model,p,b:CapturingSDK(p,'success')) as factory, \
+             patch('socket.socket.connect', side_effect=AssertionError('network forbidden in this test')):
+            run = self.service.create({'mode':'protected-live','input_id':uploaded['input_id'],
+                                       'budget':1,'idempotency_key':'uploaded-synthetic'})
+            self.assertEqual(self.service.wait(run['run_id'],90)['state'], 'complete')
+            self.assertEqual(factory.call_count, 1)
+            self.assertEqual(len(outgoing), 7)
+            self.assertNotIn(contact, str(outgoing))
+            self.assertNotIn('synthetic-candidate.txt', str(outgoing))
+            self.assertFalse(self.service._inputs)
+            report = self.service.store.report(run['run_id'])
+            self.assertTrue(all(j['job_id'] not in {'job-001','job-002','job-003'} for j in report['ranking']['jobs']))
+            self.assertNotIn(contact, str(report))
+            jid = report['ranking']['jobs'][0]['job_id']
+            for action in ('confirm_requirements','mark_for_handoff'):
+                changed = self.service.store.review(run['run_id'], {'expected_revision':report['revision'],
+                    'job_id':jid,'action':action,'item_id':None,'idempotency_key':action})
+                report = changed['report']
+            self.assertEqual(report['handoff'][0]['state'], 'reviewed_for_handoff')
+            self.assertEqual(len(outgoing), 7, 'HR decisions must not call the model')
+            for path in self.service.root.rglob('*'):
+                if path.is_file():
+                    self.assertNotIn(contact.encode(), path.read_bytes())
 
 
 if __name__ == '__main__':
