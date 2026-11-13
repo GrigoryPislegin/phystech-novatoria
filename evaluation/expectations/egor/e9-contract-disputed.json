@@ -1,0 +1,993 @@
+{
+ "schema_version": "egor-e9-contract-0.1",
+ "note": "Неоднозначная цитата, маркер обязательности не того требования, конфликт формата, зарплата на сверку, придуманное число в профиле.",
+ "report": {
+  "schema_version": "0.1",
+  "facts": {
+   "items": [
+    {
+     "id": "f1",
+     "text": "Python",
+     "quote": "Python"
+    },
+    {
+     "id": "f2",
+     "text": "SQL 2 года",
+     "quote": "SQL 2 года."
+    },
+    {
+     "id": "f3",
+     "text": "Удалённо",
+     "quote": "Рассматриваю только удалённую работу."
+    },
+    {
+     "id": "f4",
+     "text": "Доход",
+     "quote": "Ожидания по доходу: от 200 000 рублей в месяц."
+    }
+   ]
+  },
+  "ranking": {
+   "jobs": [
+    {
+     "job_id": "job-a",
+     "requirements": {
+      "items": [
+       {
+        "id": "r1",
+        "text": "Python",
+        "quote": "Обязателен опыт Python.",
+        "mandatory_quote": "Обязателен опыт Python."
+       },
+       {
+        "id": "r2",
+        "text": "SQL",
+        "quote": "SQL желателен.",
+        "mandatory_quote": null
+       }
+      ]
+     },
+     "evidence_check": {
+      "cv_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+      "vacancy_id": "job-a",
+      "vacancy_sha256": "e9dbb779b9babdcd7f94bfe12acec3beef74bd1a96ff8152bda81eab2fc9b0f9",
+      "rows": [
+       {
+        "requirement_id": "r1",
+        "status": "full",
+        "state": "needs_review",
+        "meaning": "model_claim_unverified",
+        "reasons": [
+         {
+          "code": "ambiguous_location",
+          "severity": "review",
+          "message": "Цитата встречается в разных местах; нужна позиция.",
+          "fact_id": "f1",
+          "context": "Работал с: → Python | Не работал с: → Python"
+         }
+        ],
+        "evidence": []
+       },
+       {
+        "requirement_id": "r2",
+        "status": "full",
+        "state": "structure_ok",
+        "meaning": "model_claim_unverified",
+        "reasons": [],
+        "evidence": [
+         {
+          "source_id": "cv",
+          "source_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+          "start": 45,
+          "end": 56,
+          "quote": "SQL 2 года.",
+          "sentence": "SQL 2 года",
+          "heading": null
+         }
+        ]
+       }
+      ],
+      "mandatory": [
+       {
+        "requirement_id": "r1",
+        "state": "structure_ok",
+        "reasons": [],
+        "context": "Обязателен опыт Python"
+       },
+       {
+        "requirement_id": "r2",
+        "state": "not_mandatory",
+        "reasons": [],
+        "context": null
+       }
+      ],
+      "needs_review": true,
+      "has_invalid": false
+     },
+     "requirements_draft": {
+      "vacancy_id": "job-a",
+      "state": "unconfirmed",
+      "source_sha256": "e9dbb779b9babdcd7f94bfe12acec3beef74bd1a96ff8152bda81eab2fc9b0f9",
+      "requirements_sha256": "7d70379fb2044272748b6d2d61d4b8d3eff280fa2cc844cbc7b23f60d0cf5e84",
+      "requirements": [
+       {
+        "id": "r1",
+        "text": "Python",
+        "quote": "Обязателен опыт Python.",
+        "mandatory_quote": "Обязателен опыт Python."
+       },
+       {
+        "id": "r2",
+        "text": "SQL",
+        "quote": "SQL желателен.",
+        "mandatory_quote": null
+       }
+      ],
+      "uncovered": [
+       "Работа в офисе",
+       "Зарплата: до 250 000 рублей в месяц"
+      ]
+     },
+     "requirements_review": {
+      "vacancy_id": "job-a",
+      "state": "unconfirmed",
+      "reasons": [
+       {
+        "code": "not_confirmed",
+        "message": "Список не подтверждён рекрутером.",
+        "requirement_id": null
+       }
+      ]
+     },
+     "evaluation": {
+      "rows": [
+       {
+        "requirement_id": "r1",
+        "status": "full",
+        "fact_ids": [
+         "f1"
+        ],
+        "comment": "Python указан.",
+        "question": null
+       },
+       {
+        "requirement_id": "r2",
+        "status": "full",
+        "fact_ids": [
+         "f2"
+        ],
+        "comment": "SQL указан.",
+        "question": null
+       }
+      ]
+     },
+     "score": {
+      "lower": 25.0,
+      "upper": 100.0,
+      "coverage": 25.0,
+      "mandatory": "clarify",
+      "disputed_ids": [
+       "r1"
+      ],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "safe_source_sha256": "e9dbb779b9babdcd7f94bfe12acec3beef74bd1a96ff8152bda81eab2fc9b0f9",
+     "conditions": {
+      "items": [
+       {
+        "kind": "work_mode",
+        "state": "conflict",
+        "check": "needs_review",
+        "findings": [
+         {
+          "where": "conditions[0]",
+          "code": "condition_conflict",
+          "severity": "review",
+          "message": "Показать HR. Конфликт условий не является автоматическим отказом.",
+          "context": null
+         }
+        ],
+        "cv_span": {
+         "source_id": "cv",
+         "source_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+         "start": 57,
+         "end": 94,
+         "quote": "Рассматриваю только удалённую работу.",
+         "sentence": "Рассматриваю только удалённую работу",
+         "heading": null
+        },
+        "vacancy_span": {
+         "source_id": "job-a",
+         "source_sha256": "e9dbb779b9babdcd7f94bfe12acec3beef74bd1a96ff8152bda81eab2fc9b0f9",
+         "start": 39,
+         "end": 54,
+         "quote": "Работа в офисе.",
+         "sentence": "Работа в офисе",
+         "heading": null
+        }
+       },
+       {
+        "kind": "salary",
+        "state": "compatible",
+        "check": "needs_review",
+        "findings": [
+         {
+          "where": "conditions[1]",
+          "code": "salary_terms_unverified",
+          "severity": "review",
+          "message": "Валюта, период и налог автоматически не сравниваются.",
+          "context": null
+         }
+        ],
+        "cv_span": {
+         "source_id": "cv",
+         "source_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+         "start": 115,
+         "end": 140,
+         "quote": "от 200 000 рублей в месяц",
+         "sentence": "Ожидания по доходу: от 200 000 рублей в месяц",
+         "heading": null
+        },
+        "vacancy_span": {
+         "source_id": "job-a",
+         "source_sha256": "e9dbb779b9babdcd7f94bfe12acec3beef74bd1a96ff8152bda81eab2fc9b0f9",
+         "start": 65,
+         "end": 90,
+         "quote": "до 250 000 рублей в месяц",
+         "sentence": "Зарплата: до 250 000 рублей в месяц",
+         "heading": null
+        }
+       }
+      ],
+      "findings": [],
+      "conflicts": [
+       "work_mode"
+      ],
+      "needs_review": true,
+      "has_invalid": false
+     },
+     "rank": 1
+    },
+    {
+     "job_id": "job-b",
+     "requirements": {
+      "items": [
+       {
+        "id": "r1",
+        "text": "Python",
+        "quote": "Python",
+        "mandatory_quote": "Обязательно: Go. Python желателен."
+       }
+      ]
+     },
+     "evidence_check": {
+      "cv_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+      "vacancy_id": "job-b",
+      "vacancy_sha256": "d298f2487f9b2e5b7f5b5e1fb7c15b4a815fb79cc0aa8d43e9ad10b2e6361653",
+      "rows": [
+       {
+        "requirement_id": "r1",
+        "status": "fail",
+        "state": "needs_review",
+        "meaning": "model_claim_unverified",
+        "reasons": [
+         {
+          "code": "evidence_not_linked",
+          "severity": "review",
+          "message": "В доказательстве нет ни одного термина требования.",
+          "fact_id": "f2",
+          "context": "SQL 2 года"
+         }
+        ],
+        "evidence": [
+         {
+          "source_id": "cv",
+          "source_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+          "start": 45,
+          "end": 56,
+          "quote": "SQL 2 года.",
+          "sentence": "SQL 2 года",
+          "heading": null
+         }
+        ]
+       }
+      ],
+      "mandatory": [
+       {
+        "requirement_id": "r1",
+        "state": "needs_review",
+        "reasons": [
+         {
+          "code": "mandatory_spans_segments",
+          "severity": "review",
+          "message": "Цитата обязательности захватывает несколько строк или предложений.",
+          "fact_id": null,
+          "context": "Обязательно: Go / Python желателен"
+         }
+        ],
+        "context": "Обязательно: Go / Python желателен"
+       }
+      ],
+      "needs_review": true,
+      "has_invalid": false
+     },
+     "requirements_draft": {
+      "vacancy_id": "job-b",
+      "state": "unconfirmed",
+      "source_sha256": "d298f2487f9b2e5b7f5b5e1fb7c15b4a815fb79cc0aa8d43e9ad10b2e6361653",
+      "requirements_sha256": "5df968886c044e9411942d39a984bc35fb90364dc0eaa07cc218f5d81d3a307c",
+      "requirements": [
+       {
+        "id": "r1",
+        "text": "Python",
+        "quote": "Python",
+        "mandatory_quote": "Обязательно: Go. Python желателен."
+       }
+      ],
+      "uncovered": []
+     },
+     "requirements_review": {
+      "vacancy_id": "job-b",
+      "state": "unconfirmed",
+      "reasons": [
+       {
+        "code": "not_confirmed",
+        "message": "Список не подтверждён рекрутером.",
+        "requirement_id": null
+       }
+      ]
+     },
+     "evaluation": {
+      "rows": [
+       {
+        "requirement_id": "r1",
+        "status": "fail",
+        "fact_ids": [
+         "f2"
+        ],
+        "comment": "Нет Python.",
+        "question": "Есть ли опыт Python?"
+       }
+      ]
+     },
+     "score": {
+      "lower": 0.0,
+      "upper": 100.0,
+      "coverage": 0.0,
+      "mandatory": "not_set",
+      "disputed_ids": [
+       "r1"
+      ],
+      "excluded_mandatory_ids": [
+       "r1"
+      ],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "safe_source_sha256": "d298f2487f9b2e5b7f5b5e1fb7c15b4a815fb79cc0aa8d43e9ad10b2e6361653",
+     "rank": 2
+    }
+   ],
+   "recommendation": "clarify",
+   "complete": true,
+   "requires_human_review": true
+  },
+  "errors": [],
+  "unprocessed_job_ids": [],
+  "unprocessed": [],
+  "safe_resume_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+  "requirements_review": {
+   "processing_complete": true,
+   "requirements_confirmed": false,
+   "final_allowed": false,
+   "unconfirmed": [
+    "job-a",
+    "job-b"
+   ],
+   "stale": [],
+   "invalid": []
+  },
+  "verification": {
+   "requirements": "not_reviewed",
+   "evidence": "quotes_checked_semantics_unverified",
+   "final_allowed": false
+  },
+  "presentation": {
+   "version": "0.1",
+   "jobs": [
+    {
+     "job_id": "job-a",
+     "rank": 1,
+     "score": {
+      "lower": 100.0,
+      "upper": 100.0,
+      "coverage": 100.0,
+      "mandatory": "confirmed",
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": false,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "rows": [
+      {
+       "requirement_id": "r1",
+       "label": "Python",
+       "requirement_quote": "Обязателен опыт Python.",
+       "mandatory_quote": "Обязателен опыт Python.",
+       "mandatory_verification": "not_reviewed",
+       "mandatory_check": {
+        "requirement_id": "r1",
+        "state": "structure_ok",
+        "reasons": [],
+        "context": "Обязателен опыт Python"
+       },
+       "mandatory_applied_to_score": true,
+       "status": "full",
+       "status_verification": "model_proposed",
+       "evidence_check": {
+        "requirement_id": "r1",
+        "status": "full",
+        "state": "needs_review",
+        "meaning": "model_claim_unverified",
+        "reasons": [
+         {
+          "code": "ambiguous_location",
+          "severity": "review",
+          "message": "Цитата встречается в разных местах; нужна позиция.",
+          "fact_id": "f1",
+          "context": "Работал с: → Python | Не работал с: → Python"
+         }
+        ],
+        "evidence": []
+       },
+       "resume_quotes": [
+        "Python"
+       ],
+       "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+       "question": null
+      },
+      {
+       "requirement_id": "r2",
+       "label": "SQL",
+       "requirement_quote": "SQL желателен.",
+       "mandatory_quote": null,
+       "mandatory_verification": "not_reviewed",
+       "mandatory_check": {
+        "requirement_id": "r2",
+        "state": "not_mandatory",
+        "reasons": [],
+        "context": null
+       },
+       "mandatory_applied_to_score": false,
+       "status": "full",
+       "status_verification": "model_proposed",
+       "evidence_check": {
+        "requirement_id": "r2",
+        "status": "full",
+        "state": "structure_ok",
+        "meaning": "model_claim_unverified",
+        "reasons": [],
+        "evidence": [
+         {
+          "source_id": "cv",
+          "source_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+          "start": 45,
+          "end": 56,
+          "quote": "SQL 2 года.",
+          "sentence": "SQL 2 года",
+          "heading": null
+         }
+        ]
+       },
+       "resume_quotes": [
+        "SQL 2 года."
+       ],
+       "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+       "question": null
+      }
+     ],
+     "score_review": {
+      "excluded_mandatory_ids": [],
+      "rule": "structurally_unbound_mandatory_uses_regular_weight",
+      "version": "mandatory-structure-0.1"
+     },
+     "requirements_draft": {
+      "vacancy_id": "job-a",
+      "state": "unconfirmed",
+      "source_sha256": "e9dbb779b9babdcd7f94bfe12acec3beef74bd1a96ff8152bda81eab2fc9b0f9",
+      "requirements_sha256": "7d70379fb2044272748b6d2d61d4b8d3eff280fa2cc844cbc7b23f60d0cf5e84",
+      "requirements": [
+       {
+        "id": "r1",
+        "text": "Python",
+        "quote": "Обязателен опыт Python.",
+        "mandatory_quote": "Обязателен опыт Python."
+       },
+       {
+        "id": "r2",
+        "text": "SQL",
+        "quote": "SQL желателен.",
+        "mandatory_quote": null
+       }
+      ],
+      "uncovered": [
+       "Работа в офисе",
+       "Зарплата: до 250 000 рублей в месяц"
+      ]
+     },
+     "requirements_review": {
+      "vacancy_id": "job-a",
+      "state": "unconfirmed",
+      "reasons": [
+       {
+        "code": "not_confirmed",
+        "message": "Список не подтверждён рекрутером.",
+        "requirement_id": null
+       }
+      ]
+     },
+     "manager_brief": {
+      "state": "draft_requires_review",
+      "final_allowed": false,
+      "processing_complete": true,
+      "grounds": [
+       {
+        "requirement_id": "r1",
+        "label": "Python",
+        "requirement_quote": "Обязателен опыт Python.",
+        "mandatory_quote": "Обязателен опыт Python.",
+        "mandatory_verification": "not_reviewed",
+        "mandatory_check": {
+         "requirement_id": "r1",
+         "state": "structure_ok",
+         "reasons": [],
+         "context": "Обязателен опыт Python"
+        },
+        "mandatory_applied_to_score": true,
+        "status": "full",
+        "status_verification": "model_proposed",
+        "evidence_check": {
+         "requirement_id": "r1",
+         "status": "full",
+         "state": "needs_review",
+         "meaning": "model_claim_unverified",
+         "reasons": [
+          {
+           "code": "ambiguous_location",
+           "severity": "review",
+           "message": "Цитата встречается в разных местах; нужна позиция.",
+           "fact_id": "f1",
+           "context": "Работал с: → Python | Не работал с: → Python"
+          }
+         ],
+         "evidence": []
+        },
+        "resume_quotes": [
+         "Python"
+        ],
+        "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+        "question": null
+       },
+       {
+        "requirement_id": "r2",
+        "label": "SQL",
+        "requirement_quote": "SQL желателен.",
+        "mandatory_quote": null,
+        "mandatory_verification": "not_reviewed",
+        "mandatory_check": {
+         "requirement_id": "r2",
+         "state": "not_mandatory",
+         "reasons": [],
+         "context": null
+        },
+        "mandatory_applied_to_score": false,
+        "status": "full",
+        "status_verification": "model_proposed",
+        "evidence_check": {
+         "requirement_id": "r2",
+         "status": "full",
+         "state": "structure_ok",
+         "meaning": "model_claim_unverified",
+         "reasons": [],
+         "evidence": [
+          {
+           "source_id": "cv",
+           "source_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+           "start": 45,
+           "end": 56,
+           "quote": "SQL 2 года.",
+           "sentence": "SQL 2 года",
+           "heading": null
+          }
+         ]
+        },
+        "resume_quotes": [
+         "SQL 2 года."
+        ],
+        "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+        "question": null
+       }
+      ],
+      "risks": [],
+      "questions": []
+     }
+    },
+    {
+     "job_id": "job-b",
+     "rank": 2,
+     "score": {
+      "lower": 0.0,
+      "upper": 0.0,
+      "coverage": 100.0,
+      "mandatory": "not_set",
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": false,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "rows": [
+      {
+       "requirement_id": "r1",
+       "label": "Python",
+       "requirement_quote": "Python",
+       "mandatory_quote": "Обязательно: Go. Python желателен.",
+       "mandatory_verification": "not_reviewed",
+       "mandatory_check": {
+        "requirement_id": "r1",
+        "state": "needs_review",
+        "reasons": [
+         {
+          "code": "mandatory_spans_segments",
+          "severity": "review",
+          "message": "Цитата обязательности захватывает несколько строк или предложений.",
+          "fact_id": null,
+          "context": "Обязательно: Go / Python желателен"
+         }
+        ],
+        "context": "Обязательно: Go / Python желателен"
+       },
+       "mandatory_applied_to_score": false,
+       "status": "fail",
+       "status_verification": "model_proposed",
+       "evidence_check": {
+        "requirement_id": "r1",
+        "status": "fail",
+        "state": "needs_review",
+        "meaning": "model_claim_unverified",
+        "reasons": [
+         {
+          "code": "evidence_not_linked",
+          "severity": "review",
+          "message": "В доказательстве нет ни одного термина требования.",
+          "fact_id": "f2",
+          "context": "SQL 2 года"
+         }
+        ],
+        "evidence": [
+         {
+          "source_id": "cv",
+          "source_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+          "start": 45,
+          "end": 56,
+          "quote": "SQL 2 года.",
+          "sentence": "SQL 2 года",
+          "heading": null
+         }
+        ]
+       },
+       "resume_quotes": [
+        "SQL 2 года."
+       ],
+       "explanation": "Модель предложила несоответствие; проверьте противоречие до решения о кандидате.",
+       "question": "Уточните опыт по требованию «Python»: какие задачи выполняли, когда и с каким результатом?"
+      }
+     ],
+     "score_review": {
+      "excluded_mandatory_ids": [
+       "r1"
+      ],
+      "rule": "structurally_unbound_mandatory_uses_regular_weight",
+      "version": "mandatory-structure-0.1"
+     },
+     "requirements_draft": {
+      "vacancy_id": "job-b",
+      "state": "unconfirmed",
+      "source_sha256": "d298f2487f9b2e5b7f5b5e1fb7c15b4a815fb79cc0aa8d43e9ad10b2e6361653",
+      "requirements_sha256": "5df968886c044e9411942d39a984bc35fb90364dc0eaa07cc218f5d81d3a307c",
+      "requirements": [
+       {
+        "id": "r1",
+        "text": "Python",
+        "quote": "Python",
+        "mandatory_quote": "Обязательно: Go. Python желателен."
+       }
+      ],
+      "uncovered": []
+     },
+     "requirements_review": {
+      "vacancy_id": "job-b",
+      "state": "unconfirmed",
+      "reasons": [
+       {
+        "code": "not_confirmed",
+        "message": "Список не подтверждён рекрутером.",
+        "requirement_id": null
+       }
+      ]
+     },
+     "manager_brief": {
+      "state": "draft_requires_review",
+      "final_allowed": false,
+      "processing_complete": true,
+      "grounds": [],
+      "risks": [
+       {
+        "requirement_id": "r1",
+        "label": "Python",
+        "requirement_quote": "Python",
+        "mandatory_quote": "Обязательно: Go. Python желателен.",
+        "mandatory_verification": "not_reviewed",
+        "mandatory_check": {
+         "requirement_id": "r1",
+         "state": "needs_review",
+         "reasons": [
+          {
+           "code": "mandatory_spans_segments",
+           "severity": "review",
+           "message": "Цитата обязательности захватывает несколько строк или предложений.",
+           "fact_id": null,
+           "context": "Обязательно: Go / Python желателен"
+          }
+         ],
+         "context": "Обязательно: Go / Python желателен"
+        },
+        "mandatory_applied_to_score": false,
+        "status": "fail",
+        "status_verification": "model_proposed",
+        "evidence_check": {
+         "requirement_id": "r1",
+         "status": "fail",
+         "state": "needs_review",
+         "meaning": "model_claim_unverified",
+         "reasons": [
+          {
+           "code": "evidence_not_linked",
+           "severity": "review",
+           "message": "В доказательстве нет ни одного термина требования.",
+           "fact_id": "f2",
+           "context": "SQL 2 года"
+          }
+         ],
+         "evidence": [
+          {
+           "source_id": "cv",
+           "source_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+           "start": 45,
+           "end": 56,
+           "quote": "SQL 2 года.",
+           "sentence": "SQL 2 года",
+           "heading": null
+          }
+         ]
+        },
+        "resume_quotes": [
+         "SQL 2 года."
+        ],
+        "explanation": "Модель предложила несоответствие; проверьте противоречие до решения о кандидате.",
+        "question": "Уточните опыт по требованию «Python»: какие задачи выполняли, когда и с каким результатом?"
+       }
+      ],
+      "questions": [
+       "Уточните опыт по требованию «Python»: какие задачи выполняли, когда и с каким результатом?"
+      ]
+     }
+    }
+   ],
+   "final_allowed": false
+  },
+  "profile": {
+   "schema_version": "candidate-profile-0.1",
+   "state": "invalid",
+   "meaning": "model_claim_unverified",
+   "findings": [
+    {
+     "where": "summary[0]",
+     "code": "number_not_in_source",
+     "severity": "invalid",
+     "message": "В утверждении есть число, которого нет в цитатах: 5",
+     "context": null
+    }
+   ],
+   "spans": {
+    "summary[0]": [
+     {
+      "source_id": "cv",
+      "source_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+      "start": 45,
+      "end": 56,
+      "quote": "SQL 2 года.",
+      "sentence": "SQL 2 года",
+      "heading": null
+     }
+    ],
+    "stack[0]": [
+     {
+      "source_id": "cv",
+      "source_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
+      "start": 45,
+      "end": 48,
+      "quote": "SQL",
+      "sentence": "SQL 2 года",
+      "heading": null
+     }
+    ]
+   },
+   "display": {
+    "summary[0]": "SQL 2 года.",
+    "stack[0]": "SQL"
+   }
+  }
+ },
+ "derived": {
+  "comparisons": [
+   {
+    "policy_version": "draft-2026-11-13-v2",
+    "job_a": "job-a",
+    "job_b": "job-b",
+    "outcome": "a_higher",
+    "reason": "lower_bound",
+    "scores": {
+     "job-a": {
+      "rank": 1,
+      "lower": 25.0,
+      "upper": 100.0,
+      "coverage": 25.0,
+      "mandatory": "clarify"
+     },
+     "job-b": {
+      "rank": 2,
+      "lower": 0.0,
+      "upper": 100.0,
+      "coverage": 0.0,
+      "mandatory": "not_set"
+     }
+    },
+    "deciding": [
+     {
+      "job_id": "job-a",
+      "requirement_id": "r2",
+      "requirement_quote": "SQL желателен.",
+      "status": "full",
+      "counterpart_status": null,
+      "mandatory_applied": false,
+      "disputed": false,
+      "cv_quotes": [
+       "SQL 2 года."
+      ],
+      "effect": 25.0
+     }
+    ],
+    "swings": [
+     {
+      "row": {
+       "job_id": "job-a",
+       "requirement_id": "r1",
+       "requirement_quote": "Обязателен опыт Python.",
+       "status": "full",
+       "counterpart_status": null,
+       "mandatory_applied": true,
+       "disputed": true,
+       "cv_quotes": [
+        "Python"
+       ],
+       "effect": 0.0
+      },
+      "assumed_status": "fail",
+      "result": "reversed"
+     },
+     {
+      "row": {
+       "job_id": "job-b",
+       "requirement_id": "r1",
+       "requirement_quote": "Python",
+       "status": "fail",
+       "counterpart_status": null,
+       "mandatory_applied": false,
+       "disputed": true,
+       "cv_quotes": [
+        "SQL 2 года."
+       ],
+       "effect": 100.0
+      },
+      "assumed_status": "full",
+      "result": "reversed"
+     }
+    ],
+    "caveats": [
+     "different_requirement_lists"
+    ],
+    "summary": "job-a выше job-b: нижняя граница 25.0 против 0.0; обязательные: job-a — clarify, job-b — not_set. Наибольший вклад: job-a «SQL желателен.» — full. Вывод может измениться после уточнения: job-a «Обязателен опыт Python.»; job-b «Python». Списки требований или их веса разные: L считается внутри своей вакансии."
+   }
+  ],
+  "queue": [
+   {
+    "job_id": "job-a",
+    "requirement_id": "r1",
+    "condition_kind": null,
+    "reason_code": "ambiguous_location",
+    "priority": 1,
+    "action": "read_context"
+   },
+   {
+    "job_id": "job-b",
+    "requirement_id": "r1",
+    "condition_kind": null,
+    "reason_code": "disputed_negative",
+    "priority": 2,
+    "action": "read_context"
+   },
+   {
+    "job_id": "job-b",
+    "requirement_id": "r1",
+    "condition_kind": null,
+    "reason_code": "mandatory_unbound",
+    "priority": 2,
+    "action": "check_list"
+   },
+   {
+    "job_id": "job-a",
+    "requirement_id": null,
+    "condition_kind": "work_mode",
+    "reason_code": "condition_conflict",
+    "priority": 3,
+    "action": "decide_condition"
+   },
+   {
+    "job_id": null,
+    "requirement_id": null,
+    "condition_kind": null,
+    "reason_code": "profile_review",
+    "priority": 4,
+    "action": "read_context"
+   },
+   {
+    "job_id": "job-a",
+    "requirement_id": null,
+    "condition_kind": null,
+    "reason_code": "requirements_unconfirmed",
+    "priority": 4,
+    "action": "check_list"
+   },
+   {
+    "job_id": "job-a",
+    "requirement_id": null,
+    "condition_kind": null,
+    "reason_code": "uncovered_text",
+    "priority": 4,
+    "action": "check_list"
+   },
+   {
+    "job_id": "job-a",
+    "requirement_id": null,
+    "condition_kind": "salary",
+    "reason_code": "condition_review",
+    "priority": 4,
+    "action": "read_context"
+   },
+   {
+    "job_id": "job-b",
+    "requirement_id": null,
+    "condition_kind": null,
+    "reason_code": "requirements_unconfirmed",
+    "priority": 4,
+    "action": "check_list"
+   }
+  ],
+  "handoff": {
+   "job-a": "blocked",
+   "job-b": "draft"
+  }
+ }
+}
