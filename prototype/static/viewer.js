@@ -2,7 +2,7 @@
   'use strict';
 
   const {
-    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeRun, scoreRange,
+    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeRun, describeFit, scoreRange,
     assessments, mandatoryStates, evidenceLabel, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
   } = window.NanimaiReport;
   const { renderManagerReport } = window.NanimaiManagerReport;
@@ -140,6 +140,14 @@
     scoreReview.hidden = job.excluded.length === 0;
     scoreReview.textContent = 'Для ' + job.excluded.length +
       ' требований привязка обязательности требует проверки. Их учли с обычным весом 1.';
+    const fit = describeFit(report, job);
+    setText('job-fit', 'Предварительный вывод · ' + fit.label);
+    const conditions = byId('job-conditions');
+    const conflicts = job.conditions.items.filter(item => item.state === 'conflict');
+    conditions.hidden = !conflicts.length;
+    conditions.textContent = conflicts.length
+      ? 'Возможный конфликт для HR · ' + conflicts.map(item => item.label).join(', ') + '. Цитаты в отчёте для менеджера.'
+      : '';
     renderRows();
   }
 

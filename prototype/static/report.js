@@ -40,7 +40,20 @@
     invalid: 'Подтверждение состава недействительно',
     unconfirmed: 'Состав не подтверждён'
   };
+  const checkStates = ['structure_ok', 'needs_review', 'invalid'];
+  const conditionLabels = {
+    work_mode: 'Формат работы', location: 'Место работы', schedule: 'График',
+    relocation: 'Переезд', salary: 'Зарплата'
+  };
+  const profilePath = /^(?:summary\[[0-2]\]|stack\[(?:[0-9]|[12][0-9])\]|last_position\.(?:role|domain|period)|achievements\[[0-4]\]\.(?:action|result))$/;
   const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 4 });
+  const verdictLabels = {
+    mismatch: 'Есть несоответствие требованиям',
+    partial: 'Соответствие частичное',
+    unknown: 'Недостаточно сведений о соответствии',
+    review: 'Нужна проверка',
+    match: 'По оценённым требованиям соответствует'
+  };
 
   function scoreRange(score) {
     const low = numberFormat.format(score.lower);
@@ -64,7 +77,7 @@
   }
 
   function mandatoryNeedsReview(row) {
-    return row.mandatoryExcluded || ['needs_review', 'invalid'].includes(row.mandatoryCheck?.state);
+    return row.mandatoryExcluded || (Boolean(row.mandatoryQuote) && row.mandatoryCheck?.state !== 'structure_ok');
   }
 
   function mandatoryLabel(row) {
@@ -76,6 +89,44 @@
 
   function evidenceLabel(row) {
     return evidenceLabels[row.evidence?.state] || 'Доказательство требует проверки';
+  }
+
+  function evidenceNeedsReview(row) {
+    if (row.status === 'unknown') {
+      return ['needs_review', 'invalid'].includes(row.evidence?.state);
+    }
+    return row.evidence?.state !== 'structure_ok';
+  }
+
+  function describeFit(report, job) {
+    const rows = job.rows.map((row, index) => ({ row, number: index + 1 }));
+    const groups = { mismatch: [], partial: [], unknown: [], review: [] };
+    const grounds = [];
+    for (const item of rows) {
+      const { row } = item;
+      const evidenceChecked = row.evidence?.state === 'structure_ok';
+      if (row.status === 'full' && evidenceChecked) grounds.push(item);
+
+      if (row.status === 'fail' && evidenceChecked) groups.mismatch.push(item);
+      else if (row.status === 'partial') groups.partial.push(item);
+      else if (row.status === 'unknown') groups.unknown.push(item);
+      else if (mandatoryNeedsReview(row) || evidenceNeedsReview(row)) groups.review.push(item);
+    }
+
+    const gap = ['mismatch', 'partial', 'unknown', 'review'].find(state => groups[state].length);
+    const listConfirmed = job.requirementsReview === 'confirmed';
+    const state = gap ?? (report.complete && listConfirmed ? 'match' : 'review');
+    const notes = [];
+    if (state === 'review' && !report.complete) notes.push('Обработана часть вакансий.');
+    if (state === 'review' && !gap && grounds.length === rows.length) {
+      notes.push('По всем оценённым требованиям есть признаки соответствия.');
+    }
+    if (!gap && !listConfirmed) notes.push(requirementReviewLabel(job.requirementsReview) + '.');
+
+    const risks = Object.values(groups).flat();
+    risks.sort((left, right) => Number(Boolean(right.row.mandatoryQuote)) - Number(Boolean(left.row.mandatoryQuote)));
+    const priority = groups[gap]?.find(({ row }) => row.mandatoryQuote) ?? groups[gap]?.[0];
+    return { rows, grounds, risks, label: verdictLabels[state], notes, priority };
   }
 
   function requireShape(condition) {
@@ -101,6 +152,94 @@
   function versionLabel(value) {
     return typeof value === 'string' && /^[a-z0-9][a-z0-9._:-]{0,127}$/i.test(value)
       ? value : null;
+  }
+
+  function sourceSpan(span, id, hash) {
+    if (!hash || !isRecord(span) || span.source_id !== id ||
+        digest(span.source_sha256)?.toLowerCase() !== hash.toLowerCase() ||
+        !isText(span.quote) || !Number.isInteger(span.start) || !Number.isInteger(span.end) ||
+        span.start < 0 || span.end > 60_000 || span.end - span.start !== Array.from(span.quote).length) {
+      return null;
+    }
+    // Evidence sentences omit list markers and terminal punctuation.
+    const core = span.quote.trim().replace(/^(?:[-*•–]|\d+[.)])\s+/, '').replace(/[.!?;]+$/, '').trim();
+    const sentence = core && isText(span.sentence) && span.sentence.includes(core) &&
+      span.sentence !== core ? span.sentence : span.quote;
+    const heading = isText(span.heading) ? span.heading : null;
+    return { quote: span.quote, sentence, heading };
+  }
+
+  function profileFrom(profile, factQuotes, resumeHash) {
+    if (profile == null) return { state: 'missing' };
+    if (!isRecord(profile) || profile.schema_version !== 'candidate-profile-0.1' ||
+        !checkStates.includes(profile.state) || profile.state === 'invalid' ||
+        !isRecord(profile.spans) || !isRecord(profile.display) || !resumeHash) {
+      return { state: 'invalid' };
+    }
+    const claims = new Map();
+    let state = profile.state;
+    for (const [path, spans] of Object.entries(profile.spans)) {
+      if (!profilePath.test(path)) continue;
+      if (!Array.isArray(spans) || !spans.length || spans.length > 5) {
+        state = 'needs_review';
+        continue;
+      }
+      const sources = spans.map(span => sourceSpan(span, 'cv', resumeHash));
+      if (!sources.every(span => span && factQuotes.some(quote => quote.includes(span.quote)))) {
+        state = 'needs_review';
+        continue;
+      }
+      claims.set(path, sources);
+    }
+    for (const path of Object.keys(profile.display)) {
+      if (profilePath.test(path) && !claims.has(path)) state = 'needs_review';
+    }
+    if (!claims.size) return { state: state === 'needs_review' ? 'invalid' : 'missing' };
+    return { state, claims };
+  }
+
+  function conditionsFrom(conditions, jobId, resumeHash, vacancyHash, factQuotes) {
+    if (conditions == null) return { state: 'missing', items: [] };
+    if (!isRecord(conditions) || !Array.isArray(conditions.items) || conditions.items.length > 10 ||
+        !Array.isArray(conditions.findings) || !resumeHash || !vacancyHash) {
+      return { state: 'invalid', items: [] };
+    }
+    const items = new Map();
+    let invalid = conditions.has_invalid === true || conditions.findings.some(finding => finding?.severity === 'invalid');
+    for (const [index, item] of conditions.items.entries()) {
+      if (!isRecord(item) || typeof item.kind !== 'string' || !Object.hasOwn(conditionLabels, item.kind)) {
+        invalid = true;
+        continue;
+      }
+      const label = conditionLabels[item.kind];
+      if (items.has(item.kind)) {
+        items.set(item.kind, { label, state: 'invalid' });
+        invalid = true;
+        continue;
+      }
+      const cv = item.cv_span == null ? null : sourceSpan(item.cv_span, 'cv', resumeHash);
+      const vacancy = item.vacancy_span == null ? null : sourceSpan(item.vacancy_span, jobId, vacancyHash);
+      const valid = ['compatible', 'conflict', 'unknown'].includes(item.state) &&
+        checkStates.includes(item.check) && item.check !== 'invalid' &&
+        Array.isArray(item.findings) && !item.findings.some(finding => finding?.severity === 'invalid') &&
+        (item.cv_span == null || (cv && factQuotes.some(quote => quote.includes(cv.quote)))) &&
+        (item.vacancy_span == null || vacancy) &&
+        (item.state === 'unknown' || (cv && vacancy));
+      if (!valid) {
+        items.set(item.kind, { label, state: 'invalid' });
+        invalid = true;
+        continue;
+      }
+      const needsReview = item.kind === 'salary' || item.check !== 'structure_ok' || item.findings.length > 0;
+      const state = item.state === 'compatible' && needsReview ? 'unknown' : item.state;
+      const where = 'conditions[' + index + ']';
+      const unresolved = field => item.findings.some(finding => finding?.where === where + '.' + field);
+      items.set(item.kind, {
+        label, state, cv, vacancy, needsReview,
+        cvUnresolved: !cv && unresolved('cv'), vacancyUnresolved: !vacancy && unresolved('vacancy_quote')
+      });
+    }
+    return { state: invalid ? 'invalid' : 'available', items: Array.from(items.values()) };
   }
 
   function uniqueIndex(items, key) {
@@ -243,11 +382,14 @@
     let presentation;
     requireShape(isRecord(report.facts));
     const facts = uniqueIndex(report.facts.items, 'id');
+    const factQuotes = Array.from(facts.values(), fact => fact.quote).filter(isText);
     if (report.presentation != null) {
       requireShape(isRecord(report.presentation) && report.presentation.version === '0.1');
       presentation = uniqueIndex(report.presentation.jobs, 'job_id');
       requireShape(presentation.size === rankedJobs.size);
     }
+    const resumeDigest = digest(report.safe_resume_sha256);
+    const profile = profileFrom(report.profile, factQuotes, resumeDigest);
 
     const jobs = Array.from(rankedJobs.values(), (job, index) => {
       requireShape(Number.isInteger(job.rank) && job.rank > 0);
@@ -257,11 +399,13 @@
       requireShape(Array.isArray(excluded) && excluded.every(isText) && new Set(excluded).size === excluded.length);
       const rows = rowsFrom(job, facts, prepared, excluded);
       requireShape(rows.length > 0);
+      const sourceDigest = digest(job.safe_source_sha256);
       return {
         id: job.job_id, title: vacancyTitle(job.job_id, index), rank: job.rank,
         score: scoreFrom(job.score), rows, excluded,
         requirementsReview: requirementReviewFrom(job),
-        sourceDigest: digest(job.safe_source_sha256), policyDigest: digest(job.score.policy_sha256)
+        sourceDigest, policyDigest: digest(job.score.policy_sha256),
+        conditions: conditionsFrom(job.conditions, job.job_id, resumeDigest, sourceDigest, factQuotes)
       };
     });
 
@@ -272,7 +416,8 @@
       finalAllowed: false,
       schemaVersion: report.schema_version,
       mode: report.mode, model: versionLabel(report.model), scenario: report.demo_scenario || null,
-      resumeDigest: digest(report.safe_resume_sha256), modelDigest: digest(report.model_sha256),
+      resumeDigest, modelDigest: digest(report.model_sha256),
+      profile,
       privacyWarning: report.privacy?.professional_information_may_be_hidden === true
     };
   }
@@ -292,8 +437,8 @@
   }
 
   const api = {
-    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeRun, scoreRange, assessments,
-    mandatoryStates, evidenceLabel, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
+    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeRun, describeFit, scoreRange, assessments,
+    mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
   };
   if (typeof module === 'object' && module.exports) {
     module.exports = api;

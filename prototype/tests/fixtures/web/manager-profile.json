@@ -1,0 +1,188 @@
+{
+  "schema_version": "0.1",
+  "facts": {
+    "items": [
+      {"id": "f1", "text": "Backend-разработчик, 5 лет", "quote": "Backend-разработчик, 5 лет коммерческой разработки."},
+      {"id": "f2", "text": "Стек: Python, Django, PostgreSQL", "quote": "Навыки: Python, Django, PostgreSQL."},
+      {"id": "f3", "text": "Разработчик в интернет-магазине, 2019–2021", "quote": "2019–2021 — разработчик, интернет-магазин."},
+      {"id": "f4", "text": "Ведущий разработчик, онлайн-обучение, с 2021", "quote": "2021 — по настоящее время — ведущий разработчик, сервис онлайн-обучения."},
+      {"id": "f5", "text": "Ускорил API", "quote": "Сократил время ответа API с 800 до 200 мс."},
+      {"id": "f6", "text": "Удалённая работа", "quote": "Формат работы: только удалённо."},
+      {"id": "f7", "text": "Доход от 250 000 в месяц", "quote": "Ожидания по доходу: от 250 000 рублей в месяц."}
+    ]
+  },
+  "ranking": {
+    "jobs": [
+      {
+        "job_id": "job-001",
+        "requirements": {"items": [{"id": "r1", "text": "Опыт Python от 3 лет", "quote": "Обязателен опыт Python от 3 лет.", "mandatory_quote": "Обязателен опыт Python от 3 лет."}, {"id": "r2", "text": "Django", "quote": "Требуется Django.", "mandatory_quote": null}]},
+        "requirements_review": {"vacancy_id": "job-001", "state": "unconfirmed", "reasons": [{"code": "not_confirmed", "message": "Список не подтверждён рекрутером.", "requirement_id": null}]},
+        "evaluation": {"rows": [{"requirement_id": "r1", "status": "partial", "fact_ids": ["f1", "f2"], "comment": "Стаж Python не указан отдельно.", "question": "Сколько лет работали с Python?"}, {"requirement_id": "r2", "status": "full", "fact_ids": ["f2"], "comment": "Django указан.", "question": null}]},
+        "score": {"lower": 62.5, "upper": 62.5, "coverage": 100.0, "mandatory": "clarify", "policy_version": "draft-2026-11-12-v1"},
+        "score_review": {"excluded_mandatory_ids": [], "rule": "structurally_unbound_mandatory_uses_regular_weight", "version": "mandatory-structure-0.1"},
+        "safe_source_sha256": "5e9bfbc73cdeb457a6298b09d5c3f6dc2601c4b00a7f59cf7d639cc398b2fe5a",
+        "rank": 1,
+        "conditions": {
+          "items": [
+            {
+              "kind": "work_mode",
+              "state": "conflict",
+              "check": "needs_review",
+              "findings": [{"where": "conditions[0]", "code": "condition_conflict", "severity": "review", "message": "Показать HR. Конфликт условий не является автоматическим отказом.", "context": null}],
+              "cv_span": {"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 262, "end": 277, "quote": "только удалённо", "sentence": "Формат работы: только удалённо", "heading": null},
+              "vacancy_span": {"source_id": "job-001", "source_sha256": "5e9bfbc73cdeb457a6298b09d5c3f6dc2601c4b00a7f59cf7d639cc398b2fe5a", "start": 66, "end": 77, "quote": "только офис", "sentence": "Формат работы: только офис", "heading": null}
+            },
+            {"kind": "salary", "state": "unknown", "check": "structure_ok", "findings": [], "cv_span": {"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 299, "end": 324, "quote": "от 250 000 рублей в месяц", "sentence": "Ожидания по доходу: от 250 000 рублей в месяц", "heading": null}, "vacancy_span": null}
+          ],
+          "findings": [],
+          "conflicts": ["work_mode"],
+          "needs_review": true,
+          "has_invalid": false
+        }
+      },
+      {
+        "job_id": "job-002",
+        "requirements": {"items": [{"id": "r1", "text": "Java", "quote": "Java обязателен.", "mandatory_quote": "Java обязателен."}]},
+        "requirements_review": {"vacancy_id": "job-002", "state": "unconfirmed", "reasons": [{"code": "not_confirmed", "message": "Список не подтверждён рекрутером.", "requirement_id": null}]},
+        "evaluation": {"rows": [{"requirement_id": "r1", "status": "unknown", "fact_ids": [], "comment": "Сведения о Java не приведены.", "question": "Есть ли опыт Java?"}]},
+        "score": {"lower": 0.0, "upper": 100.0, "coverage": 0.0, "mandatory": "clarify", "policy_version": "draft-2026-11-12-v1"},
+        "score_review": {"excluded_mandatory_ids": [], "rule": "structurally_unbound_mandatory_uses_regular_weight", "version": "mandatory-structure-0.1"},
+        "safe_source_sha256": "4c7246b88fd63d72d8e49ddeb7e18193be8641f0d494213494fd4dedd2d7a269",
+        "rank": 2,
+        "conditions": {
+          "items": [
+            {
+              "kind": "work_mode",
+              "state": "compatible",
+              "check": "structure_ok",
+              "findings": [],
+              "cv_span": {"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 262, "end": 277, "quote": "только удалённо", "sentence": "Формат работы: только удалённо", "heading": null},
+              "vacancy_span": {"source_id": "job-002", "source_sha256": "4c7246b88fd63d72d8e49ddeb7e18193be8641f0d494213494fd4dedd2d7a269", "start": 32, "end": 47, "quote": "только удалённо", "sentence": "Формат работы: только удалённо", "heading": null}
+            }
+          ],
+          "findings": [],
+          "conflicts": [],
+          "needs_review": false,
+          "has_invalid": false
+        }
+      }
+    ],
+    "recommendation": "clarify",
+    "complete": true,
+    "requires_human_review": true
+  },
+  "unprocessed_job_ids": [],
+  "unprocessed": [],
+  "safe_resume_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045",
+  "verification": {
+    "requirements": "not_reviewed",
+    "evidence": "quotes_checked_semantics_unverified",
+    "final_allowed": false
+  },
+  "presentation": {
+    "version": "0.1",
+    "jobs": [
+      {
+        "job_id": "job-001",
+        "rank": 1,
+        "score": {"lower": 62.5, "upper": 62.5, "coverage": 100.0, "mandatory": "clarify", "policy_version": "draft-2026-11-12-v1"},
+        "rows": [
+          {
+            "requirement_id": "r1",
+            "label": "Обязателен опыт Python от 3 лет.",
+            "requirement_quote": "Обязателен опыт Python от 3 лет.",
+            "mandatory_quote": "Обязателен опыт Python от 3 лет.",
+            "mandatory_verification": "not_reviewed",
+            "mandatory_check": {"requirement_id": "r1", "state": "structure_ok", "reasons": [], "context": "Обязателен опыт Python от 3 лет"},
+            "mandatory_applied_to_score": true,
+            "status": "partial",
+            "status_verification": "model_proposed",
+            "evidence_check": {
+              "requirement_id": "r1",
+              "status": "partial",
+              "state": "needs_review",
+              "meaning": "model_claim_unverified",
+              "reasons": [{"code": "evidence_not_linked", "severity": "review", "message": "В доказательстве нет ни одного термина требования.", "fact_id": "f1", "context": "Backend-разработчик, 5 лет коммерческой разработки"}],
+              "evidence": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 0, "end": 51, "quote": "Backend-разработчик, 5 лет коммерческой разработки.", "sentence": "Backend-разработчик, 5 лет коммерческой разработки", "heading": null}, {"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 52, "end": 87, "quote": "Навыки: Python, Django, PostgreSQL.", "sentence": "Навыки: Python, Django, PostgreSQL", "heading": null}]
+            },
+            "resume_quotes": ["Backend-разработчик, 5 лет коммерческой разработки.", "Навыки: Python, Django, PostgreSQL."],
+            "explanation": "Модель предложила частичное соответствие; уточните непокрытые части требования.",
+            "question": "Уточните опыт по требованию «Обязателен опыт Python от 3 лет.»: какие задачи выполняли, когда и с каким результатом?"
+          },
+          {
+            "requirement_id": "r2",
+            "label": "Django",
+            "requirement_quote": "Требуется Django.",
+            "mandatory_quote": null,
+            "mandatory_verification": "not_reviewed",
+            "mandatory_check": {"requirement_id": "r2", "state": "not_mandatory", "reasons": [], "context": null},
+            "mandatory_applied_to_score": false,
+            "status": "full",
+            "status_verification": "model_proposed",
+            "evidence_check": {"requirement_id": "r2", "status": "full", "state": "structure_ok", "meaning": "model_claim_unverified", "reasons": [], "evidence": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 52, "end": 87, "quote": "Навыки: Python, Django, PostgreSQL.", "sentence": "Навыки: Python, Django, PostgreSQL", "heading": null}]},
+            "resume_quotes": ["Навыки: Python, Django, PostgreSQL."],
+            "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+            "question": null
+          }
+        ],
+        "score_review": {"excluded_mandatory_ids": [], "rule": "structurally_unbound_mandatory_uses_regular_weight", "version": "mandatory-structure-0.1"},
+        "requirements_review": {"vacancy_id": "job-001", "state": "unconfirmed", "reasons": [{"code": "not_confirmed", "message": "Список не подтверждён рекрутером.", "requirement_id": null}]}
+      },
+      {
+        "job_id": "job-002",
+        "rank": 2,
+        "score": {"lower": 0.0, "upper": 100.0, "coverage": 0.0, "mandatory": "clarify", "policy_version": "draft-2026-11-12-v1"},
+        "rows": [
+          {
+            "requirement_id": "r1",
+            "label": "Java",
+            "requirement_quote": "Java обязателен.",
+            "mandatory_quote": "Java обязателен.",
+            "mandatory_verification": "not_reviewed",
+            "mandatory_check": {"requirement_id": "r1", "state": "structure_ok", "reasons": [], "context": "Java обязателен"},
+            "mandatory_applied_to_score": true,
+            "status": "unknown",
+            "status_verification": "model_proposed",
+            "evidence_check": {"requirement_id": "r1", "status": "unknown", "state": "no_evidence", "meaning": "model_claim_unverified", "reasons": [], "evidence": []},
+            "resume_quotes": [],
+            "explanation": "Подтверждающие сведения не указаны в извлечённых фактах; это не доказательство отсутствия опыта.",
+            "question": "Уточните опыт по требованию «Java обязателен.»: какие задачи выполняли, когда и с каким результатом?"
+          }
+        ],
+        "score_review": {"excluded_mandatory_ids": [], "rule": "structurally_unbound_mandatory_uses_regular_weight", "version": "mandatory-structure-0.1"},
+        "requirements_review": {"vacancy_id": "job-002", "state": "unconfirmed", "reasons": [{"code": "not_confirmed", "message": "Список не подтверждён рекрутером.", "requirement_id": null}]}
+      }
+    ],
+    "final_allowed": false
+  },
+  "mode": "synthetic_replay_NOT_model_output",
+  "model": null,
+  "profile": {
+    "schema_version": "candidate-profile-0.1",
+    "state": "structure_ok",
+    "meaning": "model_claim_unverified",
+    "findings": [],
+    "spans": {
+      "summary[0]": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 0, "end": 50, "quote": "Backend-разработчик, 5 лет коммерческой разработки", "sentence": "Backend-разработчик, 5 лет коммерческой разработки", "heading": null}],
+      "stack[0]": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 60, "end": 66, "quote": "Python", "sentence": "Навыки: Python, Django, PostgreSQL", "heading": null}],
+      "stack[1]": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 68, "end": 74, "quote": "Django", "sentence": "Навыки: Python, Django, PostgreSQL", "heading": null}],
+      "stack[2]": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 76, "end": 86, "quote": "PostgreSQL", "sentence": "Навыки: Python, Django, PostgreSQL", "heading": null}],
+      "last_position.role": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 159, "end": 178, "quote": "ведущий разработчик", "sentence": "2021 — по настоящее время — ведущий разработчик, сервис онлайн-обучения", "heading": null}],
+      "last_position.domain": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 180, "end": 202, "quote": "сервис онлайн-обучения", "sentence": "2021 — по настоящее время — ведущий разработчик, сервис онлайн-обучения", "heading": null}],
+      "last_position.period": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 131, "end": 156, "quote": "2021 — по настоящее время", "sentence": "2021 — по настоящее время — ведущий разработчик, сервис онлайн-обучения", "heading": null}],
+      "achievements[0].action": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 204, "end": 229, "quote": "Сократил время ответа API", "sentence": "Сократил время ответа API с 800 до 200 мс", "heading": null}],
+      "achievements[0].result": [{"source_id": "cv", "source_sha256": "41149f9e855a8faa8e767128d8d8aea65fb078b705ed901246227d43ca743045", "start": 230, "end": 245, "quote": "с 800 до 200 мс", "sentence": "Сократил время ответа API с 800 до 200 мс", "heading": null}]
+    },
+    "display": {
+      "summary[0]": "Backend-разработчик, 5 лет коммерческой разработки",
+      "stack[0]": "Python",
+      "stack[1]": "Django",
+      "stack[2]": "PostgreSQL",
+      "last_position.role": "ведущий разработчик",
+      "last_position.domain": "сервис онлайн-обучения",
+      "last_position.period": "2021 — по настоящее время",
+      "achievements[0].action": "Сократил время ответа API",
+      "achievements[0].result": "с 800 до 200 мс"
+    }
+  }
+}

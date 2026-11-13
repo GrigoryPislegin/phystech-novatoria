@@ -93,7 +93,7 @@ test('legacy rows without evidence checks remain review items, even with full as
   delete raw.presentation;
   const html = render(raw);
   assert.match(html, /Нет оценок полного соответствия со структурно сверенными цитатами/);
-  assert.match(html, /Риски и пробелы.*Доказательство требует проверки/);
+  assert.match(section(html, 'vacancy-fit'), /Риски и пробелы[\s\S]*Доказательство требует проверки/);
   assert.match(html, /Разрабатывал на Python 3 года/);
   assert.doesNotMatch(html, /пробелы не отмечены|Вопросы кандидату/);
 });
@@ -143,4 +143,170 @@ test('brief uses validated rows and caps questions to actual gaps', () => {
   assert.equal((html.match(/class="manager-question"/g) || []).length, 5);
   assert.equal((html.match(/<article /g) || []).length, 7);
   assert.match(html, /Сведения не указаны/);
+});
+
+function section(html, id) {
+  return html.match(new RegExp('<section id="' + id + '"[^>]*>[\\s\\S]*?</section>'))?.[0] ?? '';
+}
+
+test('the jury example shows a sourced profile, fit reasons and a conflict only for the selected vacancy', () => {
+  const raw = example('manager-profile');
+  const first = render(raw);
+  const profile = section(first, 'candidate-profile');
+  for (const label of [
+    'Backend-разработчик, 5 лет коммерческой разработки', 'Python', 'Django', 'PostgreSQL',
+    'ведущий разработчик', 'сервис онлайн-обучения', '2021 — по настоящее время',
+    'Сократил время ответа API', 'с 800 до 200 мс'
+  ]) {
+    assert.ok(profile.includes(label), label);
+  }
+  assert.match(profile, /href="#profile-source-\d+"/);
+  assert.match(first, /id="profile-source-1"/);
+  assert.match(section(first, 'vacancy-fit'), /Соответствие частичное[\s\S]*Опыт Python от 3 лет/i);
+  assert.match(section(first, 'vacancy-fit'), /Django/);
+  assert.match(section(first, 'vacancy-fit'), /class="fit-citation">Резюме «Backend-разработчик/);
+  assert.match(section(first, 'conditions'), /Возможный конфликт[\s\S]*Формат работы: только удалённо[\s\S]*Формат работы: только офис/);
+  assert.match(section(first, 'conditions'), /Зарплата[\s\S]*Нужно уточнить/);
+  assert.match(section(first, 'conditions'), /Решение по условиям принимает HR/);
+
+  const second = render(raw, 1);
+  assert.equal(section(second, 'candidate-profile'), profile);
+  assert.match(section(second, 'vacancy-fit'), /Недостаточно сведений[\s\S]*Java/);
+  assert.match(section(second, 'conditions'), /Условия совпадают по отчёту/);
+  assert.doesNotMatch(second, /только офис|Возможный конфликт/);
+});
+
+test('a condition conflict remains separate from the stored score and vacancy verdict', () => {
+  const raw = example('manager-profile');
+  const report = parseReport(JSON.stringify(raw));
+  const withConflict = section(renderManagerReport(report, 'job-001'), 'vacancy-fit');
+  delete raw.ranking.jobs[0].conditions;
+  const withoutConditions = section(render(raw), 'vacancy-fit');
+  assert.equal(withConflict, withoutConditions);
+  assert.equal(report.jobs[0].score.lower, raw.ranking.jobs[0].score.lower);
+});
+
+test('a selected vacancy gets its own provisional verdict independent of ranking position and score', () => {
+  const raw = example('success');
+  assert.match(section(render(raw), 'vacancy-fit'), /Нужна проверка[\s\S]*Состав не подтверждён/);
+  raw.ranking.jobs[0].requirements_review = { vacancy_id: 'job-001', state: 'confirmed', reasons: [] };
+  assert.match(section(render(raw), 'vacancy-fit'), /По оценённым требованиям соответствует/);
+  assert.match(section(render(raw, 2), 'vacancy-fit'), /Есть несоответствие[\s\S]*SQL/);
+  const changed = example('success');
+  changed.ranking.jobs[0].score_review.excluded_mandatory_ids = ['r1'];
+  assert.match(section(render(changed), 'vacancy-fit'), /Нужна проверка[\s\S]*Обязательность требует проверки/);
+  assert.match(section(render(example('incomplete')), 'vacancy-fit'), /Нужна проверка[\s\S]*Обработана часть вакансий/);
+  assert.doesNotMatch(section(render(raw), 'vacancy-fit'), /полностью подходит/i);
+});
+
+test('older reports and a profile with missing or invalid data keep explicit empty states', () => {
+  const old = render(example());
+  assert.match(section(old, 'candidate-profile'), /не извлечён/i);
+  assert.match(section(old, 'conditions'), /не сравнивались/i);
+
+  const raw = example('manager-profile');
+  for (const key of Object.keys(raw.profile.display).filter(key => key.startsWith('last_position.'))) {
+    delete raw.profile.display[key];
+    delete raw.profile.spans[key];
+  }
+  delete raw.profile.display['achievements[0].result'];
+  delete raw.profile.spans['achievements[0].result'];
+  assert.match(section(render(raw), 'candidate-profile'), /Последняя роль[\s\S]*Не извлечена/);
+  assert.match(section(render(raw), 'candidate-profile'), /Результат не указан/);
+  raw.profile.state = 'invalid';
+  assert.match(section(render(raw), 'candidate-profile'), /Не удалось проверить/);
+  assert.doesNotMatch(section(render(raw), 'candidate-profile'), /Backend-разработчик/);
+});
+
+test('profile displays only sourced claims and keeps negation in the shown context', () => {
+  const raw = example('manager-profile');
+  raw.profile.display['summary[0]'] = 'Придуманные 99 лет опыта';
+  raw.profile.display['summary[1]'] = 'Выдуманное достижение';
+  raw.profile.display['stack[0]'] = 'Python';
+  const span = raw.profile.spans['stack[0]'][0];
+  raw.facts.items.find(fact => fact.id === 'f2').quote += '\nНе работал с Python.';
+  for (const job of raw.presentation.jobs) {
+    for (const row of job.rows) {
+      row.resume_quotes = row.resume_quotes.map(quote => quote.startsWith('Навыки:')
+        ? quote + '\nНе работал с Python.' : quote);
+    }
+  }
+  span.sentence = 'Не работал с Python';
+  const html = render(raw);
+  const profile = section(html, 'candidate-profile');
+  assert.doesNotMatch(profile, /Придуманные|Выдуманное/);
+  assert.match(profile, /Не работал с Python/);
+  assert.doesNotMatch(profile, />Python<\/a>/);
+});
+
+test('conditions require both matching sources, preserve HR review and ignore model prose', () => {
+  const raw = example('manager-profile');
+  const items = raw.ranking.jobs[0].conditions.items;
+  items[0].vacancy_span.source_id = 'job-002';
+  items[0].note = 'Постороннее объяснение модели';
+  assert.doesNotMatch(section(render(raw), 'conditions'), /Возможный конфликт|Постороннее объяснение/);
+  assert.match(section(render(raw), 'conditions'), /Не удалось проверить/);
+
+  const second = raw.ranking.jobs[1].conditions.items[0];
+  second.kind = 'salary';
+  const html = section(render(raw, 1), 'conditions');
+  assert.match(html, /Зарплата[\s\S]*Нужно уточнить/);
+  assert.doesNotMatch(html, /Возможный конфликт|Условия совпадают/);
+});
+
+test('a possible salary conflict is shown to HR for manual comparison', () => {
+  const raw = example('manager-profile');
+  const items = raw.ranking.jobs[0].conditions.items;
+  const salary = items[1];
+  const quote = 'До 200 000 рублей в месяц';
+  salary.state = 'conflict';
+  salary.check = 'needs_review';
+  salary.vacancy_span = { ...items[0].vacancy_span, quote, sentence: quote,
+    end: items[0].vacancy_span.start + quote.length };
+  salary.findings = [
+    { where: 'conditions[1]', severity: 'review', code: 'salary_terms_unverified' },
+    { where: 'conditions[1]', severity: 'review', code: 'condition_conflict' }
+  ];
+  const html = section(render(raw), 'conditions');
+  assert.match(html, /Зарплата <span>· Возможный конфликт · Нужна ручная сверка/);
+  assert.match(html, /250 000 рублей/);
+  assert.match(html, /200 000 рублей/);
+});
+
+test('a condition with ambiguous evidence is different from an unstated condition', () => {
+  const raw = example('manager-profile');
+  const salary = raw.ranking.jobs[0].conditions.items[1];
+  salary.cv_span = null;
+  salary.check = 'needs_review';
+  salary.findings = [
+    { where: 'conditions[1].cv', severity: 'review', code: 'ambiguous_location' }
+  ];
+  const html = section(render(raw), 'conditions');
+  assert.match(html, /Резюме<\/span> Не удалось привязать цитату/);
+  assert.match(html, /Вакансия<\/span> Сведения не указаны/);
+});
+
+test('long profile evidence goes in the cited appendix without an incomplete skill claim', () => {
+  const raw = example('manager-profile');
+  const sentence = 'Python, Django, PostgreSQL, интеграции, автоматизация сборки, тестирование и мониторинг production — с этим стеком ещё не работал';
+  for (const [path, spans] of Object.entries(raw.profile.spans)) {
+    if (path.startsWith('stack[')) spans[0].sentence = sentence;
+  }
+  const html = render(raw);
+  assert.match(section(html, 'candidate-profile'), /См\. полный фрагмент/);
+  assert.doesNotMatch(section(html, 'candidate-profile'), /PostgreSQL/);
+  assert.ok(html.includes(sentence));
+});
+
+test('a missing or duplicated condition cannot be printed as a conflict', () => {
+  const absent = example('manager-profile');
+  absent.ranking.jobs[0].conditions.items[0].vacancy_span = null;
+  assert.match(section(render(absent), 'conditions'), /Не удалось проверить/);
+  assert.doesNotMatch(section(render(absent), 'conditions'), /Возможный конфликт/);
+
+  const duplicate = example('manager-profile');
+  const items = duplicate.ranking.jobs[0].conditions.items;
+  items.push({ ...items[0] });
+  assert.match(section(render(duplicate), 'conditions'), /Не удалось проверить/);
+  assert.doesNotMatch(section(render(duplicate), 'conditions'), /Возможный конфликт/);
 });

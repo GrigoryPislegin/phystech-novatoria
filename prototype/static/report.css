@@ -223,6 +223,7 @@ h1 { font-size: clamp(29px, 3.4vw, 43px); letter-spacing: -.055em; line-height: 
 .detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; margin-top: 11px; font-size: 12px; color: var(--secondary); }
 .policy { overflow-wrap: anywhere; }
 .score-review { margin-top: 8px; color: var(--warning); font-size: 12px; }
+.job-fit { margin-top: 8px; font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
 .tag {
   display: inline-block;
   padding: 4px 8px;
