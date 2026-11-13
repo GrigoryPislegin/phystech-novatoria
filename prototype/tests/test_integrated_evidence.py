@@ -33,7 +33,10 @@ class IntegratedEvidenceTests(unittest.TestCase):
         class Fragment(ReplayModel):
             async def ask(self, schema, task, payload):
                 result = await super().ask(schema, task, payload)
-                if task == 'facts': result.items[0].quote = 'Python'
+                if task == 'facts':
+                    result.items[0].quote = 'Python'
+                    result.profile.summary[0].text = 'Python'
+                    result.profile.summary[0].sources[0].quote = 'Python'
                 return result
         report = asyncio.run(run_pipeline(*demo_inputs(), Fragment(), SyntheticPrivacy()))
         self.assertTrue(report['ranking']['complete'])
@@ -63,13 +66,13 @@ class IntegratedEvidenceTests(unittest.TestCase):
         self.assertEqual(check_mandatory(requirement, source).state, 'structure_ok')
 
     def test_unbound_mandatory_cannot_demote_job_to_violated(self):
-        class WrongMarker:
+        class WrongMarker(ReplayModel):
             async def ask(self, schema, task, payload):
                 if task == 'facts':
-                    return Facts(items=[Fact(id='f',text='Нет Python',quote='Не работал с Python.')])
+                    return schema(items=[Fact(id='f',text='Нет Python',quote='Не работал с Python.')], profile=dict(summary=[], stack=[], last_position=None, achievements=[], missing=['summary','stack','last_position','achievements']))
                 if task == 'requirements':
                     return Requirements(items=[Requirement(id='r',text='Python',quote='Python',mandatory_quote=payload['text'])])
-                return Evaluation(rows=[Row(requirement_id='r',status='fail',fact_ids=['f'],comment='Нет Python',question='Какой опыт?')])
+                return schema(rows=[Row(requirement_id='r',status='fail',fact_ids=['f'],comment='Нет Python',question='Какой опыт?')], conditions={'items':[]})
         result = asyncio.run(run_pipeline('Не работал с Python.', [('j','Обязательно: SQL. Python желателен.')], WrongMarker(), SyntheticPrivacy()))
         job = result['ranking']['jobs'][0]
         self.assertEqual(job['score']['mandatory'], 'not_set')

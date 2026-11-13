@@ -34,7 +34,8 @@ async def check_model_boundary():
     import httpx
     from openai import AsyncOpenAI
     from prototype.application import analyze_protected
-    from prototype.contracts import Facts, Requirements, Evaluation
+    from prototype.contracts import Requirements
+    from prototype.analysis_contracts import ResumeAnalysis, VacancyAnalysis
     from prototype.demo import ReplayModel, demo_inputs
     from prototype.model import Budget, Model
     from prototype.privacy import local_privacy
@@ -47,7 +48,7 @@ async def check_model_boundary():
             raise RuntimeError('synthetic_contact_in_payload')
         payload = json.loads(body['input'][1]['content'])
         task = payload['task']
-        parsed = await replay.ask({'facts':Facts,'requirements':Requirements,'evaluation':Evaluation}[task], task, payload['data'])
+        parsed = await replay.ask({'facts':ResumeAnalysis,'requirements':Requirements,'evaluation':VacancyAnalysis}[task], task, payload['data'])
         calls.append(task)
         return httpx.Response(200, request=request, json={
             'id':'resp_synthetic', 'object':'response', 'created_at':0, 'model':body['model'], 'status':'completed',

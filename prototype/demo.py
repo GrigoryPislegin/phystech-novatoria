@@ -24,6 +24,19 @@ class ReplayModel:
 
     async def ask(self, schema, task, payload):
         self.calls += 1
+        result = (await self._answer(task, payload)).model_dump()
+        if task == 'facts' and 'profile' in schema.model_fields:
+            def claim(text, fact_id, quote):
+                return {'text':text, 'sources':[{'fact_id':fact_id, 'quote':quote}]}
+            result['profile'] = {
+                'summary':[claim('Разрабатывал на Python 3 года.', 'f1', 'Разрабатывал на Python 3 года.')],
+                'stack':[claim('Python', 'f1', 'Python'), claim('SQL', 'f2', 'SQL')],
+                'last_position':None, 'achievements':[], 'missing':['last_position','achievements']}
+        if task == 'evaluation' and 'conditions' in schema.model_fields:
+            result['conditions'] = {'items':[]}
+        return schema.model_validate(result)
+
+    async def _answer(self, task, payload):
         if task == 'facts':
             return Facts(items=[Fact(id='f1', text='Python 3 года', quote='Разрабатывал на Python 3 года.'),
                                 Fact(id='f2', text='SQL 1 год', quote='Использовал SQL 1 год.')])

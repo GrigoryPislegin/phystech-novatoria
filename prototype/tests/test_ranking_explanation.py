@@ -25,6 +25,17 @@ def with_evidence(report):
     return {**report, 'ranking': rank(results, len(results))}
 
 
+def as_v1(report):
+    # An explicit historical projection: the production pipeline now always uses v2 evidence.
+    for job in report['ranking']['jobs']:
+        reqs = Requirements.model_validate(job['requirements'])
+        excluded = set(job['score_review']['excluded_mandatory_ids'])
+        stripped = Requirements(items=[r.model_copy(update={'mandatory_quote':None}) if r.id in excluded else r for r in reqs.items])
+        job['score'] = score(stripped, Evaluation.model_validate(job['evaluation']))
+    report['ranking'] = rank(report['ranking']['jobs'], len(report['ranking']['jobs']))
+    return report
+
+
 def random_report(rng, n):
     results = []
     for i in range(n):
@@ -86,6 +97,8 @@ class CompareTests(unittest.TestCase):
                 result = await super().ask(schema, task, payload)
                 if task == 'facts':
                     result.items[0].quote = 'Python'
+                    result.profile.summary[0].text = 'Python'
+                    result.profile.summary[0].sources[0].quote = 'Python'
                 return result
         report = with_evidence(demo_report(model=Fragment()))
         c = compare(report, 'job-001', 'job-002')
@@ -196,8 +209,10 @@ class ReasonTests(unittest.TestCase):
                 result = await super().ask(schema, task, payload)
                 if task == 'facts':
                     result.items[0].quote = 'Python'
+                    result.profile.summary[0].text = 'Python'
+                    result.profile.summary[0].sources[0].quote = 'Python'
                 return result
-        report = demo_report(model=Fragment())
+        report = as_v1(demo_report(model=Fragment()))
         self.assertFalse(report['ranking']['jobs'][0]['score']['evidence_applied'])
         c = compare(report, 'job-001', 'job-002')
         self.assertIn('evidence_not_applied', c.caveats)
@@ -218,17 +233,16 @@ class ReasonTests(unittest.TestCase):
                 compare(broken, 'job-001', 'job-002')
 
     def test_v1_report_with_unbound_marker_is_reproduced(self):
-        class WrongMarker:
+        class WrongMarker(ReplayModel):
             async def ask(self, schema, task, payload):
                 if task == 'facts':
-                    return Facts(items=[Fact(id='f', text='Нет Python', quote='Не работал с Python.')])
+                    return schema(items=[Fact(id='f',text='Нет Python',quote='Не работал с Python.')], profile=dict(summary=[], stack=[], last_position=None, achievements=[], missing=['summary','stack','last_position','achievements']))
                 if task == 'requirements':
                     return Requirements(items=[Requirement(id='r', text='Python', quote='Python',
                                                            mandatory_quote=payload['text'])])
-                return Evaluation(rows=[Row(requirement_id='r', status='fail', fact_ids=['f'], comment='c',
-                                            question='q')])
+                return schema(rows=[Row(requirement_id='r', status='fail', fact_ids=['f'], comment='c', question='q')], conditions={'items':[]})
         jobs = [('j1', 'Обязательно: SQL. Python желателен.'), ('j2', 'Обязательно: Go. Python желателен.')]
-        report = asyncio.run(run_pipeline('Не работал с Python.', jobs, WrongMarker(), SyntheticPrivacy()))
+        report = as_v1(asyncio.run(run_pipeline('Не работал с Python.', jobs, WrongMarker(), SyntheticPrivacy())))
         self.assertEqual(report['ranking']['jobs'][0]['score_review']['excluded_mandatory_ids'], ['r'])
         c = compare(report, 'j1', 'j2')
         self.assertEqual(c.outcome, 'tie')

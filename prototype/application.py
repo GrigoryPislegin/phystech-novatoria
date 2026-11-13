@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .documents import read_document
-from .pipeline import RunControl, preflight_output, run_pipeline, write_report
+from .pipeline import RunControl, preflight_output, run_pipeline, write_report, refresh_derived
 from .privacy import protect_dependency_logs
 
 
@@ -94,6 +94,7 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
         report['mode'] = mode
         if hasattr(privacy, 'summary'):
             report['privacy'] = privacy.summary()
+        refresh_derived(report)
         report['model'] = getattr(model, 'model', None)
         if hasattr(model, 'budget'):
             report['usage'] = model.usage

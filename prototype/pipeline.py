@@ -12,7 +12,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 from .contracts import Facts, Requirements, Evaluation, validate_pair
-from .scoring import score, rank
+from .scoring import score, rank, POLICY_VERSION
+from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
+from .candidate_profile import check_profile, check_conditions
+from .ranking_explanation import compare
+from .review_queue import build_review_queue
+from .review_policy import assess_handoff
 from .evidence import Source, check_pair
 from . import requirements_review as review
 from .errors import ModelOutputError, RunStopped, error_code
@@ -63,6 +68,18 @@ def literal(value):
     return f'{fence} {text} {fence}'
 
 
+def refresh_derived(report, decisions=()):
+    """Deterministic presentation only; no model calls, no changes to model statuses."""
+    ranked = report['ranking']['jobs']
+    report['comparisons'] = [compare(report, ranked[0]['job_id'], job['job_id']).model_dump()
+                             for job in ranked[1:]]
+    report['review_queue'] = build_review_queue(report).model_dump()
+    report['handoff'] = [assess_handoff(report, list(decisions), job['job_id']).model_dump()
+                         for job in ranked]
+    report['presentation'] = build_presentation(report)
+    return report
+
+
 async def run_pipeline(resume, jobs, model, privacy, *, control=None):
     if not jobs or len(jobs) > 20 or len({j[0] for j in jobs}) != len(jobs):
         raise ValueError('invalid_job_set')
@@ -74,6 +91,8 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
     safe_jobs = [(jid, await control.call(lambda: privacy.redact(text), 'privacy', jid)) for jid, text in jobs]
     cv_source = Source.of('cv', safe_resume)
     results, errors, review_checks = [], [], {}
+    profile_check = None
+    profile_missing = ['summary', 'stack', 'last_position', 'achievements']
     def finish(facts):
         missing = [jid for jid,_ in jobs if jid not in {r['job_id'] for r in results}]
         by_job = {e['job_id']:e['code'] for e in errors}
@@ -83,18 +102,27 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
                 'unprocessed':[{'job_id':jid, 'reason':by_job.get(jid, by_job.get(None, 'stopped_after_error'))} for jid in missing],
                 'events':control.events,
                 'safe_resume_sha256':hashlib.sha256(safe_resume.encode()).hexdigest()}
+        report['analysis_schema_version'] = 'analysis-0.2'
+        report['policy_version'] = POLICY_VERSION
+        report['profile'] = profile_check.model_dump() if profile_check is not None else None
+        report['profile_missing'] = profile_missing
         report['requirements_review'] = review.summarize(report['ranking']['complete'], review_checks,
             expected_ids=[jid for jid, _ in jobs]).model_dump()
         report['verification'] = {'requirements':'not_reviewed',
                                   'evidence':'quotes_checked_semantics_unverified',
                                   'final_allowed':False}
-        report['presentation'] = build_presentation(report)
-        return report
+        return refresh_derived(report)
     stage = 'facts'
     try:
-        facts = await control.call(lambda: model.ask(Facts, 'facts', {'text':safe_resume}), stage)
+        extracted = await control.call(lambda: model.ask(ResumeAnalysis, 'facts', {'text':safe_resume}), stage)
         stage = 'facts_validation'
+        extracted = ResumeAnalysis.model_validate(extracted.model_dump())
+        facts = Facts(items=extracted.items)
         facts.validate_source(safe_resume)
+        checked = check_profile(extracted.profile, facts, cv_source)
+        if checked.state == 'invalid':
+            raise ModelOutputError('invalid_profile')
+        profile_check, profile_missing = checked, extracted.profile.missing
     except Exception as exc:
         errors.append({'job_id':None, 'code':error_code(exc, stage), 'stage':stage, 'type':type(exc).__name__})
         return finish(Facts(items=[]))
@@ -105,25 +133,30 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
             stage = 'requirements_validation'
             requirements.validate_source(text)
             stage = 'evaluation'
-            evaluation = await control.call(lambda: model.ask(Evaluation, 'evaluation', {
-                'requirements':requirements.model_dump(), 'facts':facts.model_dump()}), stage, jid)
+            assessed = await control.call(lambda: model.ask(VacancyAnalysis, 'evaluation', {
+                'requirements':requirements.model_dump(), 'facts':facts.model_dump(),
+                'vacancy_text':text}), stage, jid)
             stage = 'evaluation_validation'
+            assessed = VacancyAnalysis.model_validate(assessed.model_dump())
+            evaluation = Evaluation(rows=assessed.rows)
             validate_pair(requirements, facts, evaluation)
-            evidence = check_pair(requirements, facts, evaluation, cv_source, Source.of(jid, text))
+            job_source = Source.of(jid, text)
+            conditions = check_conditions(assessed.conditions, facts, cv_source, job_source)
+            if conditions.has_invalid:
+                raise ModelOutputError('invalid_conditions')
+            evidence = check_pair(requirements, facts, evaluation, cv_source, job_source)
             if evidence.has_invalid:
                 raise ModelOutputError('invalid_evidence')
             review_checks[jid] = review.check(None, jid, text, requirements)
-            disputed_mandatory = {m.requirement_id for m in evidence.mandatory if m.state == 'needs_review'}
-            score_requirements = Requirements(items=[r.model_copy(update={'mandatory_quote':None})
-                if r.id in disputed_mandatory else r for r in requirements.items])
+            computed_score = score(requirements, evaluation, evidence)
             results.append({'job_id':jid, 'requirements':requirements.model_dump(),
                             'evidence_check':evidence.model_dump(),
                             'requirements_draft':review.draft(jid, text, requirements).model_dump(),
                             'requirements_review':review_checks[jid].model_dump(),
-                            'evaluation':evaluation.model_dump(), 'score':score(score_requirements, evaluation),
-                            'score_review':{'excluded_mandatory_ids':sorted(disputed_mandatory),
-                                'rule':'structurally_unbound_mandatory_uses_regular_weight',
-                                'version':'mandatory-structure-0.1'},
+                            'evaluation':evaluation.model_dump(), 'score':computed_score,
+                            'conditions':conditions.model_dump(),
+                            'score_review':{'excluded_mandatory_ids':computed_score['excluded_mandatory_ids'],
+                                'rule':'evidence_applied_by_scoring_policy', 'version':POLICY_VERSION},
                             'safe_source_sha256':hashlib.sha256(text.encode()).hexdigest()})
         except Exception as exc:
             # Never serialize exception messages: upstream errors may contain text/keys/DSNs.
@@ -183,7 +216,7 @@ def _write_report_files(report, out):
              '', 'Порядок вакансий: сначала без выявленного нарушения обязательных требований, затем по убыванию L.',
              'При одинаковом L в одной группе по нарушению обязательных требований вакансии делят место; id определяет только порядок отображения внутри этой группы.',
              'Черновые веса: обязательное требование — 3, прочее — 1; full=1, partial=0.5, fail=0; unknown учитывается отдельно.',
-             'L — подтверждённые баллы / сумма весов; H — (подтверждённые баллы + вес неизвестных требований) / сумма весов; известность — доля веса с известным статусом. Все значения в процентах.',
+             'L — баллы по структурно сверенным основаниям / сумма весов; H дополнительно включает вес неизвестных и спорных требований. Смысл цитат проверяет рекрутер. Все значения в процентах.',
              'L/H — границы оценки при неизвестных данных, не вероятность найма.',
              'full — полное соответствие; partial — частичное соответствие; fail — явное несоответствие; unknown — информация не указана.', '']
     if report.get('privacy', {}).get('professional_information_may_be_hidden'):

@@ -1,5 +1,7 @@
 # Контракт между движком и локальным экраном
 
+**Обновление 13 ноября, 23:35 МСК:** E5/E7/E8 подключены к фактическому pipeline. Wire DTO: `ResumeAnalysis(Facts)` содержит `profile: CandidateProfile`; `VacancyAnalysis(Evaluation)` содержит `conditions: Conditions`. Это прежние 1+2N модельных вызовов. В отчёте `profile: ProfileCheck | null`, `profile_missing`, `ranking.jobs[].conditions: ConditionsCheck`, `comparisons` (первая вакансия против остальных), `review_queue`, `handoff`. Скоринг получает исходные requirements/evaluation и check_pair; `score.evidence_applied=true`. Производные поля пересобираются после добавления privacy metadata. `analysis_schema_version=analysis-0.2`, контейнер отчёта пока `schema_version=0.1`. Серверное сохранение решений/операции ниже ещё реализуются; наличие handoff не означает доступную кнопку подтверждения. Старые отметки о неподключённом E5 ниже заменяются этим уточнением.
+
 13 ноября 2026. **Проект контракта для параллельной разработки**, не описание уже существующих endpoints. Ваня реализует экран/транспорт, Codex — application service и связь с движком. Изменение формы ответа модели и скоринга остаётся у Егора/Codex; UI не рассчитывает собственный рейтинг.
 
 ## Этап A: независимый просмотр готового результата
