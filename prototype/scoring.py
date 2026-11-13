@@ -157,6 +157,9 @@ def score(requirements: Requirements, evaluation: Evaluation, evidence: PairChec
     result.update({
         'lower': _points(ex['lower']), 'upper': _points(ex['lower'] + 100 - known), 'coverage': _points(known),
         'mandatory': gate_state([u['state'] for u in units if u['group'] == 'core']), **common,
+        # One status step of the lightest requirement unit, in points. A lead below the larger
+        # `resolution` of two jobs is 'close'. Readers use this field, never min(weights) / 2.
+        'resolution': _points(ex['step']),
         'weights': {rid: _points(w / len(u['ids'])) for u, w in zip(units, ex['weights']) for rid in u['ids']},
         'mandatory_ids': sorted(mandatory),
         'unknown_ids': sorted(rid for rid in rows if rows[rid].status == 'unknown'),

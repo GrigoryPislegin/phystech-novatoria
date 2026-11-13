@@ -175,6 +175,7 @@
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
       "policy_version": "draft-2026-11-14-v3",
+      "resolution": 12.5,
       "weights": {
        "r1": 75.0,
        "r2": 25.0
@@ -320,6 +321,7 @@
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
       "policy_version": "draft-2026-11-14-v3",
+      "resolution": 50.0,
       "weights": {
        "r1": 100.0
       },
@@ -720,6 +722,7 @@
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
       "policy_version": "draft-2026-11-14-v3",
+      "resolution": 12.5,
       "weights": {
        "r1": 75.0,
        "r2": 25.0
@@ -972,6 +975,7 @@
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
       "policy_version": "draft-2026-11-14-v3",
+      "resolution": 50.0,
       "weights": {
        "r1": 100.0
       },

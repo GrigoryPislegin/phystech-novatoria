@@ -68,6 +68,8 @@
 Сигнатуры прежние: `score(requirements, evaluation, evidence)` и `rank(results, expected_count)`. Pipeline получает v3 без правок.
 
 - `score` добавляет поля: `weights` (пункты шкалы по id строки), `mandatory_ids`, `unknown_ids`, `partial_ids`, `groups.core|extra` (`share`, `lower`, `upper`; `null`, если группы нет), `repeated_ids`. Прежние поля и набор значений `mandatory` сохранены.
+- `score.resolution` — цена одного шага оценки в пунктах: половина веса самой лёгкой единицы требований (не строки). Пара вакансий близка, когда обе посчитаны v3, порядок между ними задан L (`reason = lower_bound`, а не нарушением обязательного), отрыв по L больше нуля и меньше `max(resolution A, resolution B)`; вакансия из `leader.unassessed` в проверке первого места не участвует. Считать шаг из `weights` нельзя: они распределены по строкам повторов. Готовый ответ политики — `Comparison.close` и `leader.close_to`; они считаются в точных дробях и при расхождении на последнем знаке главнее.
+- `summary` в `Comparison` и `leader` — производный текст, не подтверждённый вывод: основания — это `factors`, `limits`, `can_change` со ссылками на строки и цитаты.
 - `rank` добавляет `ranking.leader`. Значения `recommendation` те же четыре.
 - `score(..., policy=POLICY_V2)` считает по v2. `compare` объясняет отчёт той версией, которой он посчитан; сохранённый v2-отчёт открывается как раньше и v3-прочтения не получает. Смешение версий в одном рейтинге — `mixed_policy`.
 - `Comparison` получает `margin`, `close` и предостережение `close_margin`. `reason` — прежние три значения.

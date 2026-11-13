@@ -239,6 +239,11 @@ class ReviewRegressionTests(unittest.TestCase):
         for ranking in (one, five):
             self.assertEqual((ranking['leader']['state'], ranking['leader']['close_to']), ('close', ['rival']))
         self.assertEqual(one['leader']['resolution'], five['leader']['resolution'])
+        scores = [j['score'] for j in five['jobs']]
+        self.assertEqual([s['resolution'] for s in scores], [50, 10])  # by units: one unit of 100, five of 20
+        self.assertNotEqual(min(scores[0]['weights'].values()) / 2, scores[0]['resolution'])  # rows mislead
+        self.assertEqual(five['leader']['resolution'], max(s['resolution'] for s in scores))
+        self.assertLess(five['leader']['margin'], five['leader']['resolution'])
 
     def test_repeats_of_an_unknown_unit_do_not_change_the_answer_budget(self):
         top = rows_job(('a', 'full'), ('b', 'full'), ('c', 'full'), ('d', 'partial'), ('e', 'fail'), ('f', 'fail'))
