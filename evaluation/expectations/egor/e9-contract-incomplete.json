@@ -1,0 +1,963 @@
+{
+ "schema_version": "egor-e9-contract-0.2",
+ "note": "job-002 не прошла проверку цитат: запуск неполный.",
+ "report": {
+  "schema_version": "0.1",
+  "facts": {
+   "items": [
+    {
+     "id": "f1",
+     "text": "Python 3 года",
+     "quote": "Разрабатывал на Python 3 года."
+    },
+    {
+     "id": "f2",
+     "text": "SQL 1 год",
+     "quote": "Использовал SQL 1 год."
+    }
+   ]
+  },
+  "ranking": {
+   "jobs": [
+    {
+     "job_id": "job-001",
+     "requirements": {
+      "items": [
+       {
+        "id": "r1",
+        "text": "Python",
+        "quote": "Python обязателен.",
+        "mandatory_quote": "Python обязателен."
+       },
+       {
+        "id": "r2",
+        "text": "SQL",
+        "quote": "SQL желателен.",
+        "mandatory_quote": null
+       }
+      ]
+     },
+     "evidence_check": {
+      "cv_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+      "vacancy_id": "job-001",
+      "vacancy_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
+      "rows": [
+       {
+        "requirement_id": "r1",
+        "status": "full",
+        "state": "structure_ok",
+        "meaning": "model_claim_unverified",
+        "reasons": [],
+        "evidence": [
+         {
+          "source_id": "cv",
+          "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+          "start": 0,
+          "end": 30,
+          "quote": "Разрабатывал на Python 3 года.",
+          "sentence": "Разрабатывал на Python 3 года",
+          "heading": null
+         }
+        ]
+       },
+       {
+        "requirement_id": "r2",
+        "status": "full",
+        "state": "structure_ok",
+        "meaning": "model_claim_unverified",
+        "reasons": [],
+        "evidence": [
+         {
+          "source_id": "cv",
+          "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+          "start": 31,
+          "end": 53,
+          "quote": "Использовал SQL 1 год.",
+          "sentence": "Использовал SQL 1 год",
+          "heading": null
+         }
+        ]
+       }
+      ],
+      "mandatory": [
+       {
+        "requirement_id": "r1",
+        "state": "structure_ok",
+        "reasons": [],
+        "context": "Python обязателен"
+       },
+       {
+        "requirement_id": "r2",
+        "state": "not_mandatory",
+        "reasons": [],
+        "context": null
+       }
+      ],
+      "needs_review": false,
+      "has_invalid": false
+     },
+     "requirements_draft": {
+      "vacancy_id": "job-001",
+      "state": "unconfirmed",
+      "source_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
+      "requirements_sha256": "c27782f10ec408908250e6ab18d780835bc745e96587a7a0f50e8d6dd9c2e033",
+      "requirements": [
+       {
+        "id": "r1",
+        "text": "Python",
+        "quote": "Python обязателен.",
+        "mandatory_quote": "Python обязателен."
+       },
+       {
+        "id": "r2",
+        "text": "SQL",
+        "quote": "SQL желателен.",
+        "mandatory_quote": null
+       }
+      ],
+      "uncovered": []
+     },
+     "requirements_review": {
+      "vacancy_id": "job-001",
+      "state": "unconfirmed",
+      "reasons": [
+       {
+        "code": "not_confirmed",
+        "message": "Список не подтверждён рекрутером.",
+        "requirement_id": null
+       }
+      ]
+     },
+     "evaluation": {
+      "rows": [
+       {
+        "requirement_id": "r1",
+        "status": "full",
+        "fact_ids": [
+         "f1"
+        ],
+        "comment": "Опыт Python указан.",
+        "question": null
+       },
+       {
+        "requirement_id": "r2",
+        "status": "full",
+        "fact_ids": [
+         "f2"
+        ],
+        "comment": "Опыт SQL указан.",
+        "question": null
+       }
+      ]
+     },
+     "score": {
+      "lower": 100.0,
+      "upper": 100.0,
+      "coverage": 100.0,
+      "mandatory": "confirmed",
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "conditions": {
+      "items": [],
+      "findings": [],
+      "conflicts": [],
+      "needs_review": false,
+      "has_invalid": false
+     },
+     "score_review": {
+      "excluded_mandatory_ids": [],
+      "rule": "evidence_applied_by_scoring_policy",
+      "version": "draft-2026-11-13-v2"
+     },
+     "safe_source_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
+     "rank": 1
+    },
+    {
+     "job_id": "job-003",
+     "requirements": {
+      "items": [
+       {
+        "id": "r1",
+        "text": "SQL: обязательно не менее 3 лет опыта.",
+        "quote": "SQL: обязательно не менее 3 лет опыта.",
+        "mandatory_quote": "SQL: обязательно не менее 3 лет опыта."
+       }
+      ]
+     },
+     "evidence_check": {
+      "cv_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+      "vacancy_id": "job-003",
+      "vacancy_sha256": "964af580232a4916af6cad3eebfdf885565f75b5fc16ad63a2b813f68761a383",
+      "rows": [
+       {
+        "requirement_id": "r1",
+        "status": "fail",
+        "state": "structure_ok",
+        "meaning": "model_claim_unverified",
+        "reasons": [],
+        "evidence": [
+         {
+          "source_id": "cv",
+          "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+          "start": 31,
+          "end": 53,
+          "quote": "Использовал SQL 1 год.",
+          "sentence": "Использовал SQL 1 год",
+          "heading": null
+         }
+        ]
+       }
+      ],
+      "mandatory": [
+       {
+        "requirement_id": "r1",
+        "state": "structure_ok",
+        "reasons": [],
+        "context": "SQL: обязательно не менее 3 лет опыта"
+       }
+      ],
+      "needs_review": false,
+      "has_invalid": false
+     },
+     "requirements_draft": {
+      "vacancy_id": "job-003",
+      "state": "unconfirmed",
+      "source_sha256": "964af580232a4916af6cad3eebfdf885565f75b5fc16ad63a2b813f68761a383",
+      "requirements_sha256": "f7eaeae62660b1c85175b33b0be6ac0dbcd14b05a7bdd6b21f0a9e515020340b",
+      "requirements": [
+       {
+        "id": "r1",
+        "text": "SQL: обязательно не менее 3 лет опыта.",
+        "quote": "SQL: обязательно не менее 3 лет опыта.",
+        "mandatory_quote": "SQL: обязательно не менее 3 лет опыта."
+       }
+      ],
+      "uncovered": []
+     },
+     "requirements_review": {
+      "vacancy_id": "job-003",
+      "state": "unconfirmed",
+      "reasons": [
+       {
+        "code": "not_confirmed",
+        "message": "Список не подтверждён рекрутером.",
+        "requirement_id": null
+       }
+      ]
+     },
+     "evaluation": {
+      "rows": [
+       {
+        "requirement_id": "r1",
+        "status": "fail",
+        "fact_ids": [
+         "f2"
+        ],
+        "comment": "Указан 1 год SQL, требуется не менее 3.",
+        "question": "Есть дополнительный опыт SQL, не включённый в резюме?"
+       }
+      ]
+     },
+     "score": {
+      "lower": 0.0,
+      "upper": 0.0,
+      "coverage": 100.0,
+      "mandatory": "violated",
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "conditions": {
+      "items": [],
+      "findings": [],
+      "conflicts": [],
+      "needs_review": false,
+      "has_invalid": false
+     },
+     "score_review": {
+      "excluded_mandatory_ids": [],
+      "rule": "evidence_applied_by_scoring_policy",
+      "version": "draft-2026-11-13-v2"
+     },
+     "safe_source_sha256": "964af580232a4916af6cad3eebfdf885565f75b5fc16ad63a2b813f68761a383",
+     "rank": 2
+    }
+   ],
+   "recommendation": "incomplete",
+   "complete": false,
+   "requires_human_review": true
+  },
+  "errors": [
+   {
+    "job_id": "job-002",
+    "code": "model_invalid",
+    "stage": "requirements_validation",
+    "type": "ValueError"
+   }
+  ],
+  "unprocessed_job_ids": [
+   "job-002"
+  ],
+  "unprocessed": [
+   {
+    "job_id": "job-002",
+    "reason": "model_invalid"
+   }
+  ],
+  "safe_resume_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+  "analysis_schema_version": "analysis-0.2",
+  "policy_version": "draft-2026-11-13-v2",
+  "profile": {
+   "schema_version": "candidate-profile-0.1",
+   "state": "structure_ok",
+   "meaning": "model_claim_unverified",
+   "findings": [],
+   "spans": {
+    "summary[0]": [
+     {
+      "source_id": "cv",
+      "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+      "start": 0,
+      "end": 30,
+      "quote": "Разрабатывал на Python 3 года.",
+      "sentence": "Разрабатывал на Python 3 года",
+      "heading": null
+     }
+    ],
+    "stack[0]": [
+     {
+      "source_id": "cv",
+      "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+      "start": 16,
+      "end": 22,
+      "quote": "Python",
+      "sentence": "Разрабатывал на Python 3 года",
+      "heading": null
+     }
+    ],
+    "stack[1]": [
+     {
+      "source_id": "cv",
+      "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+      "start": 43,
+      "end": 46,
+      "quote": "SQL",
+      "sentence": "Использовал SQL 1 год",
+      "heading": null
+     }
+    ]
+   },
+   "display": {
+    "summary[0]": "Разрабатывал на Python 3 года.",
+    "stack[0]": "Python",
+    "stack[1]": "SQL"
+   }
+  },
+  "profile_missing": [
+   "last_position",
+   "achievements"
+  ],
+  "requirements_review": {
+   "processing_complete": false,
+   "requirements_confirmed": false,
+   "final_allowed": false,
+   "unconfirmed": [
+    "job-001",
+    "job-002",
+    "job-003"
+   ],
+   "stale": [],
+   "invalid": []
+  },
+  "verification": {
+   "requirements": "not_reviewed",
+   "evidence": "quotes_checked_semantics_unverified",
+   "final_allowed": false
+  },
+  "comparisons": [
+   {
+    "policy_version": "draft-2026-11-13-v2",
+    "job_a": "job-001",
+    "job_b": "job-003",
+    "outcome": "a_higher",
+    "reason": "mandatory_violation",
+    "scores": {
+     "job-001": {
+      "rank": 1,
+      "lower": 100.0,
+      "upper": 100.0,
+      "coverage": 100.0,
+      "mandatory": "confirmed"
+     },
+     "job-003": {
+      "rank": 2,
+      "lower": 0.0,
+      "upper": 0.0,
+      "coverage": 100.0,
+      "mandatory": "violated"
+     }
+    },
+    "deciding": [
+     {
+      "job_id": "job-003",
+      "requirement_id": "r1",
+      "requirement_quote": "SQL: обязательно не менее 3 лет опыта.",
+      "status": "fail",
+      "counterpart_status": null,
+      "mandatory_applied": true,
+      "disputed": false,
+      "cv_quotes": [
+       "Использовал SQL 1 год."
+      ],
+      "effect": 100.0
+     },
+     {
+      "job_id": "job-001",
+      "requirement_id": "r1",
+      "requirement_quote": "Python обязателен.",
+      "status": "full",
+      "counterpart_status": null,
+      "mandatory_applied": true,
+      "disputed": false,
+      "cv_quotes": [
+       "Разрабатывал на Python 3 года."
+      ],
+      "effect": 75.0
+     },
+     {
+      "job_id": "job-001",
+      "requirement_id": "r2",
+      "requirement_quote": "SQL желателен.",
+      "status": "full",
+      "counterpart_status": null,
+      "mandatory_applied": false,
+      "disputed": false,
+      "cv_quotes": [
+       "Использовал SQL 1 год."
+      ],
+      "effect": 25.0
+     }
+    ],
+    "swings": [],
+    "caveats": [
+     "different_requirement_lists",
+     "incomplete_run"
+    ],
+    "summary": "job-001 выше job-003: у job-003 не выполнено обязательное требование. Наибольший вклад: job-003 «SQL: обязательно не менее 3 лет опыта.» — fail; job-001 «Python обязателен.» — full; job-001 «SQL желателен.» — full. Списки требований или их веса разные: L считается внутри своей вакансии. Обработаны не все вакансии."
+   }
+  ],
+  "review_queue": {
+   "schema_version": "review-queue-0.1",
+   "policy_version": "draft-2026-11-13-v2",
+   "model_status": "model_proposed",
+   "items": [
+    {
+     "id": "0bd70be604c3e9ed",
+     "job_id": null,
+     "requirement_id": null,
+     "condition_kind": null,
+     "reason_code": "incomplete_run",
+     "kind": "integrity",
+     "priority": 1,
+     "action": "complete_run",
+     "explanation": "Обработаны не все вакансии; окончательный общий рейтинг невозможен.",
+     "refs": [],
+     "contexts": [],
+     "detail_codes": []
+    },
+    {
+     "id": "9a9051251e54f074",
+     "job_id": "job-002",
+     "requirement_id": null,
+     "condition_kind": null,
+     "reason_code": "processing_error",
+     "kind": "integrity",
+     "priority": 1,
+     "action": "complete_run",
+     "explanation": "Вакансия не обработана; её место в рейтинге неизвестно.",
+     "refs": [],
+     "contexts": [],
+     "detail_codes": [
+      "model_invalid"
+     ]
+    },
+    {
+     "id": "f99ef8e63fc1b556",
+     "job_id": "job-003",
+     "requirement_id": "r1",
+     "condition_kind": null,
+     "reason_code": "mandatory_fail",
+     "kind": "interpretation",
+     "priority": 2,
+     "action": "read_context",
+     "explanation": "Модель предложила несоответствие обязательному требованию: вакансия опускается в группу с нарушением, но не исключается; решение принимает HR.",
+     "refs": [
+      {
+       "source": "vacancy",
+       "quote": "SQL: обязательно не менее 3 лет опыта.",
+       "sentence": null,
+       "heading": null,
+       "fact_id": null
+      },
+      {
+       "source": "cv",
+       "quote": "Использовал SQL 1 год.",
+       "sentence": "Использовал SQL 1 год",
+       "heading": null,
+       "fact_id": "f2"
+      }
+     ],
+     "contexts": [],
+     "detail_codes": [
+      "evidence_not_checked"
+     ]
+    },
+    {
+     "id": "92b27a2cd471f758",
+     "job_id": "job-001",
+     "requirement_id": null,
+     "condition_kind": null,
+     "reason_code": "requirements_unconfirmed",
+     "kind": "requirements",
+     "priority": 4,
+     "action": "check_list",
+     "explanation": "Список требований не подтверждён рекрутером.",
+     "refs": [],
+     "contexts": [],
+     "detail_codes": []
+    },
+    {
+     "id": "579a5a3f946a6ab7",
+     "job_id": "job-003",
+     "requirement_id": null,
+     "condition_kind": null,
+     "reason_code": "requirements_unconfirmed",
+     "kind": "requirements",
+     "priority": 4,
+     "action": "check_list",
+     "explanation": "Список требований не подтверждён рекрутером.",
+     "refs": [],
+     "contexts": [],
+     "detail_codes": []
+    }
+   ],
+   "by_reason": {
+    "incomplete_run": 1,
+    "mandatory_fail": 1,
+    "processing_error": 1,
+    "requirements_unconfirmed": 2
+   },
+   "by_job": {
+    "": 1,
+    "job-001": 1,
+    "job-002": 1,
+    "job-003": 2
+   },
+   "by_priority": {
+    "1": 2,
+    "2": 1,
+    "4": 2
+   }
+  },
+  "handoff": [
+   {
+    "job_id": "job-001",
+    "state": "blocked",
+    "model_status": "model_proposed",
+    "requirements_confirmed": false,
+    "processing_complete": false,
+    "blockers": [
+     "0bd70be604c3e9ed"
+    ],
+    "open_items": [
+     "92b27a2cd471f758"
+    ],
+    "acknowledged": [],
+    "accepted_exceptions": [],
+    "reasons": []
+   },
+   {
+    "job_id": "job-003",
+    "state": "blocked",
+    "model_status": "model_proposed",
+    "requirements_confirmed": false,
+    "processing_complete": false,
+    "blockers": [
+     "0bd70be604c3e9ed"
+    ],
+    "open_items": [
+     "f99ef8e63fc1b556",
+     "579a5a3f946a6ab7"
+    ],
+    "acknowledged": [],
+    "accepted_exceptions": [],
+    "reasons": []
+   }
+  ],
+  "presentation": {
+   "version": "0.1",
+   "jobs": [
+    {
+     "job_id": "job-001",
+     "rank": 1,
+     "score": {
+      "lower": 100.0,
+      "upper": 100.0,
+      "coverage": 100.0,
+      "mandatory": "confirmed",
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "rows": [
+      {
+       "requirement_id": "r1",
+       "label": "Python",
+       "requirement_quote": "Python обязателен.",
+       "mandatory_quote": "Python обязателен.",
+       "mandatory_verification": "not_reviewed",
+       "mandatory_check": {
+        "requirement_id": "r1",
+        "state": "structure_ok",
+        "reasons": [],
+        "context": "Python обязателен"
+       },
+       "mandatory_applied_to_score": true,
+       "status": "full",
+       "status_verification": "model_proposed",
+       "evidence_check": {
+        "requirement_id": "r1",
+        "status": "full",
+        "state": "structure_ok",
+        "meaning": "model_claim_unverified",
+        "reasons": [],
+        "evidence": [
+         {
+          "source_id": "cv",
+          "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+          "start": 0,
+          "end": 30,
+          "quote": "Разрабатывал на Python 3 года.",
+          "sentence": "Разрабатывал на Python 3 года",
+          "heading": null
+         }
+        ]
+       },
+       "resume_quotes": [
+        "Разрабатывал на Python 3 года."
+       ],
+       "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+       "question": null
+      },
+      {
+       "requirement_id": "r2",
+       "label": "SQL",
+       "requirement_quote": "SQL желателен.",
+       "mandatory_quote": null,
+       "mandatory_verification": "not_reviewed",
+       "mandatory_check": {
+        "requirement_id": "r2",
+        "state": "not_mandatory",
+        "reasons": [],
+        "context": null
+       },
+       "mandatory_applied_to_score": false,
+       "status": "full",
+       "status_verification": "model_proposed",
+       "evidence_check": {
+        "requirement_id": "r2",
+        "status": "full",
+        "state": "structure_ok",
+        "meaning": "model_claim_unverified",
+        "reasons": [],
+        "evidence": [
+         {
+          "source_id": "cv",
+          "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+          "start": 31,
+          "end": 53,
+          "quote": "Использовал SQL 1 год.",
+          "sentence": "Использовал SQL 1 год",
+          "heading": null
+         }
+        ]
+       },
+       "resume_quotes": [
+        "Использовал SQL 1 год."
+       ],
+       "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+       "question": null
+      }
+     ],
+     "score_review": {
+      "excluded_mandatory_ids": [],
+      "rule": "evidence_applied_by_scoring_policy",
+      "version": "draft-2026-11-13-v2"
+     },
+     "requirements_draft": {
+      "vacancy_id": "job-001",
+      "state": "unconfirmed",
+      "source_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
+      "requirements_sha256": "c27782f10ec408908250e6ab18d780835bc745e96587a7a0f50e8d6dd9c2e033",
+      "requirements": [
+       {
+        "id": "r1",
+        "text": "Python",
+        "quote": "Python обязателен.",
+        "mandatory_quote": "Python обязателен."
+       },
+       {
+        "id": "r2",
+        "text": "SQL",
+        "quote": "SQL желателен.",
+        "mandatory_quote": null
+       }
+      ],
+      "uncovered": []
+     },
+     "requirements_review": {
+      "vacancy_id": "job-001",
+      "state": "unconfirmed",
+      "reasons": [
+       {
+        "code": "not_confirmed",
+        "message": "Список не подтверждён рекрутером.",
+        "requirement_id": null
+       }
+      ]
+     },
+     "manager_brief": {
+      "state": "draft_requires_review",
+      "final_allowed": false,
+      "processing_complete": false,
+      "grounds": [
+       {
+        "requirement_id": "r1",
+        "label": "Python",
+        "requirement_quote": "Python обязателен.",
+        "mandatory_quote": "Python обязателен.",
+        "mandatory_verification": "not_reviewed",
+        "mandatory_check": {
+         "requirement_id": "r1",
+         "state": "structure_ok",
+         "reasons": [],
+         "context": "Python обязателен"
+        },
+        "mandatory_applied_to_score": true,
+        "status": "full",
+        "status_verification": "model_proposed",
+        "evidence_check": {
+         "requirement_id": "r1",
+         "status": "full",
+         "state": "structure_ok",
+         "meaning": "model_claim_unverified",
+         "reasons": [],
+         "evidence": [
+          {
+           "source_id": "cv",
+           "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+           "start": 0,
+           "end": 30,
+           "quote": "Разрабатывал на Python 3 года.",
+           "sentence": "Разрабатывал на Python 3 года",
+           "heading": null
+          }
+         ]
+        },
+        "resume_quotes": [
+         "Разрабатывал на Python 3 года."
+        ],
+        "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+        "question": null
+       },
+       {
+        "requirement_id": "r2",
+        "label": "SQL",
+        "requirement_quote": "SQL желателен.",
+        "mandatory_quote": null,
+        "mandatory_verification": "not_reviewed",
+        "mandatory_check": {
+         "requirement_id": "r2",
+         "state": "not_mandatory",
+         "reasons": [],
+         "context": null
+        },
+        "mandatory_applied_to_score": false,
+        "status": "full",
+        "status_verification": "model_proposed",
+        "evidence_check": {
+         "requirement_id": "r2",
+         "status": "full",
+         "state": "structure_ok",
+         "meaning": "model_claim_unverified",
+         "reasons": [],
+         "evidence": [
+          {
+           "source_id": "cv",
+           "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+           "start": 31,
+           "end": 53,
+           "quote": "Использовал SQL 1 год.",
+           "sentence": "Использовал SQL 1 год",
+           "heading": null
+          }
+         ]
+        },
+        "resume_quotes": [
+         "Использовал SQL 1 год."
+        ],
+        "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+        "question": null
+       }
+      ],
+      "risks": [],
+      "questions": []
+     }
+    },
+    {
+     "job_id": "job-003",
+     "rank": 2,
+     "score": {
+      "lower": 0.0,
+      "upper": 0.0,
+      "coverage": 100.0,
+      "mandatory": "violated",
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "rows": [
+      {
+       "requirement_id": "r1",
+       "label": "SQL: обязательно не менее 3 лет опыта.",
+       "requirement_quote": "SQL: обязательно не менее 3 лет опыта.",
+       "mandatory_quote": "SQL: обязательно не менее 3 лет опыта.",
+       "mandatory_verification": "not_reviewed",
+       "mandatory_check": {
+        "requirement_id": "r1",
+        "state": "structure_ok",
+        "reasons": [],
+        "context": "SQL: обязательно не менее 3 лет опыта"
+       },
+       "mandatory_applied_to_score": true,
+       "status": "fail",
+       "status_verification": "model_proposed",
+       "evidence_check": {
+        "requirement_id": "r1",
+        "status": "fail",
+        "state": "structure_ok",
+        "meaning": "model_claim_unverified",
+        "reasons": [],
+        "evidence": [
+         {
+          "source_id": "cv",
+          "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+          "start": 31,
+          "end": 53,
+          "quote": "Использовал SQL 1 год.",
+          "sentence": "Использовал SQL 1 год",
+          "heading": null
+         }
+        ]
+       },
+       "resume_quotes": [
+        "Использовал SQL 1 год."
+       ],
+       "explanation": "Модель предложила несоответствие; проверьте противоречие до решения о кандидате.",
+       "question": "Уточните опыт по требованию «SQL: обязательно не менее 3 лет опыта.»: какие задачи выполняли, когда и с каким результатом?"
+      }
+     ],
+     "score_review": {
+      "excluded_mandatory_ids": [],
+      "rule": "evidence_applied_by_scoring_policy",
+      "version": "draft-2026-11-13-v2"
+     },
+     "requirements_draft": {
+      "vacancy_id": "job-003",
+      "state": "unconfirmed",
+      "source_sha256": "964af580232a4916af6cad3eebfdf885565f75b5fc16ad63a2b813f68761a383",
+      "requirements_sha256": "f7eaeae62660b1c85175b33b0be6ac0dbcd14b05a7bdd6b21f0a9e515020340b",
+      "requirements": [
+       {
+        "id": "r1",
+        "text": "SQL: обязательно не менее 3 лет опыта.",
+        "quote": "SQL: обязательно не менее 3 лет опыта.",
+        "mandatory_quote": "SQL: обязательно не менее 3 лет опыта."
+       }
+      ],
+      "uncovered": []
+     },
+     "requirements_review": {
+      "vacancy_id": "job-003",
+      "state": "unconfirmed",
+      "reasons": [
+       {
+        "code": "not_confirmed",
+        "message": "Список не подтверждён рекрутером.",
+        "requirement_id": null
+       }
+      ]
+     },
+     "manager_brief": {
+      "state": "draft_requires_review",
+      "final_allowed": false,
+      "processing_complete": false,
+      "grounds": [],
+      "risks": [
+       {
+        "requirement_id": "r1",
+        "label": "SQL: обязательно не менее 3 лет опыта.",
+        "requirement_quote": "SQL: обязательно не менее 3 лет опыта.",
+        "mandatory_quote": "SQL: обязательно не менее 3 лет опыта.",
+        "mandatory_verification": "not_reviewed",
+        "mandatory_check": {
+         "requirement_id": "r1",
+         "state": "structure_ok",
+         "reasons": [],
+         "context": "SQL: обязательно не менее 3 лет опыта"
+        },
+        "mandatory_applied_to_score": true,
+        "status": "fail",
+        "status_verification": "model_proposed",
+        "evidence_check": {
+         "requirement_id": "r1",
+         "status": "fail",
+         "state": "structure_ok",
+         "meaning": "model_claim_unverified",
+         "reasons": [],
+         "evidence": [
+          {
+           "source_id": "cv",
+           "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+           "start": 31,
+           "end": 53,
+           "quote": "Использовал SQL 1 год.",
+           "sentence": "Использовал SQL 1 год",
+           "heading": null
+          }
+         ]
+        },
+        "resume_quotes": [
+         "Использовал SQL 1 год."
+        ],
+        "explanation": "Модель предложила несоответствие; проверьте противоречие до решения о кандидате.",
+        "question": "Уточните опыт по требованию «SQL: обязательно не менее 3 лет опыта.»: какие задачи выполняли, когда и с каким результатом?"
+       }
+      ],
+      "questions": [
+       "Уточните опыт по требованию «SQL: обязательно не менее 3 лет опыта.»: какие задачи выполняли, когда и с каким результатом?"
+      ]
+     }
+    }
+   ],
+   "final_allowed": false
+  },
+  "run_id": "run-e9-incomplete"
+ }
+}
