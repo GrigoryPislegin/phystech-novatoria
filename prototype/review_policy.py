@@ -39,7 +39,7 @@ State = Literal['draft', 'reviewed_for_handoff', 'blocked', 'stale', 'invalid']
 BLOCKERS = {'processing_error', 'incomplete_run', 'invalid_evidence', 'ambiguous_location', 'requirements_stale'}
 # The analysis content a decision is made on. Review-layer fields (E4 checks, verification, presentation),
 # timings and usage are left out, so recording a decision or an approval does not make other decisions stale.
-_REPORT_FIELDS = ('run_id', 'safe_resume_sha256', 'facts', 'errors', 'unprocessed', 'privacy')
+_REPORT_FIELDS = ('run_id', 'safe_resume_sha256', 'facts', 'errors', 'unprocessed', 'privacy', 'profile')
 _JOB_FIELDS = ('job_id', 'safe_source_sha256', 'requirements', 'evaluation', 'evidence_check', 'score',
                'score_review', 'requirements_draft', 'conditions')
 # reason -> the only action that closes it
@@ -53,6 +53,8 @@ CLOSED_BY = {
     'mandatory_unknown': 'read_context',
     'disputed_evidence': 'read_context',
     'condition_conflict': 'accept_condition',
+    'condition_review': 'read_context',
+    'profile_review': 'read_context',
 }
 _VERSIONED = ('report_sha256', 'resume_sha256', 'source_sha256', 'requirements_sha256', 'policy_version')
 

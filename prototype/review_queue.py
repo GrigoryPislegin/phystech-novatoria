@@ -35,7 +35,8 @@ ReasonCode = Literal[
     'processing_error', 'incomplete_run', 'invalid_evidence', 'ambiguous_location', 'requirements_stale',
     'mandatory_unbound', 'disputed_negative', 'mandatory_fail', 'privacy_may_hide',
     'condition_conflict',
-    'mandatory_unknown', 'disputed_evidence', 'requirements_unconfirmed', 'uncovered_text']
+    'mandatory_unknown', 'disputed_evidence', 'requirements_unconfirmed', 'uncovered_text', 'condition_review',
+    'profile_review']
 Kind = Literal['integrity', 'interpretation', 'missing_info', 'conditions', 'requirements']
 Action = Literal['complete_run', 'fix_source', 'read_context', 'check_list', 'ask_candidate',
                  'decide_condition', 'compare_with_original']
@@ -70,6 +71,10 @@ REASONS: dict[str, tuple[int, str, str, str]] = {
                                  'Список требований не подтверждён рекрутером.'),
     'uncovered_text': (4, 'requirements', 'check_list',
                        'Часть текста вакансии не попала ни в одно требование; проверьте пропуски.'),
+    'condition_review': (4, 'conditions', 'read_context',
+                         'Сравнение условий требует сверки (например, зарплата: валюта, период, налог).'),
+    'profile_review': (4, 'interpretation', 'read_context',
+                       'Краткий профиль для менеджера содержит непроверенные места; сверьте с резюме до передачи.'),
 }
 
 
@@ -173,6 +178,8 @@ def _condition_items(b: _Builder, scope: str, jid: str, conditions: dict) -> Non
         elif raw.get('state') == 'conflict' or 'unknown_with_both_sides' in codes:
             b.add('condition_conflict', scope, jid, condition_kind=kind, refs=refs, details=codes)
             seen.add(kind)
+        elif raw.get('check') == 'needs_review':
+            b.add('condition_review', scope, jid, condition_kind=kind, refs=refs, details=codes)
     for kind in conditions.get('conflicts', []):  # a conflict listed at the top level is never lost
         if kind not in seen:
             b.add('condition_conflict', scope, jid, condition_kind=kind, details=['condition_conflict'])
@@ -262,6 +269,10 @@ def build_review_queue(report: dict) -> ReviewQueue:
         b.add('incomplete_run', run_scope)
     if (report.get('privacy') or {}).get('professional_information_may_be_hidden'):
         b.add('privacy_may_hide', run_scope)
+    profile = report.get('profile')
+    if isinstance(profile, dict) and profile.get('state') != 'structure_ok':  # E5 ProfileCheck, shown to the manager
+        b.add('profile_review', run_scope, details=[profile.get('state', 'malformed')] + [
+            f.get('code') for f in profile.get('findings', []) if isinstance(f, dict)])
     for job in jobs:
         _job_items(b, resume, job, facts)
 
