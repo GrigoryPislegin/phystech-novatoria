@@ -39,6 +39,36 @@ def as_v1(report):
     return report
 
 
+def twin(report, job_id, src, status, new='rX'):
+    """Add a literal repeat of row `src` with `status` to one job, rescore it and re-rank the run."""
+    jobs = report['ranking']['jobs']
+    job = next(j for j in jobs if j['job_id'] == job_id)
+    req = next(r for r in job['requirements']['items'] if r['id'] == src)
+    job['requirements']['items'].append({**req, 'id': new})
+    row = next(r for r in job['evaluation']['rows'] if r['requirement_id'] == src)
+    job['evaluation']['rows'].append({**row, 'requirement_id': new, 'status': status})
+    check = job['evidence_check']
+    c = next(r for r in check['rows'] if r['requirement_id'] == src)
+    check['rows'].append({**c, 'requirement_id': new, 'status': status,
+                          'state': 'no_evidence' if status == 'unknown' else c['state'],
+                          'evidence': [] if status == 'unknown' else c['evidence']})
+    check['mandatory'] += [{**m, 'requirement_id': new} for m in check['mandatory'] if m['requirement_id'] == src]
+    job['score'] = score(Requirements.model_validate(job['requirements']), Evaluation.model_validate(job['evaluation']),
+                         PairCheck.model_validate(check))
+    report['ranking'] = rank(jobs, len(jobs))
+    return report
+
+
+def resolved(job, ids, status):
+    """Independent rescoring of one job with rows `ids` confirmed as `status`."""
+    ev = Evaluation.model_validate(job['evaluation'])
+    ev.rows = [r.model_copy(update={'status': status}) if r.requirement_id in ids else r for r in ev.rows]
+    evidence = PairCheck.model_validate(job['evidence_check'])
+    evidence.rows = [r.model_copy(update={'status': status, 'state': 'structure_ok'}) if r.requirement_id in ids else r
+                     for r in evidence.rows]
+    return score(Requirements.model_validate(job['requirements']), ev, evidence)
+
+
 class WhatIfTests(unittest.TestCase):
     def test_only_open_rows_are_offered(self):
         report = demo()
@@ -142,6 +172,29 @@ class WhatIfTests(unittest.TestCase):
         w = what_if(report, 'job-001', 'r1', 'fail')
         self.assertEqual(w.alternative.job_score.mandatory, 'violated')
 
+    def test_one_policy_names_the_projection(self):
+        report = demo()
+        policy = report['ranking']['jobs'][0]['score']['policy_version']
+        self.assertEqual(what_if(report, 'job-002', 'r1', 'full').policy_version, policy)
+        other = demo()
+        other['policy_version'] = 'draft-other'  # the jobs agree, the report names another policy
+        with self.assertRaisesRegex(ValueError, 'policy_mismatch'):
+            what_if(other, 'job-002', 'r1', 'full')
+        with self.assertRaisesRegex(ValueError, 'policy_mismatch'):
+            what_if_options(other)
+        # Two known policies in one report: UnitTests.test_known_policies_are_not_mixed (needs v3).
+
+    def test_empty_or_ambiguous_ranking(self):
+        report = demo()
+        report['unprocessed'] = [{'job_id': j['job_id'], 'reason': 'model_invalid'} for j in report['ranking']['jobs']]
+        report['ranking'] = rank([], 3)
+        self.assertEqual(what_if_options(report), [])
+        twice = demo()
+        twice['ranking']['jobs'].append(copy.deepcopy(twice['ranking']['jobs'][0]))
+        for call in (lambda: what_if_options(twice), lambda: what_if(twice, 'job-002', 'r1', 'full')):
+            with self.assertRaisesRegex(ValueError, 'incomplete_report'):
+                call()
+
     def test_bad_questions_are_refused(self):
         report = demo()
         cases = [(('job-404', 'r1', 'full'), 'unknown_job'), (('job-002', 'r9', 'full'), 'unknown_requirement'),
@@ -153,6 +206,72 @@ class WhatIfTests(unittest.TestCase):
         tampered['ranking']['jobs'][1]['score']['lower'] = 42
         with self.assertRaisesRegex(ValueError, 'score_not_reproducible'):
             what_if(tampered, 'job-002', 'r1', 'full')
+
+
+class UnitTests(unittest.TestCase):
+    """Policies with requirement units (v3): a repeat is one question, a conflict is an open one."""
+
+    def setUp(self):
+        if 'units' not in demo()['ranking']['jobs'][0]['score']:
+            self.skipTest('the scoring policy has no requirement units')
+
+    def test_conflicting_repeats_are_offered_once_and_resolved_together(self):
+        report = twin(demo(), 'job-001', 'r1', 'fail')
+        job = report['ranking']['jobs'][0]
+        self.assertEqual(job['score']['conflict_ids'], ['r1', 'rX'])
+        option = next(o for o in what_if_options(report) if o.job_id == 'job-001')
+        self.assertEqual((option.requirement_ids, option.status), (['r1', 'rX'], 'conflict'))
+        for status in ('full', 'fail'):
+            expected = resolved(job, ['r1', 'rX'], status)
+            for asked in ('r1', 'rX'):
+                with self.subTest(status=status, asked=asked):
+                    w = what_if(report, 'job-001', asked, status)
+                    self.assertEqual((w.assumption.from_status, w.assumption.requirement_ids), ('conflict', ['r1', 'rX']))
+                    self.assertEqual((w.alternative.job_score.lower, w.alternative.job_score.upper),
+                                     (expected['lower'], expected['upper']))
+                    self.assertIn('противоречат друг другу', w.summary)
+        self.assertGreater(what_if(report, 'job-001', 'rX', 'full').alternative.job_score.lower,
+                           job['score']['lower'])
+
+    def test_a_repeat_without_data_does_not_reopen_a_settled_unit(self):
+        report = twin(demo(), 'job-001', 'r1', 'unknown')  # r1 confirmed full, its repeat rX has no data
+        job = report['ranking']['jobs'][0]
+        self.assertEqual(next(u['state'] for u in job['score']['units'] if 'rX' in u['ids']), 'full')
+        self.assertEqual([o for o in what_if_options(report) if o.job_id == 'job-001'], [])
+        for asked in ('r1', 'rX'):
+            with self.subTest(asked), self.assertRaisesRegex(ValueError, 'not_open'):
+                what_if(report, 'job-001', asked, 'fail')
+
+    def test_disputed_repeats_that_disagree_are_a_conflict(self):
+        report = twin(demo(model=Fragment()), 'job-001', 'r1', 'fail')  # both rows sent to review: full and fail
+        job = report['ranking']['jobs'][0]
+        self.assertEqual(next(u['state'] for u in job['score']['units'] if 'rX' in u['ids']), 'disputed')
+        option = next(o for o in what_if_options(report) if o.job_id == 'job-001')
+        self.assertEqual((option.requirement_ids, option.status, option.disputed), (['r1', 'rX'], 'conflict', True))
+        w = what_if(report, 'job-001', 'r1', 'full')
+        self.assertEqual(w.assumption.from_status, 'conflict')
+        self.assertIn('противоречат друг другу', w.summary)
+        self.assertEqual(w.alternative.job_score.lower, resolved(job, ['r1', 'rX'], 'full')['lower'])
+
+    def test_known_policies_are_not_mixed(self):
+        from prototype.scoring import POLICIES, POLICY_VERSION
+        report = demo()
+        job = report['ranking']['jobs'][2]
+        older = next(p for p in POLICIES if p and p != POLICY_VERSION)
+        job['score'] = score(Requirements.model_validate(job['requirements']), Evaluation.model_validate(job['evaluation']),
+                             PairCheck.model_validate(job['evidence_check']), policy=older)
+        with self.assertRaisesRegex(ValueError, 'policy_mismatch'):
+            what_if(report, 'job-002', 'r1', 'full')
+
+    def test_repeated_unknown_is_one_question(self):
+        report = twin(demo(), 'job-002', 'r1', 'unknown')
+        options = [(o.job_id, o.requirement_ids, o.status) for o in what_if_options(report)]
+        self.assertEqual(options, [('job-002', ['r1', 'rX'], 'unknown')])
+        by_first, by_twin = (what_if(report, 'job-002', rid, 'full') for rid in ('r1', 'rX'))
+        self.assertEqual((by_first.alternative, by_first.affected_ids), (by_twin.alternative, by_twin.affected_ids))
+        expected = resolved(report['ranking']['jobs'][1], ['r1', 'rX'], 'full')
+        self.assertEqual(by_twin.alternative.job_score.lower, expected['lower'])
+        self.assertIn('уточняется один раз', by_twin.summary)
 
 
 if __name__ == '__main__':
