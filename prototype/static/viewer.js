@@ -1,48 +1,24 @@
 (() => {
   'use strict';
 
-  const { MAX_REPORT_BYTES, parseReport, filterRows, statusCounts } = window.NanimaiReport;
+  const {
+    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeRun, scoreRange,
+    assessments, mandatoryStates, evidenceLabel, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
+  } = window.NanimaiReport;
+  const { renderManagerReport } = window.NanimaiManagerReport;
   const byId = id => document.getElementById(id);
   const input = byId('report-file');
   const search = byId('requirement-search');
+  const managerButton = byId('manager-report');
   const filterButtons = Array.from(byId('row-filters').querySelectorAll('button'));
   const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 4 });
 
-  const assessments = {
-    full: ['Полное соответствие', 'ok'],
-    partial: ['Частичное соответствие', 'warning'],
-    unknown: ['Не указано', 'neutral'],
-    fail: ['Несоответствие', 'danger']
-  };
-  const mandatoryStates = {
-    confirmed: ['Обязательные условия покрыты по оценке', 'ok'],
-    clarify: ['Обязательные условия требуют уточнения', 'warning'],
-    violated: ['Выявлено обязательное несоответствие', 'danger'],
-    not_set: ['Обязательные условия не выделены', 'neutral']
-  };
-  const modes = {
-    synthetic_replay_NOT_model_output: ['Синтетический replay', 'Заранее подготовленные ответы'],
-    live_synthetic: ['Анализ на синтетике', 'Ответы модели'],
-    live_certum: ['Защищённый анализ', 'Ответы модели']
-  };
-  const scenarioLabels = { success: 'Подходящая вакансия', disputed: 'Спорный случай' };
-  const recommendations = {
-    review_top: ['С чего начать', 'Проверьте цитаты по вакансиям на первом месте.'],
-    clarify: ['Нужны уточнения', 'Перед выбором вакансии уточните спорные условия у кандидата.'],
-    review_none_fit: ['Нужна проверка несоответствий', 'Проверьте обязательность требований и основания по каждой вакансии.']
-  };
   const skipReasons = {
     evaluation_failed: 'Сбой оценки', requirements_failed: 'Сбой извлечения требований',
     facts_failed: 'Сбой извлечения фактов', model_invalid: 'Некорректный ответ модели',
     stopped_after_error: 'Обработка остановлена после сбоя', cancelled: 'Запуск отменён',
     deadline_exceeded: 'Истекло время запуска', budget_limit: 'Достигнут лимит бюджета',
     privacy_residual_findings: 'Обработка остановлена проверкой данных'
-  };
-  const evidenceLabels = {
-    structure_ok: 'Структура сверена · смысл требует проверки',
-    no_evidence: 'Цитата в резюме не указана',
-    needs_review: 'Доказательство требует проверки',
-    invalid: 'Отчёт отмечает ошибку в доказательстве'
   };
 
   let report = null;
@@ -65,12 +41,6 @@
     return element('span', 'tag tag-' + tone, label);
   }
 
-  function scoreRange(score) {
-    const low = numberFormat.format(score.lower);
-    const high = numberFormat.format(score.upper);
-    return (score.lower === score.upper ? low : low + '–' + high) + '%';
-  }
-
   function setFileStatus(text, error = false) {
     const node = byId('file-status');
     node.hidden = !text;
@@ -79,20 +49,16 @@
   }
 
   function renderSummary() {
-    const [mode, detail] = Object.hasOwn(modes, report.mode)
-      ? modes[report.mode] : ['Неизвестный режим', 'Тип запуска не распознан'];
+    const { mode, modeDetail, scenario, recommendation } = describeRun(report);
     setText('run-mode', mode);
-    const scenario = Object.hasOwn(scenarioLabels, report.scenario) ? scenarioLabels[report.scenario] : null;
-    setText('run-mode-detail', [detail, scenario, report.model].filter(Boolean).join(' · '));
+    setText('run-mode-detail', [modeDetail, scenario, report.model].filter(Boolean).join(' · '));
     setText('run-count', report.processed + ' / ' + report.total);
     setText('run-progress', report.complete ? 'Все вакансии оценены' : 'Обработка завершилась досрочно');
     setText('run-review', report.requirementsConfirmed ? 'Состав подтверждён' : 'Состав не подтверждён');
     setText('run-review-detail', report.finalAllowed ? 'Подтверждение записано в отчёте' : 'Оценки и цитаты требуют проверки');
     byId('privacy-note').hidden = !report.privacyWarning;
 
-    const note = report.complete
-      ? (Object.hasOwn(recommendations, report.recommendation) ? recommendations[report.recommendation] : null)
-      : ['Неполный рейтинг', 'Места предварительные. Ниже показаны только оценённые вакансии.'];
+    const note = recommendation;
     byId('run-note').hidden = !note;
     setText('run-note-title', note?.[0] || '');
     setText('run-note-text', note?.[1] || '');
@@ -100,7 +66,7 @@
     skipped.hidden = report.unprocessed.length === 0;
     skipped.replaceChildren(...report.unprocessed.map(job => {
       const reason = Object.hasOwn(skipReasons, job.reason) ? skipReasons[job.reason] : 'Вакансия не оценена';
-      return element('li', null, job.id + ' — ' + reason);
+      return element('li', null, job.title + ' — ' + reason);
     }));
   }
 
@@ -130,7 +96,7 @@
       content.append(top, element('span', 'job-option-meta', mandatoryStates[job.score.mandatory][0]),
         element('span', 'job-option-review',
           'Спорных: ' + job.rows.filter(row => ['partial', 'fail'].includes(row.status) ||
-            row.evidence?.state === 'needs_review' || row.mandatoryExcluded).length +
+            ['needs_review', 'invalid'].includes(row.evidence?.state) || mandatoryNeedsReview(row)).length +
           ' · Не указано: ' + counts.unknown));
       button.append(rank, content);
       button.addEventListener('click', () => selectJob(job));
@@ -141,6 +107,8 @@
 
   function selectJob(job) {
     activeJob = job;
+    managerButton.hidden = !job;
+    managerButton.disabled = !job;
     filter = 'all';
     search.value = '';
     updateFilters();
@@ -166,6 +134,7 @@
     mandatoryLabel.textContent = mandatory;
     mandatoryLabel.className = 'tag tag-' + tone;
     setText('job-coverage', 'Доля известных данных ' + numberFormat.format(job.score.coverage) + '%');
+    setText('job-requirements-review', requirementReviewLabel(job.requirementsReview));
     setText('job-policy', job.score.policyVersion ? 'Методика ' + job.score.policyVersion : '');
     const scoreReview = byId('job-score-review');
     scoreReview.hidden = job.excluded.length === 0;
@@ -199,15 +168,11 @@
     const arrow = element('span', 'chevron', '›');
     arrow.setAttribute('aria-hidden', 'true');
     toggle.append(arrow, element('span', 'row-name', row.label));
-    heading.append(toggle, element('span', 'row-subtitle',
-      row.mandatoryExcluded ? 'Обязательность требует проверки'
-        : row.mandatoryQuote ? 'Обязательное по отчёту' : 'Обязательность не указана'));
+    heading.append(toggle, element('span', 'row-subtitle', mandatoryLabel(row)));
 
     const assessment = element('td');
-    const evidence = Object.hasOwn(evidenceLabels, row.evidence?.state)
-      ? evidenceLabels[row.evidence.state] : 'Требует проверки';
     assessment.append(tag(...assessments[row.status]),
-      element('span', 'row-subtitle', evidence));
+      element('span', 'row-subtitle', evidenceLabel(row)));
     const resume = element('td');
     resume.append(element('span', 'quote-preview', row.resumeQuotes[0] || 'Цитата не приведена'));
     main.append(heading, assessment, resume);
@@ -260,6 +225,17 @@
     }
   }
 
+  function downloadManagerReport() {
+    if (!activeJob) return;
+    const html = renderManagerReport(report, activeJob.id);
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    const link = element('a');
+    link.href = url;
+    link.download = 'nanimai-manager-report.html';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async function loadFile(file) {
     const sequence = ++loadSequence;
     const prefix = report ? 'Сейчас открыт предыдущий отчёт. ' : '';
@@ -298,6 +274,7 @@
     input.value = '';
     if (file) loadFile(file);
   });
+  managerButton.addEventListener('click', downloadManagerReport);
   search.addEventListener('input', renderRows);
   for (const button of filterButtons) {
     button.addEventListener('click', () => {

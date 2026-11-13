@@ -4,6 +4,79 @@
   const MAX_REPORT_BYTES = 25_000_000;
   const MAX_REQUIREMENTS = 80;
   const statuses = ['full', 'partial', 'unknown', 'fail'];
+  const modes = {
+    synthetic_replay_NOT_model_output: ['Синтетический replay', 'Заранее подготовленные ответы'],
+    live_synthetic: ['Анализ на синтетике', 'Ответы модели'],
+    live_local_privacy: ['Защищённый анализ', 'Ответы модели'],
+    live_certum: ['Защищённый анализ', 'Ответы модели']
+  };
+  const scenarios = { success: 'Подходящая вакансия', disputed: 'Спорный случай' };
+  const recommendations = {
+    review_top: ['С чего начать', 'Проверьте цитаты по вакансиям на первом месте.'],
+    clarify: ['Нужны уточнения', 'Перед выбором вакансии уточните спорные условия у кандидата.'],
+    review_none_fit: ['Нужна проверка несоответствий', 'Проверьте обязательность требований и основания по каждой вакансии.']
+  };
+  const assessments = {
+    full: ['Полное соответствие', 'ok'],
+    partial: ['Частичное соответствие', 'warning'],
+    unknown: ['Сведения не указаны', 'neutral'],
+    fail: ['Несоответствие', 'danger']
+  };
+  const mandatoryStates = {
+    confirmed: ['Обязательные условия покрыты по оценке', 'ok'],
+    clarify: ['Обязательные условия требуют уточнения', 'warning'],
+    violated: ['Выявлено обязательное несоответствие', 'danger'],
+    not_set: ['Обязательные условия не выделены', 'neutral']
+  };
+  const evidenceLabels = {
+    structure_ok: 'Структура сверена · смысл требует проверки',
+    no_evidence: 'Цитата в резюме не указана',
+    needs_review: 'Доказательство требует проверки',
+    invalid: 'Отчёт отмечает ошибку в доказательстве'
+  };
+  const requirementReviews = {
+    confirmed: 'Состав подтверждён в отчёте',
+    stale: 'Подтверждение состава устарело',
+    invalid: 'Подтверждение состава недействительно',
+    unconfirmed: 'Состав не подтверждён'
+  };
+  const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 4 });
+
+  function scoreRange(score) {
+    const low = numberFormat.format(score.lower);
+    const high = numberFormat.format(score.upper);
+    return (score.lower === score.upper ? low : low + '–' + high) + '%';
+  }
+
+  function describeRun(report) {
+    const [mode, modeDetail] = Object.hasOwn(modes, report.mode)
+      ? modes[report.mode] : ['Неизвестный режим', 'Тип запуска не распознан'];
+    const scenario = Object.hasOwn(scenarios, report.scenario) ? scenarios[report.scenario] : null;
+    const recommendation = !report.complete
+      ? ['Неполный рейтинг', 'Места предварительные. Ниже показаны только оценённые вакансии.']
+      : Object.hasOwn(recommendations, report.recommendation)
+        ? recommendations[report.recommendation] : null;
+    return { mode, modeDetail, scenario, recommendation };
+  }
+
+  function requirementReviewLabel(state) {
+    return requirementReviews[state] || requirementReviews.unconfirmed;
+  }
+
+  function mandatoryNeedsReview(row) {
+    return row.mandatoryExcluded || ['needs_review', 'invalid'].includes(row.mandatoryCheck?.state);
+  }
+
+  function mandatoryLabel(row) {
+    if (mandatoryNeedsReview(row)) {
+      return 'Обязательность требует проверки';
+    }
+    return row.mandatoryQuote ? 'Обязательное по отчёту' : 'Обязательность не указана';
+  }
+
+  function evidenceLabel(row) {
+    return evidenceLabels[row.evidence?.state] || 'Доказательство требует проверки';
+  }
 
   function requireShape(condition) {
     if (!condition) throw new Error('В файле нет корректной структуры отчёта Nanimai.');
@@ -19,6 +92,15 @@
 
   function isOptionalText(value) {
     return value == null || typeof value === 'string';
+  }
+
+  function digest(value) {
+    return typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value) ? value : null;
+  }
+
+  function versionLabel(value) {
+    return typeof value === 'string' && /^[a-z0-9][a-z0-9._:-]{0,127}$/i.test(value)
+      ? value : null;
   }
 
   function uniqueIndex(items, key) {
@@ -38,7 +120,7 @@
       ['confirmed', 'clarify', 'violated', 'not_set'].includes(value.mandatory));
     return {
       lower: value.lower, upper: value.upper, coverage: value.coverage,
-      mandatory: value.mandatory, policyVersion: isText(value.policy_version) ? value.policy_version : null
+      mandatory: value.mandatory, policyVersion: versionLabel(value.policy_version)
     };
   }
 
@@ -120,7 +202,21 @@
     requireShape(ids.size === report.unprocessed_job_ids.length);
     const reasons = report.unprocessed == null ? new Map() : uniqueIndex(report.unprocessed, 'job_id');
     requireShape(Array.from(reasons.values()).every(entry => ids.has(entry.job_id) && isText(entry.reason)));
-    return Array.from(ids, id => ({ id, reason: reasons.get(id)?.reason || null }));
+    return Array.from(ids, (id, index) => ({
+      id, title: vacancyTitle(id, jobs.size + index), reason: reasons.get(id)?.reason || null
+    }));
+  }
+
+  function requirementReviewFrom(job) {
+    const review = job.requirements_review;
+    return isRecord(review) && review.vacancy_id === job.job_id && isText(review.state) &&
+      Object.hasOwn(requirementReviews, review.state)
+      ? review.state : 'unconfirmed';
+  }
+
+  function vacancyTitle(id, index) {
+    // Live job IDs include a digest of the original source. Keep them out of display and print.
+    return /^job-\d{3}$/.test(id) ? id : '№' + (index + 1);
   }
 
   function parseReport(source) {
@@ -153,7 +249,7 @@
       requireShape(presentation.size === rankedJobs.size);
     }
 
-    const jobs = Array.from(rankedJobs.values(), job => {
+    const jobs = Array.from(rankedJobs.values(), (job, index) => {
       requireShape(Number.isInteger(job.rank) && job.rank > 0);
       const prepared = presentation?.get(job.job_id);
       requireShape(!presentation || (prepared && prepared.rank === job.rank));
@@ -161,15 +257,22 @@
       requireShape(Array.isArray(excluded) && excluded.every(isText) && new Set(excluded).size === excluded.length);
       const rows = rowsFrom(job, facts, prepared, excluded);
       requireShape(rows.length > 0);
-      // Report 0.1 keeps file labels in a separate private manifest. Display the stable report ID.
-      return { id: job.job_id, title: job.job_id, rank: job.rank, score: scoreFrom(job.score), rows, excluded };
+      return {
+        id: job.job_id, title: vacancyTitle(job.job_id, index), rank: job.rank,
+        score: scoreFrom(job.score), rows, excluded,
+        requirementsReview: requirementReviewFrom(job),
+        sourceDigest: digest(job.safe_source_sha256), policyDigest: digest(job.score.policy_sha256)
+      };
     });
 
     return {
       jobs, unprocessed, processed: jobs.length, total,
       complete: report.ranking.complete, recommendation: report.ranking.recommendation,
-      requirementsConfirmed: false, finalAllowed: false,
-      mode: report.mode, model: report.model || null, scenario: report.demo_scenario || null,
+      requirementsConfirmed: report.ranking.complete && jobs.every(job => job.requirementsReview === 'confirmed'),
+      finalAllowed: false,
+      schemaVersion: report.schema_version,
+      mode: report.mode, model: versionLabel(report.model), scenario: report.demo_scenario || null,
+      resumeDigest: digest(report.safe_resume_sha256), modelDigest: digest(report.model_sha256),
       privacyWarning: report.privacy?.professional_information_may_be_hidden === true
     };
   }
@@ -188,7 +291,10 @@
     return counts;
   }
 
-  const api = { MAX_REPORT_BYTES, parseReport, filterRows, statusCounts };
+  const api = {
+    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeRun, scoreRange, assessments,
+    mandatoryStates, evidenceLabel, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
+  };
   if (typeof module === 'object' && module.exports) {
     module.exports = api;
   } else {

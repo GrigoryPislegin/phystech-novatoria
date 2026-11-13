@@ -7,6 +7,7 @@
   <title>Nanimai — Рейтинг вакансий</title>
   <link rel="stylesheet" href="report.css">
   <script src="report.js" defer></script>
+  <script src="manager-report.js" defer></script>
   <script src="viewer.js" defer></script>
 </head>
 <body>
@@ -96,14 +97,19 @@
                 <p id="job-place" class="eyeline"></p>
                 <h2 id="job-title"></h2>
               </div>
-              <div id="job-score" class="job-score">
-                <strong id="job-score-range" class="numeric"></strong>
-                <span>Диапазон L–H</span>
+              <div class="detail-actions">
+                <div id="job-score" class="job-score">
+                  <strong id="job-score-range" class="numeric"></strong>
+                  <span>Диапазон L–H</span>
+                </div>
+                <button type="button" id="manager-report" class="button button-secondary"
+                  title="Скачать HTML для просмотра и печати" hidden disabled>Отчёт для менеджера</button>
               </div>
             </div>
             <div class="detail-meta">
               <span id="job-mandatory" class="tag"></span>
               <span id="job-coverage"></span>
+              <span id="job-requirements-review"></span>
               <span id="job-policy" class="policy"></span>
             </div>
             <p id="job-score-review" class="score-review" hidden></p>
