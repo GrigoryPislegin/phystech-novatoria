@@ -15,6 +15,13 @@
   const start = byId('start-run');
   const removal = byId('confirm-run-removal');
   const reviewDialog = byId('confirm-review');
+  const inputCenter = byId('input-center');
+  const showInputs = byId('show-inputs');
+  const resumeInput = byId('resume-input');
+  const vacanciesInput = byId('vacancies-input');
+  const inspectInputs = byId('inspect-inputs');
+  const analyzeInputs = byId('analyze-inputs');
+  const liveDialog = byId('confirm-live');
   const knownModes = {
     'synthetic-replay': 'Синтетический replay',
     'synthetic-protected-mock': 'Защищённый Mock SDK'
@@ -45,6 +52,11 @@
 
   let operations = new Set();
   let pendingStart = null;
+  let inputLimits;
+  let liveAvailable = false;
+  let inspected = null;
+  let inputBusy = false;
+  let inputSequence = 0;
   let startBusy = false;
   let listSequence = 0;
   let activeTimer;
@@ -152,7 +164,7 @@
     status.className = 'support';
     const created = new Date(run.created_at);
     title.textContent = [
-      known(knownModes, run.mode, 'Локальный запуск'),
+      run.mode === 'protected-live' ? 'Live · Защищённый анализ' : known(knownModes, run.mode, 'Локальный запуск'),
       known(knownScenarios, run.scenario, ''),
       Number.isFinite(created.getTime()) && run.created_at ? dateFormat.format(created) : ''
     ].filter(Boolean).join(' · ');
@@ -219,6 +231,13 @@
     }
   }
 
+  function showRunCenter() {
+    if (show.hidden) return;
+    center.hidden = false;
+    show.setAttribute('aria-expanded', 'true');
+    refreshRuns();
+  }
+
   async function startRun() {
     if (startBusy) return;
     const mode = type.value;
@@ -252,6 +271,131 @@
       select.append(option);
     }
   }
+
+  function readInputFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.addEventListener('load', () => {
+        const base64 = reader.result.slice(reader.result.indexOf(',') + 1);
+        resolve({ name: file.name, content_base64: base64 });
+      });
+      reader.addEventListener('error', () => reject(new Error('Не удалось прочитать выбранный файл.')));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function clearInspection() {
+    ++inputSequence;
+    inspected = null;
+    analyzeInputs.hidden = true;
+    byId('inspected-files').replaceChildren();
+    message('', false, 'inputs-message');
+  }
+
+  function displayInspection(result, count) {
+    if (!Array.isArray(result?.files) || result.files.length !== count ||
+        result.files.some(file => !['resume', 'vacancy'].includes(file?.role) ||
+          !['ok', 'error'].includes(file.status) || !Number.isSafeInteger(file.index) || file.index <= 0)) {
+      throw new Error('Сервер вернул неполную проверку документов.');
+    }
+    const list = byId('inspected-files');
+    list.replaceChildren(...result.files.map(file => {
+      const row = document.createElement('li');
+      row.className = 'saved-run';
+      const name = document.createElement('strong');
+      name.textContent = file.role === 'resume' ? 'Резюме' : 'Вакансия ' + file.index;
+      const details = document.createElement('span');
+      details.className = file.status === 'error' ? 'support error' : 'support';
+      const checked = Number.isSafeInteger(file.characters) && file.characters >= 0
+        ? 'Текст извлечён · ' + file.characters + ' знаков' : 'Текст извлечён';
+      const guidance = typeof file.action === 'string' && file.action.length <= 220 ? file.action : null;
+      const code = typeof file.error === 'string' && /^[a-z0-9_]{1,64}$/.test(file.error) ? ' (' + file.error + ')' : '';
+      details.textContent = file.status === 'ok' ? checked
+        : guidance || 'Файл не прошёл проверку. Проверьте формат и содержимое.' + code;
+      row.append(name, details);
+      return row;
+    }));
+    if (result.ready === true && isRunId(result.input_id) && result.files.every(file => file.status === 'ok')) {
+      inspected = { id: result.input_id, key: crypto.randomUUID() };
+      analyzeInputs.hidden = !liveAvailable;
+      const text = liveAvailable ? 'Документы проверены локально.' : 'Проверено локально. Внешний анализ выключен.';
+      message(text, false, 'inputs-message');
+    } else {
+      message('Исправьте отмеченные документы и повторите проверку.', true, 'inputs-message');
+    }
+  }
+
+  async function sendInspection() {
+    if (inputBusy || !inputLimits) return;
+    clearInspection();
+    const sequence = inputSequence;
+    const [resume] = resumeInput.files;
+    const jobs = Array.from(vacanciesInput.files);
+    if (!resume || !jobs.length || jobs.length + 1 > inputLimits.count) {
+      message('Выберите одно резюме и от 1 до ' + (inputLimits.count - 1) + ' вакансий.', true, 'inputs-message');
+      return;
+    }
+    const files = [resume, ...jobs];
+    if (files.some(file => file.size > inputLimits.file) || files.reduce((sum, file) => sum + file.size, 0) > inputLimits.total) {
+      message('Объём файлов превышает лимит. Уменьшите размер документов или их число.', true, 'inputs-message');
+      return;
+    }
+
+    inputBusy = true;
+    inspectInputs.disabled = true;
+    message('Проверяем документы на локальном сервере…', false, 'inputs-message');
+    try {
+      const [cv, ...vacancies] = await Promise.all(files.map(readInputFile));
+      if (sequence !== inputSequence) return;
+      const result = await api.inspect({ resume: cv, jobs: vacancies });
+      if (sequence === inputSequence) displayInspection(result, files.length);
+    } catch (error) {
+      if (sequence === inputSequence) message(error.message, true, 'inputs-message');
+    } finally {
+      inputBusy = false;
+      inspectInputs.disabled = false;
+    }
+  }
+
+  async function startProtected() {
+    liveDialog.close();
+    if (!liveAvailable || !inspected || inputBusy) return;
+    const input = inspected;
+    inputBusy = true;
+    analyzeInputs.disabled = true;
+    inspectInputs.disabled = true;
+    message('Создаём защищённый запуск…', false, 'inputs-message');
+    try {
+      const run = await api.start({ mode: 'protected-live', input_id: input.id, budget: 1, idempotency_key: input.key });
+      if (!isRunId(run?.run_id)) throw new Error('Идентификатор созданного запуска недоступен.');
+      if (inspected === input) {
+        resumeInput.value = '';
+        vacanciesInput.value = '';
+        clearInspection();
+        message('Защищённый запуск создан.', false, 'inputs-message');
+      }
+      showRunCenter();
+    } catch (error) {
+      if (inspected === input) message(error.message, true, 'inputs-message');
+    } finally {
+      inputBusy = false;
+      analyzeInputs.disabled = false;
+      inspectInputs.disabled = false;
+    }
+  }
+
+  showInputs.addEventListener('click', () => {
+    inputCenter.hidden = !inputCenter.hidden;
+    showInputs.setAttribute('aria-expanded', String(!inputCenter.hidden));
+  });
+  resumeInput.addEventListener('change', clearInspection);
+  vacanciesInput.addEventListener('change', clearInspection);
+  inspectInputs.addEventListener('click', sendInspection);
+  analyzeInputs.addEventListener('click', () => {
+    if (inspected && liveAvailable && !inputBusy) liveDialog.showModal();
+  });
+  byId('dismiss-live').addEventListener('click', () => liveDialog.close());
+  byId('submit-live').addEventListener('click', startProtected);
 
   show.addEventListener('click', () => {
     center.hidden = !center.hidden;
@@ -300,6 +444,19 @@
       byId('start-run-form').hidden = !canCreate;
       reload.hidden = !operations.has('list');
       show.hidden = !canCreate && reload.hidden;
+      if (operations.has('inspect')) {
+        const count = capabilities.max_files;
+        const file = capabilities.max_file_bytes;
+        const total = capabilities.max_total_bytes;
+        if ([count, file, total].every(Number.isSafeInteger) && count >= 2 && file > 0 && total >= file) {
+          inputLimits = { count, file, total };
+          byId('input-limits').textContent = 'Одно резюме и до ' + (count - 1) + ' вакансий. До ' +
+            file / 1e6 + ' МБ на файл и ' + total / 1e6 + ' МБ суммарно.';
+          showInputs.hidden = false;
+          liveAvailable = operations.has('create') && capabilities.live === true &&
+            Array.isArray(capabilities.modes) && capabilities.modes.includes('protected-live');
+        }
+      }
     } catch {
       // The offline viewer remains available when the service is absent or unreachable.
     }

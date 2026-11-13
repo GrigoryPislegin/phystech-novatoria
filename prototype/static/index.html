@@ -31,6 +31,7 @@
         <p>Сравнение вакансий по одному резюме</p>
       </div>
       <div class="intro-actions">
+        <button class="button button-secondary" id="show-inputs" type="button" aria-controls="input-center" aria-expanded="false" hidden>Документы</button>
         <button class="button button-secondary" id="show-runs" type="button" aria-controls="run-center" aria-expanded="false" hidden>Запуски</button>
         <label class="button button-primary upload">
           <span class="icon-plus" aria-hidden="true">＋</span> Открыть отчёт
@@ -49,6 +50,33 @@
         <pre><code>python -m prototype demo --scenario disputed</code></pre>
       </details>
     </section>
+
+    <section id="input-center" class="view-panel run-center" aria-labelledby="inputs-title" hidden>
+      <div class="requirements-heading">
+        <h2 id="inputs-title">Резюме и вакансии</h2>
+      </div>
+      <p class="support" id="input-limits"></p>
+      <div class="run-form input-form">
+        <label>Резюме
+          <input type="file" id="resume-input" accept=".pdf,.docx,.txt,.md">
+        </label>
+        <label>Вакансии
+          <input type="file" id="vacancies-input" accept=".pdf,.docx,.txt,.md" multiple>
+        </label>
+        <button class="button button-primary" type="button" id="inspect-inputs">Проверить документы</button>
+      </div>
+      <p id="inputs-message" class="support" role="status" aria-live="polite"></p>
+      <ol id="inspected-files" class="saved-runs"></ol>
+      <button class="button button-primary protected-start" type="button" id="analyze-inputs" hidden>Запустить защищённый анализ</button>
+    </section>
+    <dialog id="confirm-live" class="confirm-dialog" aria-labelledby="live-dialog-title">
+      <h2 id="live-dialog-title">Запустить защищённый анализ?</h2>
+      <p>После локальной защиты текст будет обработан внешней моделью. Лимит этого запуска — 1 доллар США.</p>
+      <div class="dialog-actions">
+        <button type="button" id="dismiss-live" class="button button-secondary" autofocus>Отмена</button>
+        <button type="button" id="submit-live" class="button button-primary">Запустить</button>
+      </div>
+    </dialog>
 
     <section id="run-center" class="view-panel run-center" aria-labelledby="runs-title" hidden>
       <div class="requirements-heading">

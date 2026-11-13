@@ -324,3 +324,13 @@ thead th:nth-child(2) { width: 27%; }
 .comparison-picker { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 13px; }
 .comparison-picker select { padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: #fff; font: inherit; }
 .comparison-caveats { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+.intro-actions { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.input-form { margin-top: 14px; }
+.input-form label { min-width: 0; max-width: 100%; }
+.input-form input { width: 100%; max-width: 290px; min-height: 46px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 12px; }
+.input-form input::file-selector-button { padding: 6px 9px; border: 0; border-radius: 8px; color: var(--ink); background: var(--soft); font: inherit; cursor: pointer; }
+.protected-start { margin-top: 12px; }
+@media (max-width: 540px) {
+  .intro-actions { justify-content: flex-start; }
+}

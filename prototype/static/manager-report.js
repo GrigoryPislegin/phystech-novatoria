@@ -249,11 +249,18 @@
   const printScript = "document.getElementById('print-report').addEventListener('click', () => window.print());";
   const printScriptDigest = 'Ly5N7hfg2ILqQD8qjfrNRGdeV9zTxlJEU/jhMitXdoU=';
 
-  function renderManagerReport(report, jobId) {
+  function renderManagerReport(report, jobId, trustedContext = null) {
     const job = report.jobs.find(item => item.id === jobId);
     if (!job) throw new Error('Выберите оценённую вакансию.');
 
     const run = describeRun(report);
+    const trustedRevision = report.runId && report.revision && trustedContext?.runId === report.runId &&
+      trustedContext.revision === report.revision ? report.revision : null;
+    const reviewed = trustedRevision && report.complete
+      ? report.handoff.find(item => item.job_id === job.id && item.state === 'reviewed_for_handoff') : null;
+    const reviewStatus = reviewed ? 'Проверено рекрутером для передачи' : 'Черновик для проверки';
+    const reviewRevision = trustedRevision ? ' · Ревизия ' + trustedRevision : '';
+    const exceptions = reviewed?.accepted_exceptions.length ?? 0;
     const fit = describeFit(report, job);
     const profile = profileSections(report.profile);
     const risks = fit.risks.slice(0, 3);
@@ -287,11 +294,12 @@
   </div>
   <header>
     <p class="run-state${report.complete ? '' : ' incomplete'}">${progress}</p>
-    <p class="eyebrow">AI-рекрутер · ${run.mode} · Черновик для проверки · Версия отчёта ${escape(report.schemaVersion)}</p>
+    <p class="eyebrow">AI-рекрутер · ${run.mode} · ${reviewStatus}${reviewRevision} · Версия отчёта ${escape(report.schemaVersion)}</p>
     <h1>Отчёт для менеджера</h1>
     <p class="vacancy">Вакансия ${escape(job.title)}</p>
     <p>${place} · Диапазон L–H ${scoreRange(job.score)}</p>
     <p class="state">${requirementReviewLabel(job.requirementsReview)} · ${mandatoryStates[job.score.mandatory][0]}</p>
+    ${exceptions ? '<p class="state">Принятые исключения по условиям · ' + exceptions + '</p>' : ''}
   </header>
   <section id="vacancy-fit" class="recommendation">
     <h2>Предварительный вывод по вакансии</h2>

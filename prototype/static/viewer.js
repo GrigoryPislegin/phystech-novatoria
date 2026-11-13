@@ -206,7 +206,8 @@
     setText('review-message', '');
     if (panel.hidden) return;
 
-    const base = Object.hasOwn(handoffStates, handoff?.state) ? handoffStates[handoff.state] : 'Черновик';
+    const serverState = runContext ? handoff?.state : null;
+    const base = Object.hasOwn(handoffStates, serverState) ? handoffStates[serverState] : 'Черновик';
     const state = handoff?.requirements_confirmed === true ? base + ' · Состав подтверждён' : base;
     setText('review-state', runContext?.decide ? state : state + ' · Просмотр без изменений');
     if (runContext?.decide && handoff?.can_confirm_requirements === true) {
@@ -529,7 +530,8 @@
 
   function downloadManagerReport() {
     if (!activeJob) return;
-    const html = renderManagerReport(report, activeJob.id);
+    const trustedContext = runContext ? { runId: runContext.id, revision: runContext.revision } : null;
+    const html = renderManagerReport(report, activeJob.id, trustedContext);
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
     const link = element('a');
     link.href = url;

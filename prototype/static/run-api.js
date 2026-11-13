@@ -68,6 +68,7 @@
         csrfToken = session.csrf_token;
         return session.capabilities;
       },
+      inspect: data => json('/api/inputs/inspect', { method: 'POST', data }),
       list: () => json('/api/runs'),
       start: data => json('/api/runs', { method: 'POST', data }),
       async get(id) { return json(pathFor(id)); },

@@ -57,3 +57,21 @@ test('failed requests have fixed local feedback and cannot leak backend messages
     return true;
   });
 });
+
+test('local inspection keeps the upload body scoped to its dedicated endpoint', async () => {
+  const calls = [];
+  const input = {
+    resume: { name: 'resume.txt', content_base64: '0KLQtdC60YHRgg==' },
+    jobs: [{ name: 'vacancy.txt', content_base64: 'Sm9i' }]
+  };
+  const api = createRunApi(async (path, options) => {
+    calls.push([path, options]);
+    if (path === '/api/session') return json({ csrf_token: 'fixture', capabilities: {} });
+    return json({ input_id: runId, ready: true, files: [] });
+  });
+  await api.session();
+  assert.equal((await api.inspect(input)).input_id, runId);
+  assert.equal(calls[1][0], '/api/inputs/inspect');
+  assert.deepEqual(JSON.parse(calls[1][1].body), input);
+  assert.equal(calls[1][1].headers['X-CSRF-Token'], 'fixture');
+});

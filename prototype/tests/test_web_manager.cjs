@@ -310,3 +310,24 @@ test('a missing or duplicated condition cannot be printed as a conflict', () => 
   assert.match(section(render(duplicate), 'conditions'), /Не удалось проверить/);
   assert.doesNotMatch(section(render(duplicate), 'conditions'), /Возможный конфликт/);
 });
+
+test('handoff review state in print requires current trusted server context', () => {
+  const raw = example('manager-profile');
+  const jobId = raw.ranking.jobs[0].job_id;
+  raw.run_id = 'b'.repeat(32);
+  raw.revision = 12;
+  raw.handoff = [{
+    job_id: jobId, state: 'reviewed_for_handoff',
+    accepted_exceptions: ['abc'], requirements_confirmed: true
+  }];
+  const report = parseReport(JSON.stringify(raw));
+  assert.match(renderManagerReport(report, jobId), /Черновик для проверки/);
+  const context = { runId: raw.run_id, revision: 12 };
+  const reviewed = renderManagerReport(report, jobId, context);
+  assert.match(reviewed, /Проверено рекрутером для передачи/);
+  assert.match(reviewed, /Ревизия 12/);
+  assert.match(reviewed, /Принятые исключения по условиям · 1/);
+  assert.match(reviewed, /Возможный конфликт/);
+  assert.match(renderManagerReport(report, jobId, { ...context, revision: 11 }), /Черновик для проверки/);
+  assert.match(renderManagerReport(report, raw.ranking.jobs[1].job_id, context), /Черновик для проверки/);
+});
