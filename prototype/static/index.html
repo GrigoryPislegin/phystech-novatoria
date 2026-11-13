@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; base-uri 'none'; form-action 'none'">
+  <title>Nanimai — Рейтинг вакансий</title>
+  <link rel="stylesheet" href="report.css">
+  <script src="report.js" defer></script>
+  <script src="viewer.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">N</span>
+        <div><strong>Nanimai</strong><span>Рабочее место рекрутера</span></div>
+      </div>
+      <div class="open-report">
+        <span class="local-label"><span aria-hidden="true"></span> Локальный просмотр</span>
+        <label class="button button-primary upload">
+          <span>Открыть отчёт</span>
+          <input id="report-file" type="file" accept=".json,application/json">
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <header class="intro">
+      <div>
+        <h1>Рейтинг вакансий</h1>
+        <p id="intro-copy">Сравнение вакансий по одному резюме с цитатами из документов.</p>
+      </div>
+      <p id="file-status" class="file-status" role="status" aria-live="polite" hidden></p>
+    </header>
+
+    <section id="welcome" class="welcome" aria-labelledby="welcome-title">
+      <span class="file-icon" aria-hidden="true">JSON</span>
+      <h2 id="welcome-title">Откройте отчёт</h2>
+      <p>Выберите <code>report.json</code> из папки запуска, чтобы увидеть рейтинг и проверить основания оценки. Файл читается на этом устройстве.</p>
+      <details class="demo-help">
+        <summary>Как получить пример отчёта</summary>
+        <p>Выполните команду из корня проекта и откройте <code>report.json</code> в папке, указанной в выводе.</p>
+        <pre><code>python -m prototype demo --scenario disputed</code></pre>
+      </details>
+    </section>
+
+    <div id="report-workspace" hidden>
+      <section class="run-summary" aria-label="Сведения об анализе">
+        <div class="summary-cell">
+          <span class="eyeline">Режим</span>
+          <strong id="run-mode"></strong>
+          <span id="run-mode-detail" class="support"></span>
+        </div>
+        <div class="summary-cell">
+          <span class="eyeline">Обработано вакансий</span>
+          <strong id="run-count" class="numeric"></strong>
+          <span id="run-progress" class="support"></span>
+        </div>
+        <div class="summary-cell">
+          <span class="eyeline">Проверка требований</span>
+          <strong id="run-review"></strong>
+          <span id="run-review-detail" class="support"></span>
+        </div>
+      </section>
+
+      <section id="run-note" class="run-note" aria-labelledby="run-note-title" hidden>
+        <div><h2 id="run-note-title"></h2><p id="run-note-text"></p></div>
+        <ul id="skipped-jobs" hidden></ul>
+      </section>
+      <p id="privacy-note" class="run-note" hidden>В отчёте указано, что защита могла скрыть часть профессиональных сведений. Сверьте их с локальными оригиналами.</p>
+
+      <div class="workbench">
+        <nav class="ranking" aria-labelledby="ranking-title">
+          <div class="pane-header">
+            <h2 id="ranking-title">Вакансии</h2>
+            <span id="ranking-count" class="count-badge numeric"></span>
+          </div>
+          <ol id="job-list" class="job-list"></ol>
+          <p id="empty-ranking" class="side-empty" hidden>В этом запуске нет оценённых вакансий.</p>
+          <details class="score-help">
+            <summary>Как читать рейтинг</summary>
+            <p id="ranking-method"></p>
+            <dl>
+              <div><dt>L</dt><dd>Нижняя граница по имеющимся данным.</dd></div>
+              <div><dt>H</dt><dd>Верхняя граница, если неизвестные требования подтвердятся.</dd></div>
+            </dl>
+          </details>
+        </nav>
+
+        <section id="job-detail" class="detail" aria-labelledby="job-title" hidden>
+          <header class="detail-header">
+            <div class="detail-heading">
+              <div>
+                <p id="job-place" class="eyeline"></p>
+                <h2 id="job-title"></h2>
+              </div>
+              <div id="job-score" class="job-score">
+                <strong id="job-score-range" class="numeric"></strong>
+                <span>Диапазон L–H</span>
+              </div>
+            </div>
+            <div class="detail-meta">
+              <span id="job-mandatory" class="tag"></span>
+              <span id="job-coverage"></span>
+              <span id="job-policy" class="policy"></span>
+            </div>
+            <p id="job-score-review" class="score-review" hidden></p>
+          </header>
+
+          <section class="requirements" aria-labelledby="requirements-title">
+            <div class="requirements-heading">
+              <div>
+                <h3 id="requirements-title">Требования и доказательства</h3>
+                <p>Откройте строку, чтобы сверить цитаты и увидеть вопрос кандидату.</p>
+              </div>
+              <label class="search">
+                <span class="sr-only">Поиск по требованиям</span>
+                <input id="requirement-search" type="search" placeholder="Поиск по требованиям">
+              </label>
+            </div>
+            <div id="row-filters" class="filters" role="group" aria-label="Фильтр требований">
+              <button type="button" data-filter="all" aria-pressed="true">Все</button>
+              <button type="button" data-filter="review" aria-pressed="false">Требуют проверки</button>
+              <button type="button" data-filter="unknown" aria-pressed="false">Не указано</button>
+              <button type="button" data-filter="fail" aria-pressed="false">Несоответствия</button>
+            </div>
+            <p id="result-count" class="sr-only" role="status" aria-live="polite"></p>
+            <table id="requirements-table">
+              <thead>
+                <tr><th scope="col">Требование</th><th scope="col">Соответствие</th><th scope="col">Основание в резюме</th></tr>
+              </thead>
+              <tbody id="requirement-rows"></tbody>
+            </table>
+            <p id="empty-rows" class="empty-rows" hidden>Под этот фильтр ничего не попало.</p>
+          </section>
+        </section>
+        <div id="empty-detail" class="detail empty-detail" hidden>Откройте другой отчёт, чтобы посмотреть рейтинг.</div>
+      </div>
+    </div>
+  </main>
+
+</body>
+</html>
