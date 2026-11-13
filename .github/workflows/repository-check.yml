@@ -34,3 +34,4 @@ jobs:
       # public weights are absent; local/Docker checks cover the real NER path.
       - run: python -m unittest discover -s prototype/tests -v
       - run: node --version && node --test prototype/tests/test_web_*.cjs
+      - run: python scripts/check_cli_replays.py

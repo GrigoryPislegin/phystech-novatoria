@@ -22,6 +22,7 @@ COPY prototype/__main__.py prototype/contracts.py prototype/demo.py prototype/do
 COPY prototype/analysis_contracts.py prototype/candidate_profile.py prototype/ranking_explanation.py prototype/review_queue.py prototype/review_policy.py prototype/run_store.py prototype/local_service.py prototype/web_app.py /app/prototype/
 COPY prototype/static /app/prototype/static
 COPY scripts/privacy_smoke.py /app/scripts/privacy_smoke.py
+COPY scripts/check_cli_replays.py /app/scripts/check_cli_replays.py
 COPY prototype/tests/test_core.py /app/prototype/tests/test_core.py
 COPY prototype/tests/test_integrated_analysis.py prototype/tests/test_run_store.py prototype/tests/test_local_service.py prototype/tests/test_web_app.py /app/prototype/tests/
 RUN python -m unittest discover -s prototype/tests -p 'test_core.py' -v \

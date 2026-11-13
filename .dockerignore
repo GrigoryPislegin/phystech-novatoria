@@ -45,6 +45,7 @@ prototype/static/**
 !scripts/
 scripts/**
 !scripts/privacy_smoke.py
+!scripts/check_cli_replays.py
 !runtime/
 runtime/**
 !runtime/privacy-models/

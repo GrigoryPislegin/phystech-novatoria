@@ -1,0 +1,28 @@
+name: Docker acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, codex/cli-integration-consultation]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - prototype/**
+      - scripts/privacy_smoke.py
+      - scripts/check_cli_replays.py
+      - .github/workflows/docker-smoke.yml
+permissions:
+  contents: read
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # Public pinned dependencies/weights only. Runtime checks have no network;
+      # there are no API keys, real CVs, private models or production services.
+      - run: docker build --platform linux/amd64 -t recruiter-ci .
+      - run: docker run --rm --network none --entrypoint python recruiter-ci scripts/check_cli_replays.py --without-ui
+      - run: docker run --rm --network none --entrypoint python recruiter-ci -m unittest prototype.tests.test_run_store prototype.tests.test_local_service prototype.tests.test_web_app -q
+      - run: docker run --rm --network none --entrypoint python recruiter-ci scripts/privacy_smoke.py --models-dir /opt/privacy-models --model-mock
