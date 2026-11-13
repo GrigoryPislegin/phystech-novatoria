@@ -108,7 +108,17 @@ class _Job:
         # Under v1 the score ignored E3; rows E3 sent to review are still disputed for the explanation.
         self.unscored_review = set() if self.evidence is not None or checks is None else {
             c.requirement_id for c in checks.rows if c.state == 'needs_review'}
-        self.disputed = set(self.score['disputed_ids']) | self.unscored_review
+        # v3: rows of one requirement unit act together; repeats with conflicting statuses are disputed too.
+        units = [u['ids'] for u in self.score.get('units', [])] or [[r.id] for r in self.requirements.items]
+        self.unit = {rid: ids for ids in units for rid in ids}
+        states = {tuple(u['ids']): u['state'] for u in self.score.get('units', [])}
+        rows = {row.requirement_id: row.status for row in self.evaluation.rows}
+        # One row stands for its unit in every walk below: a row that carries the unit's own status.
+        self.reps = [next((i for i in ids if rows[i] == states.get(tuple(ids))), ids[0]) for ids in units]
+        self.open_units = {rid for u in self.score.get('units', []) if u['state'] not in ('full', 'partial', 'fail')
+                           for rid in u['ids']}
+        self.disputed = (set(self.score['disputed_ids']) | self.unscored_review
+                         | set(self.score.get('conflict_ids', [])))
         self.mandatory = {r.id for r in self.requirements.items if r.mandatory_quote} - set(
             self.score['excluded_mandatory_ids'])
         self.quotes = {r.id: r.quote for r in self.requirements.items}
@@ -119,16 +129,18 @@ class _Job:
         self.cv_quotes = {row.requirement_id: [facts[f] for f in row.fact_ids] for row in self.evaluation.rows}
 
     def rescore(self, requirement_id: str | None = None, status: str | None = None) -> dict:
-        """Score as reported, or with one row resolved to `status` (structurally confirmed)."""
+        """Score as reported, or with one requirement resolved to `status` (structurally confirmed).
+        Under v3 every row of the requirement's unit is resolved together; v2 stays row by row."""
         evaluation, evidence = self.evaluation, self.evidence
         if requirement_id is not None:
+            ids = set(self.unit[requirement_id])
             evaluation = Evaluation(rows=[
-                r.model_copy(update={'status': status}) if r.requirement_id == requirement_id else r
+                r.model_copy(update={'status': status}) if r.requirement_id in ids else r
                 for r in evaluation.rows])
             if evidence is not None:
                 state = 'no_evidence' if status == 'unknown' else 'structure_ok'
                 evidence = evidence.model_copy(update={'rows': [
-                    c.model_copy(update={'status': status, 'state': state}) if c.requirement_id == requirement_id
+                    c.model_copy(update={'status': status, 'state': state}) if c.requirement_id in ids
                     else c for c in evidence.rows]})
         return score(self.requirements, evaluation, evidence, policy=self.policy)
 
@@ -142,7 +154,19 @@ class _Job:
                       disputed=rid in self.disputed, cv_quotes=self.cv_quotes[rid], effect=round(effect, 4))
 
     def unresolved(self) -> list[str]:
+        """Rows still open. v3: the rows of units without a counted state (a silent repeat of a known
+        requirement is not open); v2: unknown or disputed rows."""
+        if 'units' in self.score:
+            return sorted(self.open_units | (self.unscored_review & set(self.status)))
         return sorted(rid for rid, st in self.status.items() if st == 'unknown' or rid in self.disputed)
+
+    def open_reps(self) -> list[str]:
+        open_rows = set(self.unresolved())
+        return [rid for rid in sorted(self.reps) if rid in open_rows]
+
+    def known_reps(self) -> list[str]:
+        open_rows = set(self.unresolved())
+        return [rid for rid in sorted(self.reps) if rid not in open_rows]
 
     def scale(self) -> list[tuple[str, bool]]:
         return sorted((_key(r.quote), r.id in self.mandatory) for r in self.requirements.items)
@@ -168,17 +192,17 @@ def _deciding(high: _Job, low: _Job, reason: str, paired: bool) -> list[RowRef]:
 
     refs = []
     if reason == 'mandatory_violation':  # the violated mandatory rows explain the order first
-        refs += [loss(rid) for rid in sorted(low.status)
+        refs += [loss(rid) for rid in low.known_reps()
                  if low.status[rid] == 'fail' and rid in low.mandatory and rid not in low.disputed]
     if paired:  # same requirements and weights: rows that differ, by the gap they make in L (equal rows give 0)
         pairs = [(high.by_key[k], rid) for k, rid in sorted(low.by_key.items())]
         candidates = [low.ref(lr, high.contribution(hr) - low.contribution(lr), counterpart=high.status[hr])
-                      for hr, lr in pairs if hr not in high.unresolved() and lr not in low.unresolved()]
+                      for hr, lr in pairs if hr not in high.unresolved() and lr in low.known_reps()]
         candidates.sort(key=lambda r: (-r.effect, r.requirement_id))
     else:  # different lists: the largest loss of the lower job, then the largest gains of the higher one
-        losses = sorted((loss(rid) for rid in low.status if rid not in low.unresolved()),
+        losses = sorted((loss(rid) for rid in low.known_reps()),
                         key=lambda r: (-r.effect, r.requirement_id))
-        gains = sorted((high.ref(rid, high.contribution(rid)) for rid in high.status if rid not in high.unresolved()),
+        gains = sorted((high.ref(rid, high.contribution(rid)) for rid in high.known_reps()),
                        key=lambda r: (-r.effect, r.requirement_id))
         candidates = losses[:1] + sorted(gains + losses[1:], key=lambda r: (-r.effect, r.job_id, r.requirement_id))
     seen = {(r.job_id, r.requirement_id) for r in refs}
@@ -194,7 +218,7 @@ def _swings(a: _Job, b: _Job, outcome: str) -> list[Swing]:
         else:
             higher = (outcome == 'a_higher') == first
             assumed = 'fail' if higher else 'full'
-        for rid in job.unresolved():
+        for rid in job.open_reps():  # one swing per requirement unit
             changed = job.rescore(rid, assumed)
             new = _order(changed, other.score) if first else _order(other.score, changed)
             if new == outcome:
@@ -291,6 +315,7 @@ class Change(StrictModel):
     row: RowRef  # effect: points of L the resolution can move
     kind: Literal['unknown', 'disputed', 'partial', 'marker']
     role: Literal['leader', 'challenger']
+    requirement_ids: list[str] = []  # every row of the requirement unit; `row` is its representative
 
 
 class LeaderExplanation(StrictModel):
@@ -341,17 +366,18 @@ def explain_leader(report: dict) -> LeaderExplanation | None:
     top = [jobs[i] for i in leader['job_ids']]
     factors, limits = [], []
     for job in top:
-        for rid, status in job.status.items():
-            if rid in job.unresolved():
-                limits.append(job.ref(rid, job.score['weights'][rid]))
-            elif status != 'full':
+        for rid in job.open_reps():
+            limits.append(job.ref(rid, sum(job.score['weights'][i] for i in job.unit[rid])))
+        for rid in job.known_reps():
+            if job.status[rid] != 'full':
                 limits.append(job.ref(rid, job.rescore(rid, 'full')['lower'] - job.score['lower']))
-            if rid not in job.unresolved() and status != 'fail':
+            if job.status[rid] != 'fail':
                 factors.append(job.ref(rid, job.contribution(rid)))
     order = lambda r: (not r.mandatory_applied, -r.effect, r.job_id, r.requirement_id)
     conflicts = sorted({k for j in ranking['jobs'] if j['job_id'] in leader['job_ids']
                         for k in (j.get('conditions') or {}).get('conflicts', [])})
-    changes = [Change(row=jobs[d['job_id']].ref(d['requirement_id'], d['effect']), kind=d['kind'], role=d['role'])
+    changes = [Change(row=jobs[d['job_id']].ref(d['requirement_id'], d['effect']), kind=d['kind'], role=d['role'],
+                      requirement_ids=d['requirement_ids'])
                for d in leader['decisive']]
     factors = sorted((r for r in factors if r.effect > 0), key=order)[:MAX_DECIDING]
     limits = sorted(limits, key=order)[:MAX_DECIDING]

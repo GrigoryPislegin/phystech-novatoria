@@ -47,6 +47,7 @@ VALUE = {'full': 1, 'partial': 0.5, 'fail': 0}
 CORE_SHARE = 75  # points of the scale for applied mandatory requirements when both groups exist
 ANSWERS = 2  # how many candidate answers a challenger may need and still keep the first place open
 MAX_DECISIVE = 3
+MAX_MARKERS = 4  # unapplied markers whose every combination is re-scored; above that the job is 'unbounded'
 
 
 def _evidence_fits(requirements: Requirements, evaluation: Evaluation, evidence: PairCheck) -> bool:
@@ -141,6 +142,18 @@ def score(requirements: Requirements, evaluation: Evaluation, evidence: PairChec
 
     state = {rid: 'disputed' if rid in disputed else rows[rid].status for rid in rows}
     units = _units(requirements, mandatory, excluded, state)
+
+    def core_gate(us):
+        return gate_state([u['state'] for u in us if u['group'] == 'core'])
+
+    # What the job would be if the recruiter applied its unapplied markers: a real re-score of every
+    # combination, because an applied marker changes the weights and H does not bound that.
+    scenarios = []
+    if 0 < len(excluded) <= MAX_MARKERS:
+        for mask in range(1, 2 ** len(excluded)):
+            applied = {rid for i, rid in enumerate(sorted(excluded)) if mask >> i & 1}
+            alt = _units(requirements, mandatory | applied, excluded - applied, state)
+            scenarios.append({'applied': sorted(applied), 'mandatory': core_gate(alt), 'units': alt})
     result = {'units': units}
     ex = exact(result)
     known = sum(w for u, w in zip(units, ex['weights']) if u['state'] in VALUE)
@@ -156,7 +169,7 @@ def score(requirements: Requirements, evaluation: Evaluation, evidence: PairChec
     # Everything `rank` and the explanations need to show exactly this calculation.
     result.update({
         'lower': _points(ex['lower']), 'upper': _points(ex['lower'] + 100 - known), 'coverage': _points(known),
-        'mandatory': gate_state([u['state'] for u in units if u['group'] == 'core']), **common,
+        'mandatory': core_gate(units), **common,
         # One status step of the lightest requirement unit, in points. A lead below the larger
         # `resolution` of two jobs is 'close'. Readers use this field, never min(weights) / 2.
         'resolution': _points(ex['step']),
@@ -166,7 +179,9 @@ def score(requirements: Requirements, evaluation: Evaluation, evidence: PairChec
         'partial_ids': sorted(rid for rid in rows if state[rid] == 'partial'),
         'conflict_ids': sorted(rid for u in units if u['state'] == 'conflict' for rid in u['ids']),
         'groups': {'core': part('core'), 'extra': part('extra')},
-        'repeated_ids': [u['ids'] for u in units if len(u['ids']) > 1]})
+        'repeated_ids': [u['ids'] for u in units if len(u['ids']) > 1],
+        # None: too many unapplied markers to enumerate; such a job is treated as able to reach the top.
+        'marker_scenarios': None if len(excluded) > MAX_MARKERS else scenarios})
     return result
 
 
@@ -215,10 +230,24 @@ def _leader(jobs: list[dict]) -> dict:
             'job_id': job['job_id'], 'requirement_id': ids[0], 'requirement_ids': list(ids), 'kind': kind,
             'role': role, 'effect': effect})
 
-    def open_units(job, states):
-        ex = exact(job['score'])
-        found = [(u, w) for u, w in zip(job['score']['units'], ex['weights']) if u['state'] in states]
+    def units_in(view, states):
+        found = [(u, w) for u, w in zip(view['units'], exact(view)['weights']) if u['state'] in states]
         return sorted(found, key=lambda x: (-x[1], x[0]['ids']))
+
+    def open_units(job, states):
+        return units_in(job['score'], states)
+
+    def reach(view):
+        """Exact L of a view, its disputed units and the fewest unknown answers that bring it to the top."""
+        low, doubted = exact(view)['lower'], units_in(view, {'disputed', 'conflict'})
+        got, asked = low + sum(w for _, w in doubted), []
+        for u, w in units_in(view, {'unknown'})[:ANSWERS]:
+            if got >= best:
+                break
+            got += w
+            asked.append((u, w))
+        needs_reading = low + sum(w for _, w in asked) < best  # the answers alone are not enough
+        return got >= best, asked, doubted if needs_reading else []
 
     kinds = {'conflict': 'disputed', 'disputed': 'disputed', 'unknown': 'unknown', 'partial': 'partial'}
     for job in top:
@@ -249,34 +278,41 @@ def _leader(jobs: list[dict]) -> dict:
         s = job['score']
         low = exact(s)['lower']
         doubted, unknown = open_units(job, {'disputed', 'conflict'}), open_units(job, {'unknown'})
-        if s['excluded_mandatory_ids'] and s['upper'] >= first['lower']:
-            # The v2 rule: applying the marker changes the weights, so the reach is bounded only by H.
-            reasons.add('challenger_doubted')
-            out['challengers'].append({'job_id': job['job_id'], 'answers_needed': None})
-            for rid in s['excluded_mandatory_ids']:
-                add(job, [rid], 'marker', 'challenger', Fraction(s['weights'][rid]))
-            for u, w in doubted:
-                add(job, u['ids'], 'disputed', 'challenger', w)
+        if s['excluded_mandatory_ids']:
+            # Applying a marker changes the weights, so every combination is really re-scored; a job
+            # with too many markers to enumerate is conservatively taken as able to reach the top.
             assessed.append(job)
-            continue
-        if low == 0 and not doubted:
+            views = [v for v in s['marker_scenarios'] or [] if v['mandatory'] != 'violated']
+            hits = sorted(((len(r[1]), len(v['applied']), v['applied'], v, r) for v in views
+                           for r in [reach(v)] if r[0]), key=lambda h: h[:3])
+            now = reach(s)
+            if s['marker_scenarios'] is None or (hits and not now[0]):
+                reasons.add('challenger_doubted')
+                applied = hits[0][2] if hits else s['excluded_mandatory_ids']
+                asked, read = (hits[0][4][1], hits[0][4][2]) if hits else ([], [])
+                out['challengers'].append({'job_id': job['job_id'], 'answers_needed': len(asked) if hits else None})
+                for rid in applied:
+                    add(job, [rid], 'marker', 'challenger', Fraction(s['weights'][rid]))
+                for u, w in read:
+                    add(job, u['ids'], 'disputed', 'challenger', w)
+                for u, w in asked:
+                    add(job, u['ids'], 'unknown', 'challenger', w)
+                continue
+            if not now[0]:
+                continue
+        elif low == 0 and not doubted:
             out['unassessed'].append(job['job_id'])  # nothing confirmed or claimed: neither rejected nor a rival
             continue
-        assessed.append(job)
+        else:
+            assessed.append(job)
         # Reading the disputed rows and answers to unknown units are counted apart.
-        reach, asked = low + sum(w for _, w in doubted), []
-        for u, w in unknown[:ANSWERS]:
-            if reach >= best:
-                break
-            reach += w
-            asked.append((u, w))
-        if reach < best:
+        reached, asked, read = reach(s)
+        if not reached:
             continue
         reasons.add('challenger_answers' if asked else 'challenger_doubted')
         out['challengers'].append({'job_id': job['job_id'], 'answers_needed': len(asked)})
-        if low + sum(w for _, w in asked) < best:  # the answers alone are not enough
-            for u, w in doubted:
-                add(job, u['ids'], 'disputed', 'challenger', w)
+        for u, w in read:
+            add(job, u['ids'], 'disputed', 'challenger', w)
         for u, w in asked:
             add(job, u['ids'], 'unknown', 'challenger', w)
     if rivals:
