@@ -1,5 +1,7 @@
 # Качество и резерв
 
+**Последняя принятая поставка, 14 ноября 02:22 МСК:** runtime bffa94a, scoring v3, 404 Python +40 JS PASS, нативный/Docker UI и независимый Linux CI PASS. [Итоговая приёмка с ограничениями](reviews/night-bffa94a-acceptance.md) · [готовый release](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-bffa94a) · [команды](28-local-app-runbook.md). Более ранние записи ниже — история, а не текущий статус.
+
 ## Комплексный аудит и совместимость новых PR — 13 ноября, около 17:20 МСК
 
 Локальный HEAD `791851d`, PR #3 Егора `7c341772e97ce3e4b78e7ed52388fbf7389c4bfa`, PR #4 Вани `469dbe41887e558e3553f55c715c51703093f315`. Обе ветки получены, PR не сливались. В изолированный снимок зафиксированных файлов наложены новые runtime/tests/docs Егора и documents.py/test_documents.py Вани; README не перезаписывался. `.venv/bin/python -m unittest discover -s prototype/tests -q` из снимка — **84 PASS**; оба `python -m prototype demo` и `demo --scenario disputed` — **exit 0**. Базовые 36+10 тестов и pip check также подтверждены независимым ревьюером. Снимок `/private/tmp/hackathon-review-20261113-ulnyt8hi` — временный локальный материал, не итоговая ветка.
@@ -404,3 +406,29 @@ E10 принят, Егору явно передан старт E11 #27; Docker 
 Codex готовит совместимый UI для v3 отдельно: ссылки объяснения сверяются со строками/цитатами, свободный summary из импортированного JSON не принимается как проверенный вывод, HR-полномочий не добавлено. Новое поле шага `score.resolution` запрошено у владельца scorer, чтобы frontend не воспроизводил ошибочный расчёт по повторным строкам. До получения исправленной поставки браузерная/сквозная приёмка v3 не объявляется выполненной. Для проверки обновления создано отдельное синтетическое RunStore v2 с действительным решением HR ревизии 3; пользовательская история не менялась.
 
 Подготовка UI отдельно от включения v3: 39/39 Node PASS, синтаксис JS и `git diff --check` PASS, repository check 978 файлов/733 Python PASS. Независимый Sol нашёл противоречивые imported leader-состояния и метки v3 в legacy; регрессии добавлены, состояние/строки/версия/шаг проверяются до показа. Строгое поле `decisive` привязано к валидной решающей строке. Эти forward-compatible изменения не входят в замороженный a49a06e и ещё не доказывают работу полного v3 pipeline.
+
+## 14 ноября — E11 принят и проверен в полном приложении
+
+Финальный runtime **bffa94a13bd901b82c8a3491eed7676d66f9fcac**, [PR #29](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/pull/29) принят. Адресные контрпримеры ревью исправлены: точный расчёт/округление, повторы и конфликты статусов, перестановки/ID, маркеры обязательности, количество решающих ответов и смешанные версии. Интегратор подключил объяснение лидера к pipeline, валидируемый UI и согласованные MD/CSV/manager HTML; конфликтный повтор не становится уверенным плюсом/минусом. Старый v2 RunStore с HR revision 3 сохранил hash/score/revision и не приобрёл подтверждение v3.
+
+[Подробный протокол, команды, кадры и ограничения](reviews/night-bffa94a-acceptance.md): `.venv/bin/python -m unittest discover -s prototype/tests -q` — **404 PASS без пропусков**; `node --test prototype/tests/test_web_*.cjs` — **40 PASS**. Настоящие CLI success/disputed и 17 E11→pipeline→JS проекций PASS. 16/16 dev-ожиданий v3 против 10/16 v2 — проверка гипотез политики, не измерение качества модели/HR.
+
+Чистый тестовый Chromium проверил native и финальный Docker arm64: TXT inspect при выключенном live, success 3/3, HR→HTML revision 3, reopen/delete, protected mock disputed 3/3 и incomplete 2/3 с запретом передачи менеджеру. Desktop/mobile без горизонтального переполнения; 0 JS/CSP ошибок/предупреждений. Основной сервер 8765 обновлён: две старые v2-записи сохранены, новый v3/stable replay проверен и удалён только собственный тест.
+
+Docker arm64/amd64 bffa94a собраны: 8 core +30 integration и оба privacy smoke PASS на каждой архитектуре. Offline CLI replay и штатный stop exit0 PASS на обеих. Архив фактически экспортирован и загружен Docker load; [Linux Docker CI43524689571](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43524689571) и [Repository CI43524689576](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43524689576) success на этом SHA. К этому результату не приписывается второй физический Mac Егора на 48268b2.
+
+Новые платные API-прогоны не выполнялись, `.env` не читался, реальные CV наружу не отправлялись. N-C3 сохраняет четыре известных потери профессионального текста; точность новой live-модели и согласие реальных HR не измерены. Следующий этап Егора — [E12 #31](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/issues/31), финальная продуктовая приёмка/демо; это постановка, не выполненная проверка. Интерактивный what-if из PR #30 пока вне этого runtime.
+
+
+## 14 ноября 02:22 МСК — финальный пакет bffa94a опубликован
+
+[Release night-bffa94a](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-bffa94a) не draft; target — **bffa94a13bd901b82c8a3491eed7676d66f9fcac**, published_at `2026-11-13T23:22:17Z`. Проверены все четыре asset в состоянии uploaded; размер и серверный SHA256 каждого совпали с локальным:
+
+| Файл | Байты | SHA256 |
+|---|---:|---|
+| recruiter-prototype-images.tar.gz | 260179696 | `4d07237d42af798289f60e563b6c3ad3f729893c40411bcc3b647ba5d87bcd0a` |
+| public-privacy-models.zip | 29020542 | `7bc60c6b4a7bff4392aec000c3568695fa811af0723ea4c0963fa7afe3323b15` |
+| README.txt | 1164 | `7ffce0f6fb5fc59f5f7d5dbccf7a46a40bf76359428eba8b9e42cd71fe53f2ff` |
+| SHA256SUMS.json | 419 | `bcef77e0e1887c6bb482639ffa656e7c5bf9d2d8509a40bce421270b9cc11fbd` |
+
+Runtime и оба тега сверены с manifest реального архива. Одноразовый тестовый Docker-контейнер и его собственный том удалены после приёмки; основной локальный сервер 8765 и пользовательская история сохранены. README/runbook/матрица 100 баллов/ночная координация/Гант обновлены по фактам. Repository check после документации — **989 файлов /736 Python PASS**; `git diff --check` PASS. Эта эвристическая проверка не заменяет полный аудит секретов. Дальнейшие коммиты документации не меняют runtime архива.

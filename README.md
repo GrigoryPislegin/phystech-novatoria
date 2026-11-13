@@ -24,9 +24,11 @@
 
 ## Текущее состояние
 
+[Итоговая приёмка bffa94a, кадры UI и известные ограничения](docs/reviews/night-bffa94a-acceptance.md).
+
 Работает локальное приложение: загрузка/проверка документов, профиль и условия, объяснимый рейтинг с цитатами, сравнение вакансий, очередь проверки, решения HR, сохранение/повторное открытие и экспорт менеджеру. UI следует переданным Nanimai-макетам без логотипа. [Запуск UI/Docker и сценарий приёмки](docs/28-local-app-runbook.md).
 
-[Готовые Docker-образы arm64/amd64 и публичные веса](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-a49a06e): опубликованный срез a49a06e (privacy_core 0.2, скоринг v2), запуск через `docker load`, ключ для replay/mock не нужен. Второй Mac подтвердил Docker/UI на коде 48268b2 через проверенный fallback весов; независимый Linux CI подтвердил amd64. Подробности и ограничения — [отчёт E10](docs/reviews/egor-e10-second-computer.md).
+[Готовые Docker-образы arm64/amd64 и публичные веса](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-bffa94a): опубликованный срез bffa94a (privacy_core 0.2, скоринг v3), запуск через `docker load`, ключ для replay/mock не нужен. 404 Python +40 JS PASS; Docker/UI на bffa94a проверен интегратором. Второй Mac подтвердил Docker/UI на коде 48268b2 через проверенный fallback весов; независимый Linux CI подтвердил amd64. Подробности и ограничения — [отчёт E10](docs/reviews/egor-e10-second-computer.md).
 
 ```sh
 .venv/bin/python -m prototype serve
