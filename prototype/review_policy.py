@@ -39,7 +39,8 @@ State = Literal['draft', 'reviewed_for_handoff', 'blocked', 'stale', 'invalid']
 BLOCKERS = {'processing_error', 'incomplete_run', 'invalid_evidence', 'ambiguous_location', 'requirements_stale'}
 # The analysis content a decision is made on. Review-layer fields (E4 checks, verification, presentation),
 # timings and usage are left out, so recording a decision or an approval does not make other decisions stale.
-_REPORT_FIELDS = ('run_id', 'safe_resume_sha256', 'facts', 'errors', 'unprocessed', 'privacy', 'profile')
+_REPORT_FIELDS = ('run_id', 'safe_resume_sha256', 'facts', 'errors', 'unprocessed', 'privacy', 'profile',
+                  'profile_missing')
 _JOB_FIELDS = ('job_id', 'safe_source_sha256', 'requirements', 'evaluation', 'evidence_check', 'score',
                'score_review', 'requirements_draft', 'conditions')
 # reason -> the only action that closes it
@@ -213,11 +214,13 @@ def assess_handoff(report: dict, decisions: list, job_id: str) -> HandoffAssessm
             open_items.append(item.id)
 
     marked = 'mark_for_handoff' in actions
+    if not report.get('run_id'):  # without a run id, decisions of identical runs could not be told apart
+        issues.append(Issue(code='run_unbound'))
     if any(i.code in {'not_a_service_decision', 'foreign_job', 'duplicate_decision'} for i in issues):
         state = 'invalid'
     elif blockers:
         state = 'blocked'
-    elif marked and not open_items:  # the queue always lists the list until a confirm decision closes it
+    elif marked and not open_items and report.get('run_id'):  # the list stays an item until confirmed
         state = 'reviewed_for_handoff'
     elif stale:
         state = 'stale'

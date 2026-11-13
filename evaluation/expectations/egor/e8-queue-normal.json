@@ -155,12 +155,22 @@
       "upper": 100.0,
       "coverage": 100.0,
       "mandatory": "confirmed",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "conditions": {
+      "items": [],
+      "findings": [],
+      "conflicts": [],
+      "needs_review": false,
+      "has_invalid": false
      },
      "score_review": {
       "excluded_mandatory_ids": [],
-      "rule": "structurally_unbound_mandatory_uses_regular_weight",
-      "version": "mandatory-structure-0.1"
+      "rule": "evidence_applied_by_scoring_policy",
+      "version": "draft-2026-11-13-v2"
      },
      "safe_source_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
      "rank": 1
@@ -244,12 +254,22 @@
       "upper": 100.0,
       "coverage": 0.0,
       "mandatory": "clarify",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "conditions": {
+      "items": [],
+      "findings": [],
+      "conflicts": [],
+      "needs_review": false,
+      "has_invalid": false
      },
      "score_review": {
       "excluded_mandatory_ids": [],
-      "rule": "structurally_unbound_mandatory_uses_regular_weight",
-      "version": "mandatory-structure-0.1"
+      "rule": "evidence_applied_by_scoring_policy",
+      "version": "draft-2026-11-13-v2"
      },
      "safe_source_sha256": "1c45ff0cbf14039070863347ed0cc5021f8576d9380ff9518db9248b1a897870",
      "rank": 2
@@ -345,12 +365,22 @@
       "upper": 0.0,
       "coverage": 100.0,
       "mandatory": "violated",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
+     },
+     "conditions": {
+      "items": [],
+      "findings": [],
+      "conflicts": [],
+      "needs_review": false,
+      "has_invalid": false
      },
      "score_review": {
       "excluded_mandatory_ids": [],
-      "rule": "structurally_unbound_mandatory_uses_regular_weight",
-      "version": "mandatory-structure-0.1"
+      "rule": "evidence_applied_by_scoring_policy",
+      "version": "draft-2026-11-13-v2"
      },
      "safe_source_sha256": "964af580232a4916af6cad3eebfdf885565f75b5fc16ad63a2b813f68761a383",
      "rank": 3
@@ -364,6 +394,58 @@
   "unprocessed_job_ids": [],
   "unprocessed": [],
   "safe_resume_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+  "analysis_schema_version": "analysis-0.2",
+  "policy_version": "draft-2026-11-13-v2",
+  "profile": {
+   "schema_version": "candidate-profile-0.1",
+   "state": "structure_ok",
+   "meaning": "model_claim_unverified",
+   "findings": [],
+   "spans": {
+    "summary[0]": [
+     {
+      "source_id": "cv",
+      "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+      "start": 0,
+      "end": 30,
+      "quote": "Разрабатывал на Python 3 года.",
+      "sentence": "Разрабатывал на Python 3 года",
+      "heading": null
+     }
+    ],
+    "stack[0]": [
+     {
+      "source_id": "cv",
+      "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+      "start": 16,
+      "end": 22,
+      "quote": "Python",
+      "sentence": "Разрабатывал на Python 3 года",
+      "heading": null
+     }
+    ],
+    "stack[1]": [
+     {
+      "source_id": "cv",
+      "source_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+      "start": 43,
+      "end": 46,
+      "quote": "SQL",
+      "sentence": "Использовал SQL 1 год",
+      "heading": null
+     }
+    ]
+   },
+   "display": {
+    "summary[0]": "Разрабатывал на Python 3 года.",
+    "stack[0]": "Python",
+    "stack[1]": "SQL"
+   }
+  },
+  "profile_missing": [
+   "last_position",
+   "achievements"
+  ],
   "requirements_review": {
    "processing_complete": true,
    "requirements_confirmed": false,
@@ -381,6 +463,311 @@
    "evidence": "quotes_checked_semantics_unverified",
    "final_allowed": false
   },
+  "comparisons": [
+   {
+    "policy_version": "draft-2026-11-13-v2",
+    "job_a": "job-001",
+    "job_b": "job-002",
+    "outcome": "a_higher",
+    "reason": "lower_bound",
+    "scores": {
+     "job-001": {
+      "rank": 1,
+      "lower": 100.0,
+      "upper": 100.0,
+      "coverage": 100.0,
+      "mandatory": "confirmed"
+     },
+     "job-002": {
+      "rank": 2,
+      "lower": 0.0,
+      "upper": 100.0,
+      "coverage": 0.0,
+      "mandatory": "clarify"
+     }
+    },
+    "deciding": [
+     {
+      "job_id": "job-001",
+      "requirement_id": "r1",
+      "requirement_quote": "Python обязателен.",
+      "status": "full",
+      "counterpart_status": null,
+      "mandatory_applied": true,
+      "disputed": false,
+      "cv_quotes": [
+       "Разрабатывал на Python 3 года."
+      ],
+      "effect": 75.0
+     },
+     {
+      "job_id": "job-001",
+      "requirement_id": "r2",
+      "requirement_quote": "SQL желателен.",
+      "status": "full",
+      "counterpart_status": null,
+      "mandatory_applied": false,
+      "disputed": false,
+      "cv_quotes": [
+       "Использовал SQL 1 год."
+      ],
+      "effect": 25.0
+     }
+    ],
+    "swings": [
+     {
+      "row": {
+       "job_id": "job-002",
+       "requirement_id": "r1",
+       "requirement_quote": "Java обязателен.",
+       "status": "unknown",
+       "counterpart_status": null,
+       "mandatory_applied": true,
+       "disputed": false,
+       "cv_quotes": [],
+       "effect": 100.0
+      },
+      "assumed_status": "full",
+      "result": "tie"
+     }
+    ],
+    "caveats": [
+     "different_requirement_lists"
+    ],
+    "summary": "job-001 выше job-002: нижняя граница 100.0 против 0.0; обязательные: job-001 — confirmed, job-002 — clarify. Наибольший вклад: job-001 «Python обязателен.» — full; job-001 «SQL желателен.» — full. Вывод может измениться после уточнения: job-002 «Java обязателен.». Списки требований или их веса разные: L считается внутри своей вакансии."
+   },
+   {
+    "policy_version": "draft-2026-11-13-v2",
+    "job_a": "job-001",
+    "job_b": "job-003",
+    "outcome": "a_higher",
+    "reason": "mandatory_violation",
+    "scores": {
+     "job-001": {
+      "rank": 1,
+      "lower": 100.0,
+      "upper": 100.0,
+      "coverage": 100.0,
+      "mandatory": "confirmed"
+     },
+     "job-003": {
+      "rank": 3,
+      "lower": 0.0,
+      "upper": 0.0,
+      "coverage": 100.0,
+      "mandatory": "violated"
+     }
+    },
+    "deciding": [
+     {
+      "job_id": "job-003",
+      "requirement_id": "r1",
+      "requirement_quote": "SQL: обязательно не менее 3 лет опыта.",
+      "status": "fail",
+      "counterpart_status": null,
+      "mandatory_applied": true,
+      "disputed": false,
+      "cv_quotes": [
+       "Использовал SQL 1 год."
+      ],
+      "effect": 100.0
+     },
+     {
+      "job_id": "job-001",
+      "requirement_id": "r1",
+      "requirement_quote": "Python обязателен.",
+      "status": "full",
+      "counterpart_status": null,
+      "mandatory_applied": true,
+      "disputed": false,
+      "cv_quotes": [
+       "Разрабатывал на Python 3 года."
+      ],
+      "effect": 75.0
+     },
+     {
+      "job_id": "job-001",
+      "requirement_id": "r2",
+      "requirement_quote": "SQL желателен.",
+      "status": "full",
+      "counterpart_status": null,
+      "mandatory_applied": false,
+      "disputed": false,
+      "cv_quotes": [
+       "Использовал SQL 1 год."
+      ],
+      "effect": 25.0
+     }
+    ],
+    "swings": [],
+    "caveats": [
+     "different_requirement_lists"
+    ],
+    "summary": "job-001 выше job-003: у job-003 не выполнено обязательное требование. Наибольший вклад: job-003 «SQL: обязательно не менее 3 лет опыта.» — fail; job-001 «Python обязателен.» — full; job-001 «SQL желателен.» — full. Списки требований или их веса разные: L считается внутри своей вакансии."
+   }
+  ],
+  "review_queue": {
+   "schema_version": "review-queue-0.1",
+   "policy_version": "draft-2026-11-13-v2",
+   "model_status": "model_proposed",
+   "items": [
+    {
+     "id": "f99ef8e63fc1b556",
+     "job_id": "job-003",
+     "requirement_id": "r1",
+     "condition_kind": null,
+     "reason_code": "mandatory_fail",
+     "kind": "interpretation",
+     "priority": 2,
+     "action": "read_context",
+     "explanation": "Модель предложила несоответствие обязательному требованию: вакансия опускается в группу с нарушением, но не исключается; решение принимает HR.",
+     "refs": [
+      {
+       "source": "vacancy",
+       "quote": "SQL: обязательно не менее 3 лет опыта.",
+       "sentence": null,
+       "heading": null,
+       "fact_id": null
+      },
+      {
+       "source": "cv",
+       "quote": "Использовал SQL 1 год.",
+       "sentence": "Использовал SQL 1 год",
+       "heading": null,
+       "fact_id": "f2"
+      }
+     ],
+     "contexts": [],
+     "detail_codes": [
+      "evidence_not_checked"
+     ]
+    },
+    {
+     "id": "92b27a2cd471f758",
+     "job_id": "job-001",
+     "requirement_id": null,
+     "condition_kind": null,
+     "reason_code": "requirements_unconfirmed",
+     "kind": "requirements",
+     "priority": 4,
+     "action": "check_list",
+     "explanation": "Список требований не подтверждён рекрутером.",
+     "refs": [],
+     "contexts": [],
+     "detail_codes": []
+    },
+    {
+     "id": "0faac10644568e6c",
+     "job_id": "job-002",
+     "requirement_id": null,
+     "condition_kind": null,
+     "reason_code": "requirements_unconfirmed",
+     "kind": "requirements",
+     "priority": 4,
+     "action": "check_list",
+     "explanation": "Список требований не подтверждён рекрутером.",
+     "refs": [],
+     "contexts": [],
+     "detail_codes": []
+    },
+    {
+     "id": "a11a9bbf709ca06b",
+     "job_id": "job-002",
+     "requirement_id": "r1",
+     "condition_kind": null,
+     "reason_code": "mandatory_unknown",
+     "kind": "missing_info",
+     "priority": 4,
+     "action": "ask_candidate",
+     "explanation": "Сведений по обязательному требованию нет; это не несоответствие.",
+     "refs": [
+      {
+       "source": "vacancy",
+       "quote": "Java обязателен.",
+       "sentence": null,
+       "heading": null,
+       "fact_id": null
+      }
+     ],
+     "contexts": [],
+     "detail_codes": []
+    },
+    {
+     "id": "579a5a3f946a6ab7",
+     "job_id": "job-003",
+     "requirement_id": null,
+     "condition_kind": null,
+     "reason_code": "requirements_unconfirmed",
+     "kind": "requirements",
+     "priority": 4,
+     "action": "check_list",
+     "explanation": "Список требований не подтверждён рекрутером.",
+     "refs": [],
+     "contexts": [],
+     "detail_codes": []
+    }
+   ],
+   "by_reason": {
+    "mandatory_fail": 1,
+    "mandatory_unknown": 1,
+    "requirements_unconfirmed": 3
+   },
+   "by_job": {
+    "job-001": 1,
+    "job-002": 2,
+    "job-003": 2
+   },
+   "by_priority": {
+    "2": 1,
+    "4": 4
+   }
+  },
+  "handoff": [
+   {
+    "job_id": "job-001",
+    "state": "draft",
+    "model_status": "model_proposed",
+    "requirements_confirmed": false,
+    "processing_complete": true,
+    "blockers": [],
+    "open_items": [
+     "92b27a2cd471f758"
+    ],
+    "acknowledged": [],
+    "accepted_exceptions": [],
+    "reasons": []
+   },
+   {
+    "job_id": "job-002",
+    "state": "draft",
+    "model_status": "model_proposed",
+    "requirements_confirmed": false,
+    "processing_complete": true,
+    "blockers": [],
+    "open_items": [
+     "0faac10644568e6c",
+     "a11a9bbf709ca06b"
+    ],
+    "acknowledged": [],
+    "accepted_exceptions": [],
+    "reasons": []
+   },
+   {
+    "job_id": "job-003",
+    "state": "draft",
+    "model_status": "model_proposed",
+    "requirements_confirmed": false,
+    "processing_complete": true,
+    "blockers": [],
+    "open_items": [
+     "f99ef8e63fc1b556",
+     "579a5a3f946a6ab7"
+    ],
+    "acknowledged": [],
+    "accepted_exceptions": [],
+    "reasons": []
+   }
+  ],
   "presentation": {
    "version": "0.1",
    "jobs": [
@@ -392,7 +779,10 @@
       "upper": 100.0,
       "coverage": 100.0,
       "mandatory": "confirmed",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
      },
      "rows": [
       {
@@ -476,8 +866,8 @@
      ],
      "score_review": {
       "excluded_mandatory_ids": [],
-      "rule": "structurally_unbound_mandatory_uses_regular_weight",
-      "version": "mandatory-structure-0.1"
+      "rule": "evidence_applied_by_scoring_policy",
+      "version": "draft-2026-11-13-v2"
      },
      "requirements_draft": {
       "vacancy_id": "job-001",
@@ -607,7 +997,10 @@
       "upper": 100.0,
       "coverage": 0.0,
       "mandatory": "clarify",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
      },
      "rows": [
       {
@@ -640,8 +1033,8 @@
      ],
      "score_review": {
       "excluded_mandatory_ids": [],
-      "rule": "structurally_unbound_mandatory_uses_regular_weight",
-      "version": "mandatory-structure-0.1"
+      "rule": "evidence_applied_by_scoring_policy",
+      "version": "draft-2026-11-13-v2"
      },
      "requirements_draft": {
       "vacancy_id": "job-002",
@@ -716,7 +1109,10 @@
       "upper": 0.0,
       "coverage": 100.0,
       "mandatory": "violated",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": true,
+      "policy_version": "draft-2026-11-13-v2"
      },
      "rows": [
       {
@@ -761,8 +1157,8 @@
      ],
      "score_review": {
       "excluded_mandatory_ids": [],
-      "rule": "structurally_unbound_mandatory_uses_regular_weight",
-      "version": "mandatory-structure-0.1"
+      "rule": "evidence_applied_by_scoring_policy",
+      "version": "draft-2026-11-13-v2"
      },
      "requirements_draft": {
       "vacancy_id": "job-003",
@@ -843,7 +1239,8 @@
     }
    ],
    "final_allowed": false
-  }
+  },
+  "run_id": "run-normal"
  },
  "expected": [
   {

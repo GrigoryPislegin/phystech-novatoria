@@ -2,7 +2,8 @@
 
 python evaluation/expectations/egor/make_e8_fixtures.py
 Writes e8-queue-normal.json and e8-queue-disputed.json next to this file. Synthetic texts only;
-`events` (timings) are dropped so the files are deterministic.
+`events` (timings) are dropped so the files are deterministic. Uses the integrated wire DTOs
+(profile with the facts, conditions with the rows).
 """
 import asyncio
 import json
@@ -14,8 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 from prototype.contracts import Evaluation, Fact, Facts, Requirement, Requirements, Row  # noqa: E402
 from prototype.demo import ReplayModel, SyntheticPrivacy, demo_inputs  # noqa: E402
-from prototype.evidence import Source, locate  # noqa: E402
-from prototype.pipeline import run_pipeline  # noqa: E402
+from prototype.pipeline import refresh_derived, run_pipeline  # noqa: E402
 from prototype.review_queue import build_review_queue  # noqa: E402
 
 CV = 'Работал с:\n- Python\n\nНе работал с:\n- Python\n\nSQL 2 года.\nРассматриваю только удалённую работу.'
@@ -27,13 +27,31 @@ JOBS = [
 ]
 
 
+EMPTY_PROFILE = {'summary': [], 'stack': [], 'last_position': None, 'achievements': [],
+                 'missing': ['summary', 'stack', 'last_position', 'achievements']}
+WORK_MODE_CONFLICT = {'items': [{'kind': 'work_mode', 'state': 'conflict',
+                                 'cv': {'fact_id': 'f3', 'quote': 'Рассматриваю только удалённую работу.'},
+                                 'vacancy_quote': 'Работа в офисе.', 'note': 'Удалённо против офиса.'}]}
+
+
 class DisputedModel:
-    """Each vacancy carries one kind of signal; job-d fails validation and stays unprocessed."""
+    """Each vacancy carries one kind of signal; job-d fails validation and stays unprocessed.
+    Answers use the integrated wire DTOs: the profile comes with the facts, conditions with the rows."""
 
     async def ask(self, schema, task, payload):
+        answer = (await self._answer(task, payload)).model_dump()
+        if 'profile' in schema.model_fields:
+            answer['profile'] = EMPTY_PROFILE
+        if 'conditions' in schema.model_fields:
+            first = payload['requirements']['items'][0]['quote']
+            answer['conditions'] = WORK_MODE_CONFLICT if first == 'Обязателен опыт Python.' else {'items': []}
+        return schema.model_validate(answer)
+
+    async def _answer(self, task, payload):
         if task == 'facts':
             return Facts(items=[Fact(id='f1', text='Python', quote='Python'),
-                                Fact(id='f2', text='SQL 2 года', quote='SQL 2 года.')])
+                                Fact(id='f2', text='SQL 2 года', quote='SQL 2 года.'),
+                                Fact(id='f3', text='Удалённо', quote='Рассматриваю только удалённую работу.')])
         if task == 'requirements':
             text = payload['text']
             if text.startswith('Обязателен опыт Python'):
@@ -60,22 +78,6 @@ class DisputedModel:
                                     question='Есть ли опыт Rust?')])
 
 
-def conflict(job):
-    """The E5 ConditionsCheck shape (PR #8) Codex will attach as job['conditions'].
-
-    Built by hand because candidate_profile is not on this base; the spans come from the real
-    `locate` on the same processed texts, so they carry true offsets, sentences and headings.
-    """
-    text = dict(JOBS)[job['job_id']]
-    cv_span = locate(Source.of('cv', CV), 'Рассматриваю только удалённую работу.').span.model_dump()
-    vacancy_span = locate(Source.of(job['job_id'], text), 'Работа в офисе.').span.model_dump()
-    finding = {'where': 'conditions[0]', 'code': 'condition_conflict', 'severity': 'review',
-               'message': 'Показать HR. Конфликт условий не является автоматическим отказом.', 'context': None}
-    item = {'kind': 'work_mode', 'state': 'conflict', 'check': 'needs_review', 'findings': [finding],
-            'cv_span': cv_span, 'vacancy_span': vacancy_span}
-    return {'items': [item], 'findings': [], 'conflicts': ['work_mode'], 'needs_review': True, 'has_invalid': False}
-
-
 def expected(queue):
     return [{k: getattr(i, k) for k in ('job_id', 'requirement_id', 'condition_kind', 'reason_code', 'priority',
                                          'action')}
@@ -83,7 +85,9 @@ def expected(queue):
 
 
 def save(name, report, note):
-    report = {k: v for k, v in report.items() if k != 'events'}
+    # The service stamps run_id on every published report; derived views are rebuilt after that.
+    report = refresh_derived({**{k: v for k, v in report.items() if k != 'events'},
+                              'run_id': f"run-{name.split('.')[0].removeprefix('e8-queue-')}"})
     queue = build_review_queue(report)
     data = {'schema_version': 'egor-e8-fixture-0.1', 'note': note, 'report': report, 'expected': expected(queue),
             'by_priority': queue.by_priority}
@@ -97,8 +101,6 @@ def main():
          'demo success: обычный отчёт. Срочных пунктов нет, кроме проверенного fail по обязательному SQL.')
     disputed = asyncio.run(run_pipeline(CV, JOBS, DisputedModel(), SyntheticPrivacy()))
     disputed['privacy'] = {'professional_information_may_be_hidden': True}  # as application.analyze adds it
-    job_a = next(j for j in disputed['ranking']['jobs'] if j['job_id'] == 'job-a')
-    job_a['conditions'] = conflict(job_a)
     save('e8-queue-disputed.json', disputed,
          'Спорный отчёт: «Работал/Не работал с Python», маркер обязательности не того требования, '
          'Rust без сведений при защите данных, необработанная вакансия, конфликт формата работы.')

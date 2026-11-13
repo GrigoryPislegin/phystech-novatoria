@@ -52,7 +52,8 @@ def close_all(report, job_id):
 
 def clean_report():
     resume, jobs = demo_inputs('success')
-    return asyncio.run(run_pipeline(resume, jobs[:1], ReplayModel(), SyntheticPrivacy()))
+    report = asyncio.run(run_pipeline(resume, jobs[:1], ReplayModel(), SyntheticPrivacy()))
+    return {**report, 'run_id': 'run-clean'}  # the service stamps every published report
 
 
 class HandoffTests(unittest.TestCase):
@@ -288,6 +289,12 @@ class DecisionValidityTests(unittest.TestCase):
         result = assess_handoff(second, decisions, 'job-001')
         self.assertEqual(result.state, 'stale')
         self.assertIn('stale_report_sha256', {i.code for i in result.reasons})
+
+    def test_profile_or_missing_sections_change_the_version(self):
+        changed = copy.deepcopy(self.report)
+        changed['profile_missing'] = ['summary']
+        self.assertNotEqual(report_sha256(changed), report_sha256(self.report))
+        self.assertEqual(assess_handoff(changed, self.ok, 'job-001').state, 'stale')
 
     def test_unknown_job_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'unknown_job'):
