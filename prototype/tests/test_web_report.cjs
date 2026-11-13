@@ -210,7 +210,9 @@ test('comparison uses stored outcomes and references an existing quoted row', ()
 function leaderExample(name = 'success') {
   const raw = example(name);
   raw.policy_version = 'draft-2026-11-14-v3';
-  for (const job of raw.ranking.jobs) Object.assign(job.score, {policy_version:raw.policy_version, resolution:25});
+  for (const job of raw.ranking.jobs) Object.assign(job.score, {policy_version:raw.policy_version, resolution:25,
+    conflict_ids:[], units:job.evaluation.rows.map(row => ({ids:[row.requirement_id], state:row.status,
+      group:job.requirements.items.find(item => item.id === row.requirement_id).mandatory_quote ? 'core' : 'extra'}))});
   const job = raw.ranking.jobs[0];
   const row = raw.presentation.jobs[0].rows[0];
   const ref = { job_id: job.job_id, requirement_id: row.requirement_id,
@@ -286,4 +288,23 @@ test('decisive flags are strict booleans and close margins must agree with store
   report = parseReport(JSON.stringify(raw));
   assert.deepEqual(report.comparisons[0].caveats, []);
   assert.ok(report.reviewItems.every(item => item.decisive === false));
+});
+
+
+test('v3 optional metadata cannot reinterpret legacy reports or break readable base data', () => {
+  for (const ids of [['r1'], 'malformed']) {
+    const raw = example('success');
+    raw.ranking.jobs[0].score.conflict_ids = ids;
+    raw.ranking.jobs[0].score.units = [{ids:['r1','r2'], state:'conflict'}];
+    const report = parseReport(JSON.stringify(raw));
+    assert.deepEqual(report.jobs[0].conflicts, []);
+    assert.deepEqual(report.jobs[0].units, []);
+  }
+  const raw = leaderExample();
+  raw.ranking.jobs[0].score.units = [{ids:['r1','r2'], state:'conflict'}];
+  raw.ranking.jobs[0].score.conflict_ids = ['r1','r2'];
+  const report = parseReport(JSON.stringify(raw));
+  assert.equal(report.jobs.length, 3);
+  assert.equal(report.leader, null);
+  assert.deepEqual(report.jobs[0].conflicts, []);
 });

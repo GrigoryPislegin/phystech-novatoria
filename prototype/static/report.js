@@ -441,7 +441,7 @@
     // Optional v3 projection. Imported prose never becomes an authoritative conclusion.
     // Invalid explanation data must not hide an otherwise readable legacy report.
     if (!isRecord(input) || policy !== 'draft-2026-11-14-v3' || input.policy_version !== policy ||
-        !jobs.length || jobs.some(job => job.score.policyVersion !== policy) ||
+        !jobs.length || jobs.some(job => job.score.policyVersion !== policy || !job.unitMetadataValid) ||
         !['stable', 'tie', 'close', 'open', 'none_fit'].includes(input.state)) return null;
     const jobList = ids => Array.isArray(ids) && ids.length <= jobs.length &&
       new Set(ids).size === ids.length && ids.every(id => jobs.some(job => job.id === id))
@@ -514,6 +514,8 @@
     const resumeDigest = digest(report.safe_resume_sha256);
     const profile = profileFrom(report.profile, factQuotes, resumeDigest);
 
+    const coherentV3 = report.policy_version === 'draft-2026-11-14-v3' &&
+      Array.from(rankedJobs.values()).every(job => job.score?.policy_version === report.policy_version);
     const jobs = Array.from(rankedJobs.values(), (job, index) => {
       requireShape(Number.isInteger(job.rank) && job.rank > 0);
       const prepared = presentation?.get(job.job_id);
@@ -525,22 +527,41 @@
       const disputed = job.score?.disputed_ids ?? [];
       requireShape(Array.isArray(disputed) && new Set(disputed).size === disputed.length &&
         disputed.every(id => rows.some(row => row.id === id)));
-      const conflicts = job.score?.conflict_ids ?? [];
-      requireShape(Array.isArray(conflicts) && new Set(conflicts).size === conflicts.length &&
-        conflicts.every(id => rows.some(row => row.id === id)));
-      for (const row of rows) row.scoreConflict = conflicts.includes(row.id);
-      // Unit membership is only a display reference; it never recalculates a score.
-      const sourceUnits = job.score?.units;
-      let units = [];
-      if (Array.isArray(sourceUnits) && sourceUnits.length <= rows.length && sourceUnits.every(unit =>
-          Array.isArray(unit?.ids) && unit.ids.length > 0 && unit.ids.every(id => rows.some(row => row.id === id)))) {
+      // V3 metadata is optional: it cannot reinterpret a legacy report or make it unreadable.
+      const sourceUnits = coherentV3 ? job.score?.units : null;
+      const normalizeUnitText = text => typeof text === 'string'
+        ? text.toLowerCase().replace(/\s+/gu, ' ').replace(/^[ .;,:—–•*\-]+|[ .;,:—–•*\-]+$/gu, '') : null;
+      const signature = id => {
+        const req = job.requirements.items.find(item => item.id === id);
+        return JSON.stringify([normalizeUnitText(req?.text), normalizeUnitText(req?.quote),
+          Boolean(req?.mandatory_quote) && !excluded.includes(id), excluded.includes(id)]);
+      };
+      let units = [], conflicts = [], unitMetadataValid = false;
+      if (Array.isArray(sourceUnits) && sourceUnits.length <= rows.length && sourceUnits.every(unit => {
+          if (!Array.isArray(unit?.ids) || !unit.ids.length ||
+              !unit.ids.every(id => rows.some(row => row.id === id))) return false;
+          if (unit.ids.some(id => signature(id) !== signature(unit.ids[0]))) return false;
+          const states = new Set(unit.ids.map(id => disputed.includes(id) ? 'disputed' : rows.find(row => row.id === id).status));
+          states.delete('unknown');
+          const state = !states.size ? 'unknown' : states.size === 1 ? Array.from(states)[0] : 'conflict';
+          return unit.state === state;
+        })) {
         const ids = sourceUnits.flatMap(unit => unit.ids);
-        if (ids.length === rows.length && new Set(ids).size === ids.length) units = sourceUnits.map(unit => unit.ids.slice());
+        if (ids.length === rows.length && new Set(ids).size === ids.length) {
+          units = sourceUnits.map(unit => unit.ids.slice());
+          const expected = sourceUnits.filter(unit => unit.state === 'conflict').flatMap(unit => unit.ids);
+          const declared = job.score.conflict_ids;
+          if (Array.isArray(declared) && new Set(declared).size === declared.length &&
+              declared.length === expected.length && declared.every(id => expected.includes(id))) {
+            conflicts = expected; unitMetadataValid = true;
+          }
+        }
       }
+      for (const row of rows) row.scoreConflict = conflicts.includes(row.id);
       const sourceDigest = digest(job.safe_source_sha256);
       return {
         id: job.job_id, title: vacancyTitle(job.job_id, index), rank: job.rank,
-        score: scoreFrom(job.score), rows, excluded, disputed, conflicts, units,
+        score: scoreFrom(job.score), rows, excluded, disputed, conflicts, units, unitMetadataValid,
         requirementsReview: requirementReviewFrom(job),
         sourceDigest, policyDigest: digest(job.score.policy_sha256),
         conditions: conditionsFrom(job.conditions, job.job_id, resumeDigest, sourceDigest, factQuotes)

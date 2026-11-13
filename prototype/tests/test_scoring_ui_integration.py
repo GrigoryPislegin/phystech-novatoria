@@ -1,11 +1,13 @@
 """Synthetic policy cases cross the Python report / JS viewer boundary without model calls."""
+import csv
 import json
+import tempfile
 from pathlib import Path
 import shutil
 import subprocess
 import unittest
 
-from prototype.pipeline import refresh_derived
+from prototype.pipeline import refresh_derived, write_report
 from prototype.scoring import POLICY_VERSION
 from prototype.tests.test_scoring_v3 import report_of
 
@@ -27,6 +29,16 @@ class ScoringUIIntegrationTests(unittest.TestCase):
                     self.assertEqual(brief['grounds'], [])
                     self.assertEqual(len(brief['risks']), 2)
                     self.assertEqual(brief['questions'], [])
+                    with tempfile.TemporaryDirectory() as directory:
+                        out = write_report(report, Path(directory))
+                        markdown = (out/'report.md').read_text()
+                        self.assertIn('Конфликт повторов', markdown)
+                        self.assertNotIn('Вопрос для уточнения:', markdown)
+                        with (out/'requirements.csv').open() as handle:
+                            exported = list(csv.DictReader(handle))
+                        self.assertEqual([row['status'] for row in exported], ['full', 'fail'])
+                        self.assertTrue(all(row['verification'] == 'conflicting_repeat_requires_review'
+                                            and not row['question'] for row in exported))
                 check = subprocess.run(['node', '-e', """
                     const fs=require('fs'), assert=require('node:assert/strict');
                     const {parseReport,describeFit}=require('./prototype/static/report.js');

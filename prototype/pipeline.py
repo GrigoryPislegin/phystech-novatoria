@@ -266,23 +266,29 @@ def _write_report_files(report, out):
     lines.append('')
     records = []
     facts = {f['id']:f for f in report['facts']['items']}
+    prepared_jobs = {j['job_id']:j for j in build_presentation(report)['jobs']}
     for job in report['ranking']['jobs']:
         s = job['score']
         lines += [f"## {job['rank']}. {literal(job['job_id'])}",
                   f"Оценка {s['lower']}–{s['upper']}; известность {s['coverage']}%; обязательные: {s['mandatory']}", '']
         reqs = {r['id']:r for r in job['requirements']['items']}
+        prepared_rows = {r['requirement_id']:r for r in prepared_jobs[job['job_id']]['rows']}
         excluded = job.get('score_review', {}).get('excluded_mandatory_ids', [])
         if excluded:
             lines.append('Не привязанные к требованию маркеры обязательности не применены при расчёте (требование учитывается в прочей группе, требуется проверка): ' + ', '.join(literal(i) for i in excluded))
         for row in job['evaluation']['rows']:
             req = reqs[row['requirement_id']]
             evidence = ' / '.join(facts[f]['quote'] for f in row['fact_ids'])
-            question = gap_question(row['status'], req['quote'])
+            prepared_row = prepared_rows[req['id']]
+            question = prepared_row['question']
             records.append([job['job_id'],req['id'],display_label(req),req['quote'],req['mandatory_quote'] or '',
-                            row['status'],evidence,EXPLANATIONS[row['status']],question or '', 'model_proposed_not_verified'])
+                            row['status'],evidence,prepared_row['explanation'],question or '',
+                            'conflicting_repeat_requires_review' if prepared_row['score_conflict'] else 'model_proposed_not_verified'])
             lines += [f"- {literal(display_label(req))} — **{row['status']}**.",
                       f"  Непроверенное объяснение модели: {literal(row['comment'])}",
                       f"  Требование: {literal(req['quote'])}", f"  Резюме: {literal(evidence or 'не указано')}"]
+            if prepared_row['score_conflict']:
+                lines.append('  Конфликт повторов: ' + literal(prepared_row['explanation']))
             check = next((r for r in job.get('evidence_check', {}).get('rows', []) if r['requirement_id'] == req['id']), None)
             if check:
                 lines.append(f"  Проверка доказательства: {literal(check['state'])}; смысл остаётся непроверенным.")
