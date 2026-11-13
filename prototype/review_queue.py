@@ -216,7 +216,8 @@ def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str], decis
     applied = {rid for rid, r in requirements.items() if r['mandatory_quote']} - excluded
     checks = job.get('evidence_check') or {}
     row_checks = {c['requirement_id']: RowCheck.model_validate(c) for c in checks.get('rows', [])}
-    disputed_v2 = set(score.get('disputed_ids', []))
+    conflict = set(score.get('conflict_ids', []))  # v3: literal repeats with different known statuses
+    disputed_v2 = set(score.get('disputed_ids', [])) | conflict
 
     def vacancy_ref(rid):
         return SourceRef(source='vacancy', quote=requirements[rid]['quote'], sentence=None, heading=None, fact_id=None)
@@ -230,7 +231,8 @@ def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str], decis
         state = check.state if check is not None else 'unchecked'
         if state == 'structure_ok' and rid in disputed_v2:
             state = 'needs_review'
-        codes = [r.code for r in check.reasons] if check is not None else []
+        codes = ([r.code for r in check.reasons] if check is not None else []) + (
+            ['repeat_conflict'] if rid in conflict else [])
         refs = [vacancy_ref(rid)] + _cv_refs(check, row['fact_ids'], facts)
         if state == 'invalid':
             b.add('invalid_evidence', scope, jid, rid, refs=refs, details=codes)
@@ -303,7 +305,8 @@ def build_review_queue(report: dict) -> ReviewQueue:
         b.add('profile_review', run_scope, details=[profile.get('state', 'malformed')] + [
             f.get('code') for f in profile.get('findings', []) if isinstance(f, dict)])
     leader = report['ranking'].get('leader') or {}
-    decisive = {(d['job_id'], d['requirement_id']) for d in leader.get('decisive', [])}
+    decisive = {(d['job_id'], rid) for d in leader.get('decisive', [])
+                for rid in d.get('requirement_ids', [d['requirement_id']])}
     for job in jobs:
         _job_items(b, resume, job, facts, decisive)
 

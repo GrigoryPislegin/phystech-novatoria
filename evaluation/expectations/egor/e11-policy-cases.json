@@ -2,7 +2,7 @@
  "schema_version": "e11-policy-cases-0.1",
  "split": "dev",
  "decision_status": "draft",
- "note": "Полностью вымышленные случаи уровня политики: на входе уже готовые требования, статусы строк и состояния E3. Ожидания — гипотезы команды с обоснованием, не ответы эксперта. Качество извлечения моделью здесь не измеряется. Строка: id, text, m (маркер обязательности в источнике), status, evidence (ok | review), marker (ok | review).",
+ "note": "Полностью вымышленные случаи уровня политики: на входе уже готовые требования, статусы строк и состояния E3. Ожидания — гипотезы команды с обоснованием, не ответы эксперта. Качество извлечения моделью здесь не измеряется. Строка: id, text, m (маркер обязательности в источнике), status, evidence (ok | review), marker (ok | review), quote (цитата вакансии; по умолчанию у каждой строки своя).",
  "cases": [
   {
    "id": "E11-01", "covers": ["formulation", "optional_dilution"],
@@ -44,8 +44,8 @@
    "jobs": [
     {"job_id": "repeat", "rows": [
      {"id": "r1", "text": "Python", "m": false, "status": "full"},
-     {"id": "r2", "text": "SQL", "m": false, "status": "fail"},
-     {"id": "r3", "text": "sql.", "m": false, "status": "fail"}]},
+     {"id": "r2", "text": "SQL", "quote": "Знание SQL", "m": false, "status": "fail"},
+     {"id": "r3", "text": "sql.", "quote": "знание  SQL.", "m": false, "status": "fail"}]},
     {"job_id": "plain", "rows": [
      {"id": "r1", "text": "Python", "m": false, "status": "full"},
      {"id": "r2", "text": "SQL", "m": false, "status": "fail"}]},

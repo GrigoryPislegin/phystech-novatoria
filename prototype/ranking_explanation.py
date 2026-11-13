@@ -25,7 +25,7 @@ from pydantic import ValidationError
 
 from .contracts import Evaluation, Requirements, StrictModel
 from .evidence import PairCheck
-from .scoring import POLICIES, POLICY_VERSION, rank, score
+from .scoring import POLICIES, POLICY_VERSION, is_close, rank, score
 
 INTEGRATED = True
 MAX_DECIDING = 3
@@ -148,6 +148,13 @@ class _Job:
         return sorted((_key(r.quote), r.id in self.mandatory) for r in self.requirements.items)
 
 
+def _one_policy(report: dict, jobs) -> None:
+    """Every job of the report, and the report itself, name one policy; a mixed report is refused."""
+    versions = {(j.get('score') or {}).get('policy_version') for j in jobs}
+    if len(versions) != 1 or report.get('policy_version', next(iter(versions))) not in versions:
+        raise ValueError('policy_mismatch')
+
+
 def _order(a: dict, b: dict) -> Literal['a_higher', 'b_higher', 'tie']:
     """The order of two scores under scoring.rank itself."""
     ranked = rank([{'job_id': 'a', 'score': a}, {'job_id': 'b', 'score': b}], 2)['jobs']
@@ -248,8 +255,7 @@ def compare(report: dict, job_a: str, job_b: str) -> Comparison:
         a, b = _Job(jobs[job_a], facts), _Job(jobs[job_b], facts)
     except (KeyError, TypeError, ValidationError):
         raise ValueError('incomplete_report') from None
-    if a.policy != b.policy:
-        raise ValueError('policy_mismatch')
+    _one_policy(report, jobs.values())
 
     paired = a.scale() == b.scale()
     outcome = _order(a.score, b.score)
@@ -262,10 +268,9 @@ def compare(report: dict, job_a: str, job_b: str) -> Comparison:
         deciding = _deciding(high, low, reason, paired)
     swings = _swings(a, b, outcome)
     margin = None if outcome == 'tie' else round(abs(a.score['lower'] - b.score['lower']), 4)
-    close = False
-    if a.policy == POLICY_VERSION and outcome != 'tie' and reason == 'lower_bound':
-        step = max(min(a.score['weights'].values()), min(b.score['weights'].values())) / 2
-        close = margin < round(step, 4)
+    # The same rule `rank` applies to the first place: one status step of the coarser list of units.
+    close = (a.policy == POLICY_VERSION and outcome != 'tie' and reason == 'lower_bound'
+             and is_close(a.score, b.score))
     caveats = ((['different_requirement_lists'] if not paired else [])
                + (['incomplete_run'] if not report['ranking'].get('complete', True) else [])
                + (['evidence_not_applied'] if a.unscored_review or b.unscored_review else [])
@@ -323,6 +328,7 @@ def explain_leader(report: dict) -> LeaderExplanation | None:
         if not ranking['jobs'] or 'leader' not in ranking:
             return None
         facts = {f['id']: f['quote'] for f in report['facts']['items']}
+        _one_policy(report, ranking['jobs'])
         jobs = {j['job_id']: _Job(j, facts) for j in ranking['jobs']}
     except (KeyError, TypeError, ValidationError):
         raise ValueError('incomplete_report') from None
@@ -347,7 +353,8 @@ def explain_leader(report: dict) -> LeaderExplanation | None:
                         for k in (j.get('conditions') or {}).get('conflicts', [])})
     changes = [Change(row=jobs[d['job_id']].ref(d['requirement_id'], d['effect']), kind=d['kind'], role=d['role'])
                for d in leader['decisive']]
-    factors, limits = sorted(factors, key=order)[:MAX_DECIDING], sorted(limits, key=order)[:MAX_DECIDING]
+    factors = sorted((r for r in factors if r.effect > 0), key=order)[:MAX_DECIDING]
+    limits = sorted(limits, key=order)[:MAX_DECIDING]
 
     names = ', '.join(leader['job_ids'])
     text = f'{names}: {_STATE_TEXT[leader["state"]]}'

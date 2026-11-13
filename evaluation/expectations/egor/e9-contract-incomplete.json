@@ -151,6 +151,22 @@
       ]
      },
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "full"
+       },
+       {
+        "ids": [
+         "r2"
+        ],
+        "group": "extra",
+        "state": "full"
+       }
+      ],
       "lower": 100.0,
       "upper": 100.0,
       "coverage": 100.0,
@@ -168,14 +184,17 @@
       ],
       "unknown_ids": [],
       "partial_ids": [],
+      "conflict_ids": [],
       "groups": {
        "core": {
         "share": 75.0,
+        "units": 1,
         "lower": 75.0,
         "upper": 75.0
        },
        "extra": {
         "share": 25.0,
+        "units": 1,
         "lower": 25.0,
         "upper": 25.0
        }
@@ -284,6 +303,15 @@
       ]
      },
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "fail"
+       }
+      ],
       "lower": 0.0,
       "upper": 0.0,
       "coverage": 100.0,
@@ -300,9 +328,11 @@
       ],
       "unknown_ids": [],
       "partial_ids": [],
+      "conflict_ids": [],
       "groups": {
        "core": {
         "share": 100.0,
+        "units": 1,
         "lower": 0.0,
         "upper": 0.0
        },
@@ -666,6 +696,22 @@
      "job_id": "job-001",
      "rank": 1,
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "full"
+       },
+       {
+        "ids": [
+         "r2"
+        ],
+        "group": "extra",
+        "state": "full"
+       }
+      ],
       "lower": 100.0,
       "upper": 100.0,
       "coverage": 100.0,
@@ -683,14 +729,17 @@
       ],
       "unknown_ids": [],
       "partial_ids": [],
+      "conflict_ids": [],
       "groups": {
        "core": {
         "share": 75.0,
+        "units": 1,
         "lower": 75.0,
         "upper": 75.0
        },
        "extra": {
         "share": 25.0,
+        "units": 1,
         "lower": 25.0,
         "upper": 25.0
        }
@@ -906,6 +955,15 @@
      "job_id": "job-003",
      "rank": 2,
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "fail"
+       }
+      ],
       "lower": 0.0,
       "upper": 0.0,
       "coverage": 100.0,
@@ -922,9 +980,11 @@
       ],
       "unknown_ids": [],
       "partial_ids": [],
+      "conflict_ids": [],
       "groups": {
        "core": {
         "share": 100.0,
+        "units": 1,
         "lower": 0.0,
         "upper": 0.0
        },

@@ -25,6 +25,17 @@ CASES = {c['id']: c for c in json.loads(DEFAULT_CASES.read_text(encoding='utf-8'
 E9 = Path(__file__).resolve().parents[2] / 'evaluation' / 'expectations' / 'egor'
 
 
+def rows_job(*rows, job_id='j', mandatory=()):
+    """(text, status[, quote]) rows of one vacancy; `mandatory` lists row indexes with an applied marker."""
+    return build_job({'job_id': job_id, 'rows': [
+        {'id': f'r{i}', 'text': r[0], 'status': r[1], 'm': i in mandatory, **({'quote': r[2]} if len(r) > 2 else {})}
+        for i, r in enumerate(rows)]})
+
+
+def ranked(**jobs):
+    return rank([{'job_id': name, 'score': score(*job)} for name, job in jobs.items()], len(jobs))
+
+
 def report_of(case, policy=POLICY_VERSION):
     """A minimal report of a policy case: what compare, explain_leader and the queue read."""
     results = []
@@ -117,24 +128,32 @@ class GroupShareTests(unittest.TestCase):
             self.assertAlmostEqual(lower, s['lower'], places=2)
 
     def test_literal_repeat_counts_once(self):
-        def job(texts):
-            return build_job({'job_id': 'j', 'rows': [{'id': f'r{i}', 'text': t, 'm': False, 'status': st}
-                                                      for i, (t, st) in enumerate(texts)]})
-        plain = score(*job([('Python', 'full'), ('SQL', 'fail')]))
-        repeat = score(*job([('Python', 'full'), ('SQL', 'fail'), (' sql. ', 'fail')]))
-        self.assertEqual(repeat['lower'], plain['lower'])
+        plain = score(*rows_job(('Python', 'full'), ('SQL', 'fail')))
+        repeat = score(*rows_job(('Python', 'full'), ('SQL', 'fail', 'Знание SQL'), (' sql. ', 'fail', 'знание  SQL.')))
+        self.assertEqual((repeat['lower'], repeat['upper']), (plain['lower'], plain['upper']))
         self.assertEqual(repeat['repeated_ids'], [['r1', 'r2']])
         # Different wording is not merged: equal meaning is not provable here.
-        reworded = score(*job([('Python', 'full'), ('SQL', 'fail'), ('Знание SQL', 'fail')]))
+        reworded = score(*rows_job(('Python', 'full'), ('SQL', 'fail'), ('Знание SQL', 'fail')))
         self.assertEqual(reworded['repeated_ids'], [])
         self.assertLess(reworded['lower'], plain['lower'])
 
-    def test_a_repeat_of_a_mandatory_row_does_not_violate_by_itself(self):
+    def test_same_text_from_another_quote_or_obligatoriness_is_not_a_repeat(self):
+        other_quote = score(*rows_job(('Python', 'full', 'Python от 3 лет'), ('Python', 'fail', 'Python будет плюсом')))
+        self.assertEqual((other_quote['repeated_ids'], other_quote['conflict_ids'], other_quote['lower']), ([], [], 50))
         reqs, ev, evidence = build_job({'job_id': 'j', 'rows': [
-            {'id': 'r1', 'text': 'Python', 'm': True, 'status': 'full'},
-            {'id': 'r2', 'text': 'python', 'm': False, 'status': 'fail'}]})
-        s = score(reqs, ev, evidence)
-        self.assertEqual((s['mandatory'], s['groups']['extra'], s['lower']), ('confirmed', None, 50))
+            {'id': 'r1', 'text': 'Python', 'quote': 'Python', 'm': True, 'status': 'full'},
+            {'id': 'r2', 'text': 'python', 'quote': 'python.', 'm': False, 'status': 'fail'}]})
+        s = score(reqs, ev, evidence)  # an optional mention never joins, or violates, the mandatory one
+        self.assertEqual((s['mandatory'], s['repeated_ids'], s['lower']), ('confirmed', [], 75))
+
+    def test_conflicting_repeats_are_not_averaged(self):
+        s = score(*rows_job(('Python', 'full', 'Python'), ('Python', 'fail', 'python.'), ('SQL', 'full')))
+        self.assertEqual((s['conflict_ids'], s['lower'], s['upper'], s['coverage']), (['r0', 'r1'], 50, 100, 50))
+        ranking = rank([{'job_id': 'j', 'score': s}], 1)
+        self.assertEqual((ranking['recommendation'], ranking['leader']['reasons']), ('clarify', ['own_disputed']))
+        # A row without data does not contradict a known one: the unit keeps the known status.
+        silent = score(*rows_job(('Python', 'full', 'Python'), ('Python', 'unknown', 'python.'), ('SQL', 'full')))
+        self.assertEqual((silent['conflict_ids'], silent['lower']), ([], 100))
 
 
 class LeaderTests(unittest.TestCase):
@@ -163,21 +182,19 @@ class LeaderTests(unittest.TestCase):
         far = self.leader('E11-15')['leader']
         self.assertEqual((far['decisive'], far['challengers'], far['answers_limit']), ([], [], ANSWERS))
 
-    def test_v3_never_establishes_a_first_place_v2_rules_keep_open(self):
+    def test_a_doubted_leader_is_never_a_plain_review_top(self):
+        # The v2 own-basis rules hold in v3. A rival is judged by reach (see ReviewRegressionTests), not by H.
         rng = random.Random(14)
-        open_v2 = 0
+        doubted = 0
         for _ in range(1500):
             jobs = [{'job_id': f'j{i}', 'score': score(*random_job(rng))} for i in range(rng.randint(1, 5))]
-            new = rank(jobs, len(jobs))
-            # The same scores read by the v2 rule (a score without a version takes the v2 path).
-            old = rank([{'job_id': j['job_id'], 'score': {k: v for k, v in j['score'].items() if k != 'policy_version'}}
-                        for j in jobs], len(jobs))
-            self.assertEqual({j['job_id']: j['rank'] for j in new['jobs']},
-                             {j['job_id']: j['rank'] for j in old['jobs']})
-            if old['recommendation'] != 'review_top':
-                self.assertNotEqual(new['recommendation'], 'review_top')
-                open_v2 += 1
-        self.assertGreater(open_v2, 300)
+            ranking = rank(jobs, len(jobs))
+            top = [j['score'] for j in ranking['jobs'] if j['rank'] == 1]
+            if any(s['mandatory'] == 'clarify' or s['disputed_ids'] or s['excluded_mandatory_ids'] or s['lower'] == 0
+                   for s in top):
+                self.assertNotEqual(ranking['recommendation'], 'review_top')
+                doubted += 1
+        self.assertGreater(doubted, 300)
 
     def test_strengthening_a_confirmed_leader_row_keeps_it_first(self):
         rng = random.Random(15)
@@ -199,6 +216,160 @@ class LeaderTests(unittest.TestCase):
         old, new = (score(*build_job(CASES['E11-12']['jobs'][0]), policy=p) for p in (POLICY_V2, POLICY_VERSION))
         with self.assertRaisesRegex(ValueError, 'mixed_policy'):
             rank([{'job_id': 'a', 'score': old}, {'job_id': 'b', 'score': new}], 2)
+
+
+class ReviewRegressionTests(unittest.TestCase):
+    """Defects found by the independent review of ba3e014 (PR #29)."""
+
+    def test_scenario_uses_exact_weights_not_rounded_ones(self):
+        ranking = ranked(a=rows_job(('x', 'full'), ('y', 'full'), ('z', 'fail')),
+                         b=rows_job(('x', 'full'), ('y', 'unknown'), ('z', 'fail')))
+        leader = ranking['leader']
+        self.assertEqual((ranking['recommendation'], leader['state'], leader['challengers']),
+                         ('clarify', 'open', [{'job_id': 'b', 'answers_needed': 1}]))
+        # ...and the real re-score of that one answer is a tie.
+        again = ranked(a=rows_job(('x', 'full'), ('y', 'full'), ('z', 'fail')),
+                       b=rows_job(('x', 'full'), ('y', 'full'), ('z', 'fail')))
+        self.assertEqual([j['rank'] for j in again['jobs']], [1, 1])
+
+    def test_repeats_of_a_leader_unit_do_not_change_closeness(self):
+        rival = rows_job(*[(f'o{i}', 'full') for i in range(4)], ('o4', 'fail'))
+        one = ranked(top=rows_job(('Python', 'full', 'Python')), rival=rival)
+        five = ranked(top=rows_job(*[('Python', 'full', 'Python' + '.' * i) for i in range(5)]), rival=rival)
+        for ranking in (one, five):
+            self.assertEqual((ranking['leader']['state'], ranking['leader']['close_to']), ('close', ['rival']))
+        self.assertEqual(one['leader']['resolution'], five['leader']['resolution'])
+
+    def test_repeats_of_an_unknown_unit_do_not_change_the_answer_budget(self):
+        top = rows_job(('a', 'full'), ('b', 'full'), ('c', 'full'), ('d', 'partial'), ('e', 'fail'), ('f', 'fail'))
+        plain = rows_job(('x', 'full'), ('y', 'unknown', 'Знание Y'), ('z', 'fail'))
+        repeated = rows_job(('x', 'full'), *[('y', 'unknown', 'Знание Y' + '.' * i) for i in range(4)], ('z', 'fail'))
+        for rival in (plain, repeated):
+            s = score(*rival)
+            self.assertEqual((s['lower'], s['upper']), (33.3333, 66.6667))
+            ranking = ranked(top=top, rival=rival)
+            self.assertEqual(ranking['jobs'][0]['score']['lower'], 58.3333)
+            self.assertEqual((ranking['recommendation'], ranking['leader']['challengers']),
+                             ('clarify', [{'job_id': 'rival', 'answers_needed': 1}]))
+        decisive = ranked(top=top, rival=repeated)['leader']['decisive']
+        self.assertEqual([d['requirement_ids'] for d in decisive], [['r1', 'r2', 'r3', 'r4']])  # one question
+
+    def test_tied_leaders_are_all_checked_whatever_their_ids(self):
+        two = rows_job(('a', 'full'), ('b', 'partial'))
+        four = rows_job(('a', 'full'), ('b', 'full'), ('c', 'full'), ('d', 'fail'))
+        third = rows_job(('a', 'full'), ('b', 'full'), ('c', 'full'), ('d', 'fail'), ('e', 'fail'))
+        seen = set()
+        for first, second in (('a', 'b'), ('b', 'a')):
+            ranking = ranked(**{first: two, second: four, 'z': third})
+            self.assertEqual([j['score']['lower'] for j in ranking['jobs']], [75, 75, 60])
+            seen.add((ranking['recommendation'], ranking['leader']['state'], tuple(ranking['leader']['close_to'])))
+        self.assertEqual(seen, {('clarify', 'close', ('z',))})
+
+    def test_a_tie_one_answer_would_break_is_open_and_names_the_row(self):
+        ranking = ranked(a=rows_job(('x', 'full'), ('y', 'unknown')), b=rows_job(('x', 'full'), ('y', 'fail')))
+        leader = ranking['leader']
+        self.assertEqual(([j['rank'] for j in ranking['jobs']], ranking['recommendation'], leader['reasons']),
+                         ([1, 1], 'clarify', ['tie_unresolved']))
+        self.assertEqual([(d['job_id'], d['requirement_id'], d['kind']) for d in leader['decisive']],
+                         [('a', 'r1', 'unknown')])
+        settled = ranked(a=rows_job(('x', 'full'), ('y', 'fail')), b=rows_job(('x', 'full'), ('y', 'fail')))
+        self.assertEqual((settled['recommendation'], settled['leader']['state']), ('review_top', 'tie'))
+
+    def test_disputed_and_unknown_gains_are_counted_apart(self):
+        rival = build_job({'job_id': 'rival', 'rows': [
+            {'id': 'r0', 'text': 'a', 'm': False, 'status': 'full'}, {'id': 'r1', 'text': 'b', 'm': False, 'status': 'full'},
+            {'id': 'r2', 'text': 'c', 'm': False, 'status': 'unknown'}, {'id': 'r3', 'text': 'd', 'm': False, 'status': 'unknown'},
+            {'id': 'r4', 'text': 'e', 'm': False, 'status': 'unknown'},
+            {'id': 'r5', 'text': 'f', 'm': False, 'status': 'full', 'evidence': 'review'}]})
+        ranking = ranked(top=rows_job(('x', 'full'), ('y', 'full'), ('z', 'fail')), rival=rival)
+        leader = ranking['leader']
+        self.assertEqual((leader['reasons'], leader['challengers']),
+                         (['challenger_answers'], [{'job_id': 'rival', 'answers_needed': 1}]))
+        self.assertEqual(sorted((d['requirement_id'], d['kind']) for d in leader['decisive']),
+                         [('r2', 'unknown'), ('r5', 'disputed')])
+        # Reading the disputed row alone reaches 50, below the leader's 66.6667: that is not "0 answers".
+        far = build_job({'job_id': 'rival', 'rows': [
+            {'id': 'r0', 'text': 'a', 'm': False, 'status': 'fail'}, {'id': 'r1', 'text': 'b', 'm': False, 'status': 'fail'},
+            {'id': 'r2', 'text': 'c', 'm': False, 'status': 'fail'},
+            {'id': 'r3', 'text': 'f', 'm': False, 'status': 'full', 'evidence': 'review'}]})
+        self.assertEqual(ranked(top=rows_job(('x', 'full'), ('y', 'full'), ('z', 'fail')), rival=far)['leader']['state'],
+                         'stable')
+
+    def test_rival_with_nothing_confirmed_is_not_close(self):
+        ranking = ranked(top=rows_job(('a', 'partial'), ('b', 'fail'), ('c', 'fail'), ('d', 'fail')),
+                         empty=rows_job(('x', 'unknown')))
+        leader = ranking['leader']
+        self.assertEqual((ranking['jobs'][0]['score']['lower'], leader['state'], leader['close_to'], leader['unassessed']),
+                         (12.5, 'stable', [], ['empty']))
+
+    def test_one_set_one_policy(self):
+        new = score(*rows_job(('a', 'full')))
+        old = score(*rows_job(('a', 'full')), policy=POLICY_V2)
+        for scores, code in (((old, new), 'mixed_policy'), ((old, {**old, 'policy_version': 'draft-x'}), 'mixed_policy'),
+                             (({**old, 'policy_version': 'draft-x'},), 'unknown_policy')):
+            with self.subTest(code=code, n=len(scores)), self.assertRaisesRegex(ValueError, code):
+                rank([{'job_id': f'j{i}', 'score': s} for i, s in enumerate(scores)], len(scores))
+        report = report_of(CASES['E11-08'])  # three jobs
+        third = report['ranking']['jobs'][2]
+        reqs, ev = Requirements.model_validate(third['requirements']), Evaluation.model_validate(third['evaluation'])
+        mixed = copy.deepcopy(report)
+        mixed['ranking']['jobs'][2]['score'] = score(reqs, ev, PairCheck.model_validate(third['evidence_check']),
+                                                     policy=POLICY_V2)
+        first, second = (j['job_id'] for j in report['ranking']['jobs'][:2])
+        stamped = {**copy.deepcopy(report), 'policy_version': POLICY_V2}
+        for broken in (mixed, stamped):
+            with self.assertRaisesRegex(ValueError, 'policy_mismatch'):
+                compare(broken, first, second)
+            with self.assertRaisesRegex(ValueError, 'policy_mismatch'):
+                explain_leader(broken)
+        self.assertEqual(compare({**report, 'policy_version': POLICY_VERSION}, first, second).policy_version,
+                         POLICY_VERSION)
+
+    def test_stable_means_no_real_rescore_of_two_answers_reaches_the_top(self):
+        rng = random.Random(21)
+        stable = 0
+        for _ in range(3000):
+            built = [random_job(rng) for _ in range(rng.randint(2, 4))]
+            jobs = [{'job_id': f'j{i}', 'score': score(*job)} for i, job in enumerate(built)]
+            ranking = rank(jobs, len(jobs))
+            if ranking['leader']['state'] != 'stable':
+                continue
+            stable += 1
+            best = ranking['jobs'][0]['score']['lower']
+            for job in ranking['jobs'][1:]:
+                s, idx = job['score'], int(job['job_id'][1:])
+                if s['mandatory'] == 'violated' or s['lower'] == 0:
+                    continue
+                unknown = s['unknown_ids']
+                for pair in [(a, b) for a in unknown for b in unknown if a <= b]:
+                    changed = built[idx]
+                    for rid in set(pair):
+                        changed = with_status(changed, rid, 'full', 'structure_ok')
+                    self.assertLess(score(*changed)['lower'], best)
+        self.assertGreater(stable, 30)
+
+    def test_rank_compare_and_explanation_agree(self):
+        rng = random.Random(22)
+        for _ in range(150):
+            results = []
+            for i in range(rng.randint(2, 4)):
+                reqs, ev, evidence = random_job(rng)
+                results.append({'job_id': f'j{i}', 'requirements': reqs.model_dump(), 'evaluation': ev.model_dump(),
+                                'evidence_check': evidence.model_dump(), 'score': score(reqs, ev, evidence)})
+            report = {'facts': {'items': [{'id': 'f1', 'text': 'факт', 'quote': 'цитата'}]},
+                      'ranking': rank(results, len(results))}
+            leader, places = report['ranking']['leader'], {j['job_id']: j['rank'] for j in report['ranking']['jobs']}
+            text = explain_leader(report)
+            self.assertEqual((text.state, text.close_to), (leader['state'], leader['close_to']))
+            top = leader['job_ids'][0]
+            for other in places:
+                if other == top:
+                    continue
+                c = compare(report, top, other)
+                self.assertEqual(c.outcome, 'tie' if places[other] == 1 else 'a_higher')
+                if len(leader['job_ids']) == 1 and leader['state'] != 'none_fit' and c.reason == 'lower_bound':
+                    assessed = other in leader['close_to'] or other not in leader['unassessed']
+                    self.assertEqual(c.close and assessed, other in leader['close_to'])
 
 
 class ExplanationTests(unittest.TestCase):

@@ -31,7 +31,7 @@ def build_job(job: dict):
     """Requirements, evaluation and a hand-built E3 check from the compact rows of a case."""
     items, rows, row_checks, markers = [], [], [], []
     for r in job['rows']:
-        quote = f"{r['text']} ({r['id']})"
+        quote = r.get('quote') or f"{r['text']} ({r['id']})"  # `quote`: the same source line repeated
         items.append(Requirement(id=r['id'], text=r['text'], quote=quote,
                                  mandatory_quote=f'Обязательно: {quote}' if r['m'] else None))
         unknown = r['status'] == 'unknown'
@@ -61,7 +61,8 @@ def run_case(case: dict, policy: str) -> dict:
             'lower': {j['job_id']: j['score']['lower'] for j in ranking['jobs']},
             'recommendation': ranking['recommendation'],
             'state': leader['state'] if leader else None,
-            'decisive': [[d['job_id'], d['requirement_id']] for d in leader['decisive']] if leader else None}
+            'decisive': [[d['job_id'], rid] for d in leader['decisive'] for rid in d['requirement_ids']]
+            if leader else None}
 
 
 def check_case(case: dict, result: dict) -> dict:
