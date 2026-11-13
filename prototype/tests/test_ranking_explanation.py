@@ -9,7 +9,7 @@ from prototype.demo import ReplayModel, SyntheticPrivacy, demo_inputs
 from prototype.evidence import MandatoryCheck, PairCheck, RowCheck
 from prototype.pipeline import run_pipeline
 from prototype.ranking_explanation import INTEGRATED, compare
-from prototype.scoring import rank, score
+from prototype.scoring import POLICY_VERSION, rank, score
 from prototype.tests.test_scoring_policy import random_job
 
 
@@ -104,7 +104,7 @@ class CompareTests(unittest.TestCase):
         c = compare(report, 'job-001', 'job-002')
         disputed = [s.row for s in c.swings if s.row.job_id == 'job-001']
         self.assertTrue(disputed and disputed[0].disputed)
-        self.assertEqual(c.policy_version, 'draft-2026-11-13-v2')
+        self.assertEqual(c.policy_version, POLICY_VERSION)
 
     def test_caveat_for_incomplete_run(self):
         report = demo_report()
@@ -192,8 +192,9 @@ class ReasonTests(unittest.TestCase):
         self.assertIn('different_requirement_lists', c.caveats)
 
     def test_tie_text_names_both_mandatory_groups(self):
-        report = manual_report(('a', [('full', True), ('unknown', False)]),
-                               ('b', [('unknown', True)] + [('full', False)] * 9))
+        # v3: 75 + 25/4 against 75 * (1 + 0.5) / 2 + 25
+        report = manual_report(('a', [('full', True), ('full', False)] + [('fail', False)] * 3),
+                               ('b', [('full', True), ('partial', True), ('full', False)]))
         c = compare(report, 'a', 'b')
         self.assertEqual(c.outcome, 'tie')
         self.assertIn('a — confirmed', c.summary)

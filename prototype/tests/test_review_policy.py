@@ -239,7 +239,7 @@ class DecisionValidityTests(unittest.TestCase):
 
     def test_policy_change_alone_makes_decisions_stale(self):
         changed = copy.deepcopy(self.report)
-        job(changed, 'job-001')['score']['policy_version'] = 'draft-2026-11-14-v3'
+        job(changed, 'job-001')['score']['policy_version'] = 'draft-2026-11-13-v2'
         result = assess_handoff(changed, self.ok, 'job-001')
         self.assertEqual(result.state, 'stale')
         self.assertIn('stale_policy_version', {i.code for i in result.reasons})
