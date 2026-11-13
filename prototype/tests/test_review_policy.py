@@ -52,7 +52,8 @@ def close_all(report, job_id):
 
 def clean_report():
     resume, jobs = demo_inputs('success')
-    return asyncio.run(run_pipeline(resume, jobs[:1], ReplayModel(), SyntheticPrivacy()))
+    report = asyncio.run(run_pipeline(resume, jobs[:1], ReplayModel(), SyntheticPrivacy()))
+    return {**report, 'run_id': 'run-clean'}  # the service stamps every published report
 
 
 class HandoffTests(unittest.TestCase):
@@ -268,6 +269,32 @@ class DecisionValidityTests(unittest.TestCase):
             with self.subTest(reason):
                 self.assertNotEqual(reason in BLOCKERS, reason in CLOSED_BY)
                 self.assertEqual(closing_decision(reason), None if reason in BLOCKERS else CLOSED_BY[reason])
+
+    def test_hand_written_confirmed_field_confirms_nothing(self):
+        # E9 regression: a report edited to say E4 'confirmed' plus a single mark used to be handed off.
+        forged = copy.deepcopy(self.report)
+        job(forged, 'job-001')['requirements_review'] = {'vacancy_id': 'job-001', 'state': 'confirmed', 'reasons': []}
+        self.assertIn('requirements_unconfirmed', {i.reason_code for i in items(forged, 'job-001')})
+        result = assess_handoff(forged, [decision(forged, 'job-001', 'mark_for_handoff')], 'job-001')
+        self.assertEqual((result.state, result.requirements_confirmed), ('draft', False))
+        self.assertIn('report_confirmation_not_trusted', {i.code for i in result.reasons})
+
+    def test_decisions_do_not_cross_runs(self):
+        # E9 regression: two replay runs give identical analysis; once the service stamps run_id, a decision
+        # from one run is stale in the other.
+        first, second = copy.deepcopy(self.report), copy.deepcopy(self.report)
+        first['run_id'], second['run_id'] = 'run-a', 'run-b'
+        decisions = close_all(first, 'job-001')
+        self.assertEqual(assess_handoff(first, decisions, 'job-001').state, 'reviewed_for_handoff')
+        result = assess_handoff(second, decisions, 'job-001')
+        self.assertEqual(result.state, 'stale')
+        self.assertIn('stale_report_sha256', {i.code for i in result.reasons})
+
+    def test_profile_or_missing_sections_change_the_version(self):
+        changed = copy.deepcopy(self.report)
+        changed['profile_missing'] = ['summary']
+        self.assertNotEqual(report_sha256(changed), report_sha256(self.report))
+        self.assertEqual(assess_handoff(changed, self.ok, 'job-001').state, 'stale')
 
     def test_unknown_job_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'unknown_job'):

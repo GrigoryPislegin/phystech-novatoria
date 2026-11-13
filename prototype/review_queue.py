@@ -35,7 +35,8 @@ ReasonCode = Literal[
     'processing_error', 'incomplete_run', 'invalid_evidence', 'ambiguous_location', 'requirements_stale',
     'mandatory_unbound', 'disputed_negative', 'mandatory_fail', 'privacy_may_hide',
     'condition_conflict',
-    'mandatory_unknown', 'disputed_evidence', 'requirements_unconfirmed', 'uncovered_text']
+    'mandatory_unknown', 'disputed_evidence', 'requirements_unconfirmed', 'uncovered_text', 'condition_review',
+    'profile_review']
 Kind = Literal['integrity', 'interpretation', 'missing_info', 'conditions', 'requirements']
 Action = Literal['complete_run', 'fix_source', 'read_context', 'check_list', 'ask_candidate',
                  'decide_condition', 'compare_with_original']
@@ -57,7 +58,8 @@ REASONS: dict[str, tuple[int, str, str, str]] = {
     'disputed_negative': (2, 'interpretation', 'read_context',
                           'Спорное доказательство у отрицательного вывода (fail).'),
     'mandatory_fail': (2, 'interpretation', 'read_context',
-                       'Модель предложила несоответствие обязательному требованию; это исключает вакансию.'),
+                       'Модель предложила несоответствие обязательному требованию: вакансия опускается в группу '
+                       'с нарушением, но не исключается; решение принимает HR.'),
     'privacy_may_hide': (2, 'missing_info', 'compare_with_original',
                          'Защита данных могла заменить названия технологий; «не указано» может быть потерей данных.'),
     'condition_conflict': (3, 'conditions', 'decide_condition',
@@ -70,6 +72,10 @@ REASONS: dict[str, tuple[int, str, str, str]] = {
                                  'Список требований не подтверждён рекрутером.'),
     'uncovered_text': (4, 'requirements', 'check_list',
                        'Часть текста вакансии не попала ни в одно требование; проверьте пропуски.'),
+    'condition_review': (4, 'conditions', 'read_context',
+                         'Сравнение условий требует сверки (например, зарплата: валюта, период, налог).'),
+    'profile_review': (4, 'interpretation', 'read_context',
+                       'Краткий профиль для менеджера содержит непроверенные места; сверьте с резюме до передачи.'),
 }
 
 
@@ -173,6 +179,8 @@ def _condition_items(b: _Builder, scope: str, jid: str, conditions: dict) -> Non
         elif raw.get('state') == 'conflict' or 'unknown_with_both_sides' in codes:
             b.add('condition_conflict', scope, jid, condition_kind=kind, refs=refs, details=codes)
             seen.add(kind)
+        elif raw.get('check') == 'needs_review':
+            b.add('condition_review', scope, jid, condition_kind=kind, refs=refs, details=codes)
     for kind in conditions.get('conflicts', []):  # a conflict listed at the top level is never lost
         if kind not in seen:
             b.add('condition_conflict', scope, jid, condition_kind=kind, details=['condition_conflict'])
@@ -236,7 +244,7 @@ def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str]) -> No
     review = job.get('requirements_review') or {}
     if review.get('state') in {'stale', 'invalid'} or review.get('vacancy_id') not in (None, jid):
         b.add('requirements_stale', scope, jid, details=[r['code'] for r in review.get('reasons', [])])
-    elif review.get('state') != 'confirmed':
+    else:  # a 'confirmed' field in the report proves nothing; confirmation is a recorded decision (E8b)
         b.add('requirements_unconfirmed', scope, jid)
     uncovered = (job.get('requirements_draft') or {}).get('uncovered', [])
     if uncovered:
@@ -256,12 +264,23 @@ def build_review_queue(report: dict) -> ReviewQueue:
     for entry in unprocessed:
         b.add('processing_error', run_scope, entry['job_id'], details=[entry.get('reason', 'unknown')])
     for error in report.get('errors', []):
-        if error.get('job_id') is None:
+        stage = error.get('stage')
+        if stage == 'profile':  # the brief is missing; the ranking itself is complete
+            b.add('profile_review', run_scope, details=['not_extracted', error.get('code', 'unknown')])
+        elif stage == 'conditions' and error.get('job_id'):
+            b.add('condition_review', f"{report.get('safe_resume_sha256', '')}|"
+                  f"{next((j.get('safe_source_sha256', '') for j in jobs if j['job_id'] == error['job_id']), '')}",
+                  error['job_id'], condition_kind='conditions', details=['not_extracted', error.get('code', 'unknown')])
+        elif error.get('job_id') is None:
             b.add('processing_error', run_scope, details=[error.get('code', 'unknown')])
     if not report['ranking'].get('complete', False):
         b.add('incomplete_run', run_scope)
     if (report.get('privacy') or {}).get('professional_information_may_be_hidden'):
         b.add('privacy_may_hide', run_scope)
+    profile = report.get('profile')
+    if isinstance(profile, dict) and profile.get('state') != 'structure_ok':  # E5 ProfileCheck, shown to the manager
+        b.add('profile_review', run_scope, details=[profile.get('state', 'malformed')] + [
+            f.get('code') for f in profile.get('findings', []) if isinstance(f, dict)])
     for job in jobs:
         _job_items(b, resume, job, facts)
 

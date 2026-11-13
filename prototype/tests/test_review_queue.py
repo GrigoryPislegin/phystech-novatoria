@@ -255,6 +255,12 @@ class TableTests(unittest.TestCase):
         self.assertTrue(all(REASONS[r][1] == 'integrity' for r in integrity))
         self.assertEqual(REASONS['condition_conflict'][0], 3)
 
+    def test_mandatory_fail_text_does_not_promise_exclusion(self):
+        # The engine demotes a violated vacancy to the lower group; HR decides. «исключает вакансию» was wrong.
+        text = REASONS['mandatory_fail'][3]
+        self.assertNotIn('исключает вакансию', text)
+        self.assertIn('решение принимает HR', text)
+
     def test_not_integrated(self):
         self.assertFalse(INTEGRATED)
 

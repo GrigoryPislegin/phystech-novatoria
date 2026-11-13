@@ -7,7 +7,8 @@ never changes the model's evaluation: decisions are a separate layer on top of i
 - A decision counts only on the exact versions it was made on: report, resume, vacancy source,
   requirement list and policy. Otherwise it is stale and is not inherited by a new report or by
   another candidate on the same vacancy.
-- `draft` and `reviewed_for_handoff` differ: the second needs a confirmed requirement list, every
+- `draft` and `reviewed_for_handoff` differ: the second needs a requirement list confirmed by a
+  `confirm_requirements` decision (the report's own E4 field is never trusted), every
   queue item of the vacancy closed, no blockers and an explicit `mark_for_handoff`. It records the
   recruiter's decision on that version, not a proven match.
 - Blockers (failed or incomplete run, invalid or ambiguous source, stale confirmation) are never
@@ -38,7 +39,8 @@ State = Literal['draft', 'reviewed_for_handoff', 'blocked', 'stale', 'invalid']
 BLOCKERS = {'processing_error', 'incomplete_run', 'invalid_evidence', 'ambiguous_location', 'requirements_stale'}
 # The analysis content a decision is made on. Review-layer fields (E4 checks, verification, presentation),
 # timings and usage are left out, so recording a decision or an approval does not make other decisions stale.
-_REPORT_FIELDS = ('safe_resume_sha256', 'facts', 'errors', 'unprocessed', 'privacy')
+_REPORT_FIELDS = ('run_id', 'safe_resume_sha256', 'facts', 'errors', 'unprocessed', 'privacy', 'profile',
+                  'profile_missing')
 _JOB_FIELDS = ('job_id', 'safe_source_sha256', 'requirements', 'evaluation', 'evidence_check', 'score',
                'score_review', 'requirements_draft', 'conditions')
 # reason -> the only action that closes it
@@ -52,6 +54,8 @@ CLOSED_BY = {
     'mandatory_unknown': 'read_context',
     'disputed_evidence': 'read_context',
     'condition_conflict': 'accept_condition',
+    'condition_review': 'read_context',
+    'profile_review': 'read_context',
 }
 _VERSIONED = ('report_sha256', 'resume_sha256', 'source_sha256', 'requirements_sha256', 'policy_version')
 
@@ -82,7 +86,7 @@ class HandoffAssessment(StrictModel):
     job_id: str
     state: State
     model_status: Literal['model_proposed'] = 'model_proposed'  # decisions never change evaluation statuses
-    requirements_confirmed: bool  # E4 'confirmed' in the report or a valid confirm_requirements decision
+    requirements_confirmed: bool  # only a valid confirm_requirements decision; a report field is not trusted
     processing_complete: bool  # every vacancy processed; says nothing about the meaning of the rows
     blockers: list[str]
     open_items: list[str]
@@ -181,7 +185,11 @@ def assess_handoff(report: dict, decisions: list, job_id: str) -> HandoffAssessm
         valid.append(decision)
 
     actions = {d.action for d in valid}
-    confirmed = 'confirm_requirements' in actions or (job.get('requirements_review') or {}).get('state') == 'confirmed'
+    # Only a decision recorded by the service confirms the list. The report's E4 field is outside the
+    # report version and can be edited by hand, so it never confirms anything here.
+    confirmed = 'confirm_requirements' in actions
+    if not confirmed and (job.get('requirements_review') or {}).get('state') == 'confirmed':
+        issues.append(Issue(code='report_confirmation_not_trusted'))
     taken: dict[str, set[str]] = {}
     for d in valid:
         if d.item_id is not None:
@@ -206,11 +214,13 @@ def assess_handoff(report: dict, decisions: list, job_id: str) -> HandoffAssessm
             open_items.append(item.id)
 
     marked = 'mark_for_handoff' in actions
+    if not report.get('run_id'):  # without a run id, decisions of identical runs could not be told apart
+        issues.append(Issue(code='run_unbound'))
     if any(i.code in {'not_a_service_decision', 'foreign_job', 'duplicate_decision'} for i in issues):
         state = 'invalid'
     elif blockers:
         state = 'blocked'
-    elif marked and not open_items:  # an unconfirmed list is itself an open item
+    elif marked and not open_items and report.get('run_id'):  # the list stays an item until confirmed
         state = 'reviewed_for_handoff'
     elif stale:
         state = 'stale'
