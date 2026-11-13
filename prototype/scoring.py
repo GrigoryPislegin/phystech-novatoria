@@ -6,7 +6,8 @@ Policy draft-2026-11-13-v2, docs/reviews/egor-scoring-policy.md. With an evidenc
 - a mandatory marker gives weight 3 and enters the mandatory group only when check_mandatory is
   structure_ok; otherwise the requirement has weight 1;
 - a disputed fail never makes a job violated, and a disputed full never confirms it;
-- a first place with a disputed row or an unapplied mandatory marker is 'clarify', never 'review_top'.
+- a first place with a disputed row or an unapplied mandatory marker is 'clarify', never 'review_top';
+  so is a first place that a lower job could reach once its own disputed rows or markers are resolved.
 Evidence must cover exactly these requirements and rows, or score raises 'invalid_evidence'.
 Without an evidence check every row and marker is taken as given (the v1 behaviour).
 """
@@ -74,12 +75,17 @@ def rank(results, expected_count):
         jobs.append({**item, 'rank': place})
         last = key(item)
     top = [j['score'] for j in jobs if j['rank'] == 1]
+    # A lower job whose own doubted rows (disputed evidence, unapplied marker) could reach first place
+    # keeps the order open: the top is not a plain review_top while that is unresolved.
+    contested = [j['score'] for j in jobs if j['rank'] > 1 and j['score']['mandatory'] != 'violated'
+                 and (j['score'].get('disputed_ids') or j['score'].get('excluded_mandatory_ids'))
+                 and top and j['score']['upper'] >= top[0]['lower']]
     if len(jobs) != expected_count or not jobs:
         recommendation = 'incomplete'
     elif all(j['score']['mandatory'] == 'violated' for j in jobs):
         recommendation = 'review_none_fit'
     elif any(s['mandatory'] == 'clarify' or s.get('disputed_ids') or s.get('excluded_mandatory_ids')
-             for s in top) or top[0]['lower'] == 0:
+             for s in top) or top[0]['lower'] == 0 or contested:
         recommendation = 'clarify'
     else:
         recommendation = 'review_top'

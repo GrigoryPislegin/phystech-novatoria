@@ -36,7 +36,7 @@ ReasonCode = Literal[
     'mandatory_unbound', 'disputed_negative', 'mandatory_fail', 'privacy_may_hide',
     'condition_conflict',
     'mandatory_unknown', 'disputed_evidence', 'requirements_unconfirmed', 'uncovered_text', 'condition_review',
-    'profile_review']
+    'profile_review', 'mandatory_partial', 'condition_unknown']
 Kind = Literal['integrity', 'interpretation', 'missing_info', 'conditions', 'requirements']
 Action = Literal['complete_run', 'fix_source', 'read_context', 'check_list', 'ask_candidate',
                  'decide_condition', 'compare_with_original']
@@ -76,6 +76,10 @@ REASONS: dict[str, tuple[int, str, str, str]] = {
                          'Сравнение условий требует сверки (например, зарплата: валюта, период, налог).'),
     'profile_review': (4, 'interpretation', 'read_context',
                        'Краткий профиль для менеджера содержит непроверенные места; сверьте с резюме до передачи.'),
+    'mandatory_partial': (4, 'missing_info', 'ask_candidate',
+                          'Обязательное требование подтверждено частично; уточните недостающую часть.'),
+    'condition_unknown': (4, 'missing_info', 'ask_candidate',
+                          'Условие указано только в одном документе; уточните у кандидата, это не конфликт.'),
 }
 
 
@@ -181,6 +185,8 @@ def _condition_items(b: _Builder, scope: str, jid: str, conditions: dict) -> Non
             seen.add(kind)
         elif raw.get('check') == 'needs_review':
             b.add('condition_review', scope, jid, condition_kind=kind, refs=refs, details=codes)
+        elif raw.get('state') == 'unknown' and len(refs) == 1:  # one side stated, the other silent
+            b.add('condition_unknown', scope, jid, condition_kind=kind, refs=refs, details=codes or ['one_sided'])
     for kind in conditions.get('conflicts', []):  # a conflict listed at the top level is never lost
         if kind not in seen:
             b.add('condition_conflict', scope, jid, condition_kind=kind, details=['condition_conflict'])
@@ -226,6 +232,8 @@ def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str]) -> No
             b.add('mandatory_fail', scope, jid, rid, refs=refs, details=codes or ['evidence_not_checked'])
         if status == 'unknown' and rid in applied:
             b.add('mandatory_unknown', scope, jid, rid, refs=[vacancy_ref(rid)])
+        if status == 'partial' and rid in applied and state == 'structure_ok':  # keeps the group at clarify
+            b.add('mandatory_partial', scope, jid, rid, refs=refs)
 
     for raw in checks.get('mandatory', []):
         check = MandatoryCheck.model_validate(raw)

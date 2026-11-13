@@ -204,9 +204,10 @@ def _summary(a: _Job, b: _Job, outcome: str, reason: str, deciding: list[RowRef]
         high, low = (a, b) if outcome == 'a_higher' else (b, a)
         bounds = f'нижняя граница {high.score["lower"]} против {low.score["lower"]}'
         if reason == 'mandatory_violation':
-            text = f'{high.id} выше {low.id}: у {low.id} не выполнено обязательное требование.'
+            text = f'{high.id} выше {low.id}: модель предложила у {low.id} несоответствие обязательному требованию.'
         elif high.score['mandatory'] == 'violated':
-            text = f'{high.id} выше {low.id}: у обеих не выполнено обязательное требование, {bounds}.'
+            text = (f'{high.id} выше {low.id}: модель предложила у обеих несоответствие обязательному требованию, '
+                    f'{bounds}.')
         else:
             text = f'{high.id} выше {low.id}: {bounds}; {groups}.'
         if deciding:
