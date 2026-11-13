@@ -263,7 +263,14 @@ def build_review_queue(report: dict) -> ReviewQueue:
     for entry in unprocessed:
         b.add('processing_error', run_scope, entry['job_id'], details=[entry.get('reason', 'unknown')])
     for error in report.get('errors', []):
-        if error.get('job_id') is None:
+        stage = error.get('stage')
+        if stage == 'profile':  # the brief is missing; the ranking itself is complete
+            b.add('profile_review', run_scope, details=['not_extracted', error.get('code', 'unknown')])
+        elif stage == 'conditions' and error.get('job_id'):
+            b.add('condition_review', f"{report.get('safe_resume_sha256', '')}|"
+                  f"{next((j.get('safe_source_sha256', '') for j in jobs if j['job_id'] == error['job_id']), '')}",
+                  error['job_id'], condition_kind='conditions', details=['not_extracted', error.get('code', 'unknown')])
+        elif error.get('job_id') is None:
             b.add('processing_error', run_scope, details=[error.get('code', 'unknown')])
     if not report['ranking'].get('complete', False):
         b.add('incomplete_run', run_scope)

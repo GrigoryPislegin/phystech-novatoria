@@ -9,7 +9,7 @@
 
 Конфликтов нет. Дальше идут коммиты E9 с исправлениями. Можно сливать этот PR вместо шести отдельных или после них: дерево то же плюс E9.
 
-Эталонная сборка — `prototype/tests/e9_wiring.py`. Это тестовый помощник, он показывает точные вызовы. Сам `pipeline.py` принадлежит Codex, я его не меняю.
+Эталонная сборка — `prototype/tests/e9_wiring.py`. Тест `test_views_are_reproduced_from_the_report` сравнивает со снимком того же кода: он ловит дрейф, а не доказывает правильность. Правильность проверяют тесты сценариев с ожиданиями, записанными вручную. Это тестовый помощник, он показывает точные вызовы. Сам `pipeline.py` принадлежит Codex, я его не меняю.
 
 ## Что вызывает pipeline
 
@@ -23,18 +23,24 @@
 | Сравнение | `compare(report, a, b).model_dump()` по запросу или для соседних мест | ответ `get_report` / `comparison` |
 | Очередь | `build_review_queue(report)` при каждом чтении; id стабильны, хранить не нужно | ответ сервиса |
 | Решения | Сервис записывает `Decision` с версиями `current_versions(report, job)`; `assess_handoff(report, decisions, jid)` | слой решений рядом с запуском |
-| Запуск | `report.run_id` — id запуска из run_store | входит в версию отчёта |
+| Запуск | `report.run_id` — id запуска из run_store | входит в версию отчёта; без него передача невозможна (`run_unbound`) |
+| Представление | `build_presentation(report)` — **после** всех шагов выше | `report.presentation` |
 
-Если модель не дала профиль или условия, поле отсутствует (`None`). V5 тогда показывает «не извлечено». Ошибку пишут в `errors` с `stage='profile'` / `'conditions'`; рейтинг она не ломает.
+**Ошибки профиля и условий.**
+- Если модель не дала профиль или условия, поле отсутствует, и V5 показывает «не извлечено».
+- Ошибку пишут в `errors` со `stage='profile'` (`job_id: null`) или `stage='conditions'` (с `job_id`). В `unprocessed` её **не** добавляют.
+- Очередь превращает такую ошибку в `profile_review` / `condition_review` с кодом `not_extracted`. Это не блокер и не «неполный запуск».
+- В `report.md` (`pipeline.py`, строка «Есть ошибки: рейтинг неполный») ошибки этих стадий нужно исключить из вывода о неполноте. Это зона Codex.
 
 ### Отличия от нынешнего обхода `score_review`
 
-| Сейчас (`pipeline.py:116-127`) | По контракту v2 |
+| Сейчас (`pipeline.py:116-127`) | По контракту v2 (эталон — `e9_wiring.wire`) |
 |---|---|
 | Снимает `mandatory_quote` у требований со спорным `MandatoryCheck` и вызывает `score(score_requirements, evaluation)` | `score(requirements, evaluation, evidence)`: фильтр обязательности внутри |
-| `job.score_review.excluded_mandatory_ids` | `job.score.excluded_mandatory_ids`; поле `score_review` не нужно |
+| `job.score_review.excluded_mandatory_ids` — своя поправка | `job.score.excluded_mandatory_ids`. Пока `presentation.py`, `report.md` и UI читают `score_review`, оно остаётся **копией** этого поля, а не второй поправкой |
 | Спорные строки (`needs_review`) засчитываются в L | Спорные строки не входят в L и `coverage`, учитываются в H: `job.score.disputed_ids` |
-| `policy_version = draft-2026-11-12-v1` | `draft-2026-11-13-v2`, плюс `evidence_applied: true` |
+| После слияния #14 тот же обход даёт `draft-2026-11-13-v2` с `evidence_applied: false` | `draft-2026-11-13-v2` с `evidence_applied: true`. Отличить путь можно только по `evidence_applied` |
+| `presentation` строится в `finish()` до любой доработки баллов | `build_presentation` вызывается после подключения, иначе `manager_brief` покажет старые баллы |
 | Первое место со спорной строкой могло быть `review_top` | `clarify` |
 
 **Поправку не применять дважды.** Если снять маркеры и одновременно передать `evidence`, числа совпадут, но `excluded_mandatory_ids` станет `[]`. Тогда `presentation.py:34` и `write_report` покажут неприменённый маркер как применённый. Воспроизведение — `HazardTests.test_stripping_markers_and_passing_evidence_hides_the_correction`.
@@ -102,6 +108,9 @@
 | D2 | `review_policy.report_sha256` | Два replay-прогона с одинаковым анализом | Решения одного запуска засчитываются в другом | `run_id` входит в версию (`test_decisions_do_not_cross_runs`) |
 | D3 | `review_policy.report_sha256` | Изменить `report.profile` после решения «профиль прочитан» | Решение пережило бы изменение того, что видит менеджер | `profile` входит в версию (`test_profile_change_makes_profile_decisions_stale`) |
 | D4 | `review_queue.py` | Профиль `invalid` / зарплата `needs_review` без конфликта | В очереди ничего: передача без сверки | Причины `profile_review`, `condition_review` |
+| D5 | `review_queue.py` | Ошибка модели на стадии `profile` (`job_id: null`) | Становилась `processing_error`: все передачи навсегда `blocked`, «запуск неполный» | По стадии: `profile_review` / `condition_review` с `not_extracted` (`test_profile_or_conditions_error_does_not_make_the_run_incomplete`) |
+| D6 | `review_policy.py` | Отчёт без `run_id` (pipeline его пока не ставит) | Защита D2 не работала: решения переходили между одинаковыми прогонами | Без `run_id` передача закрыта, `run_unbound` (`test_report_without_run_id_is_never_handed_off`) |
+| D7 | эталонная сборка | `presentation` из `finish()` до доработки баллов | `manager_brief` показывал `lower 100, confirmed` при ранжировании `25, clarify` | `build_presentation` после подключения (`test_presentation_is_built_from_the_wired_scores`) |
 
 ## Что структурная проверка не ловит
 
@@ -109,20 +118,26 @@
 
 - **Отрицание и обучение целым предложением.** «Не работал с Python.» или «Изучал Python на курсах.» целиком плюс `full` проходят E3 как `structure_ok`: цитата равна предложению и связана общим термином. Однословная цитата ловится (`quote_is_fragment`), целое предложение — нет. Словарь отрицаний ТЗ запрещает. Ловит это E6 (FE-02, FA-05: допустим только `fail`).
 - **Пересекающиеся сроки и стаж** — вывод модели. E6 FA-02 и FE-06 запрещают `full` за счёт сложения.
+- **Отрицание и обучение в профиле.** Пункт стека «Python» с фактом «Не работал с Python.» или «Изучал Python на курсах.» проходит `check_profile` как `structure_ok`, в `display` показывается «Python», пункта в очереди нет. Смягчение: V5 показывает рядом с пунктом предложение-источник из `spans`, поэтому отрицание видно читателю. E6 профиль не размечает: это открытая задача для E6/E9b.
 - **Несоответствие и отсутствие данных.** Политика их различает, но если модель поставит `fail` без факта против, это отклонит `validate_pair` (`missing_evidence`). Если она поставит `fail` с нерелевантным фактом, сработает `evidence_not_linked` → спорная строка → не `violated`.
 
 ## Что проверить интегратору на общем SHA
 
 1. Оба replay и неполный сценарий проходят `e9_wiring`-эквивалент в pipeline. `compare` не выдаёт `score_not_reproducible`.
-2. В `report.md` и UI спорные строки и неприменённые маркеры показываются из `score`, а не из `score_review`.
-3. `run_id` есть в отчёте. Решения сервис пишет с `current_versions`, клиенту запись не доверяется.
+2. `presentation.jobs[].score` совпадает с `ranking.jobs[].score`. В `report.md` и UI спорные строки и неприменённые маркеры берутся из `score`.
+3. `run_id` есть в отчёте. Без него `assess_handoff` закрывает передачу (`run_unbound`). Решения сервис пишет с `current_versions`, клиенту запись не доверяется.
+4. Ошибки `profile`/`conditions` не попадают в `unprocessed`.
 
 ## Проверки
 
 ```sh
-python -m unittest discover -s prototype/tests   # 261 OK (skipped=4)
+python -m unittest discover -s prototype/tests   # 282 OK (skipped=4), вместе с E9b-раннером
 python -m unittest discover -s tests             # 10 OK
 python scripts/check_repository.py               # PASS
 python -m prototype demo; python -m prototype demo --scenario disputed
 python evaluation/expectations/egor/make_e9_contract.py   # те же fixtures
 ```
+
+## Ревью
+
+Одно независимое ревью E9a (только чтение) нашло 4 обоснованные проблемы: D5, D6, D7 и непокрытый риск отрицания в профиле. Все исправлены или задокументированы, на каждую есть регрессия, которая падает на старом поведении. Чтение UI V5 ревьюер проверить не смог. Я сверил `report.js` и `manager-report.js` из ветки PR #15 через `git show`, ссылки на строки выше взяты оттуда.

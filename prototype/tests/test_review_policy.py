@@ -52,7 +52,8 @@ def close_all(report, job_id):
 
 def clean_report():
     resume, jobs = demo_inputs('success')
-    return asyncio.run(run_pipeline(resume, jobs[:1], ReplayModel(), SyntheticPrivacy()))
+    report = asyncio.run(run_pipeline(resume, jobs[:1], ReplayModel(), SyntheticPrivacy()))
+    return {**report, 'run_id': 'run-clean'}  # the service stamps every published report
 
 
 class HandoffTests(unittest.TestCase):

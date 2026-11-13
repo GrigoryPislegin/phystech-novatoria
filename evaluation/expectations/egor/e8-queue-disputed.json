@@ -155,7 +155,10 @@
       "upper": 100.0,
       "coverage": 100.0,
       "mandatory": "confirmed",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": false,
+      "policy_version": "draft-2026-11-13-v2"
      },
      "score_review": {
       "excluded_mandatory_ids": [],
@@ -314,7 +317,10 @@
       "upper": 0.0,
       "coverage": 100.0,
       "mandatory": "not_set",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": false,
+      "policy_version": "draft-2026-11-13-v2"
      },
      "score_review": {
       "excluded_mandatory_ids": [
@@ -405,7 +411,10 @@
       "upper": 100.0,
       "coverage": 0.0,
       "mandatory": "clarify",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": false,
+      "policy_version": "draft-2026-11-13-v2"
      },
      "score_review": {
       "excluded_mandatory_ids": [],
@@ -467,7 +476,10 @@
       "upper": 100.0,
       "coverage": 100.0,
       "mandatory": "confirmed",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": false,
+      "policy_version": "draft-2026-11-13-v2"
      },
      "rows": [
       {
@@ -680,7 +692,10 @@
       "upper": 0.0,
       "coverage": 100.0,
       "mandatory": "not_set",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": false,
+      "policy_version": "draft-2026-11-13-v2"
      },
      "rows": [
       {
@@ -847,7 +862,10 @@
       "upper": 100.0,
       "coverage": 0.0,
       "mandatory": "clarify",
-      "policy_version": "draft-2026-11-12-v1"
+      "disputed_ids": [],
+      "excluded_mandatory_ids": [],
+      "evidence_applied": false,
+      "policy_version": "draft-2026-11-13-v2"
      },
      "rows": [
       {
@@ -953,7 +971,8 @@
   },
   "privacy": {
    "professional_information_may_be_hidden": true
-  }
+  },
+  "run_id": "run-e8-queue-disputed"
  },
  "expected": [
   {

@@ -173,6 +173,11 @@
       "evidence_applied": true,
       "policy_version": "draft-2026-11-13-v2"
      },
+     "score_review": {
+      "excluded_mandatory_ids": [],
+      "rule": "policy_v2_copy",
+      "version": "draft-2026-11-13-v2"
+     },
      "safe_source_sha256": "e9dbb779b9babdcd7f94bfe12acec3beef74bd1a96ff8152bda81eab2fc9b0f9",
      "conditions": {
       "items": [
@@ -366,6 +371,13 @@
       "evidence_applied": true,
       "policy_version": "draft-2026-11-13-v2"
      },
+     "score_review": {
+      "excluded_mandatory_ids": [
+       "r1"
+      ],
+      "rule": "policy_v2_copy",
+      "version": "draft-2026-11-13-v2"
+     },
      "safe_source_sha256": "d298f2487f9b2e5b7f5b5e1fb7c15b4a815fb79cc0aa8d43e9ad10b2e6361653",
      "rank": 2
     }
@@ -401,13 +413,15 @@
      "job_id": "job-a",
      "rank": 1,
      "score": {
-      "lower": 100.0,
+      "lower": 25.0,
       "upper": 100.0,
-      "coverage": 100.0,
-      "mandatory": "confirmed",
-      "disputed_ids": [],
+      "coverage": 25.0,
+      "mandatory": "clarify",
+      "disputed_ids": [
+       "r1"
+      ],
       "excluded_mandatory_ids": [],
-      "evidence_applied": false,
+      "evidence_applied": true,
       "policy_version": "draft-2026-11-13-v2"
      },
      "rows": [
@@ -490,8 +504,8 @@
      ],
      "score_review": {
       "excluded_mandatory_ids": [],
-      "rule": "structurally_unbound_mandatory_uses_regular_weight",
-      "version": "mandatory-structure-0.1"
+      "rule": "policy_v2_copy",
+      "version": "draft-2026-11-13-v2"
      },
      "requirements_draft": {
       "vacancy_id": "job-a",
@@ -619,12 +633,16 @@
      "rank": 2,
      "score": {
       "lower": 0.0,
-      "upper": 0.0,
-      "coverage": 100.0,
+      "upper": 100.0,
+      "coverage": 0.0,
       "mandatory": "not_set",
-      "disputed_ids": [],
-      "excluded_mandatory_ids": [],
-      "evidence_applied": false,
+      "disputed_ids": [
+       "r1"
+      ],
+      "excluded_mandatory_ids": [
+       "r1"
+      ],
+      "evidence_applied": true,
       "policy_version": "draft-2026-11-13-v2"
      },
      "rows": [
@@ -688,8 +706,8 @@
       "excluded_mandatory_ids": [
        "r1"
       ],
-      "rule": "structurally_unbound_mandatory_uses_regular_weight",
-      "version": "mandatory-structure-0.1"
+      "rule": "policy_v2_copy",
+      "version": "draft-2026-11-13-v2"
      },
      "requirements_draft": {
       "vacancy_id": "job-b",
@@ -787,6 +805,7 @@
    ],
    "final_allowed": false
   },
+  "run_id": "run-e9-disputed",
   "profile": {
    "schema_version": "candidate-profile-0.1",
    "state": "invalid",

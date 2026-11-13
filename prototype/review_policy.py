@@ -213,11 +213,13 @@ def assess_handoff(report: dict, decisions: list, job_id: str) -> HandoffAssessm
             open_items.append(item.id)
 
     marked = 'mark_for_handoff' in actions
+    if not report.get('run_id'):  # without a run id, decisions of identical runs could not be told apart
+        issues.append(Issue(code='run_unbound'))
     if any(i.code in {'not_a_service_decision', 'foreign_job', 'duplicate_decision'} for i in issues):
         state = 'invalid'
     elif blockers:
         state = 'blocked'
-    elif marked and not open_items:  # the queue always lists the list until a confirm decision closes it
+    elif marked and not open_items and report.get('run_id'):  # the list stays an item until confirmed
         state = 'reviewed_for_handoff'
     elif stale:
         state = 'stale'

@@ -160,6 +160,11 @@
       "evidence_applied": true,
       "policy_version": "draft-2026-11-13-v2"
      },
+     "score_review": {
+      "excluded_mandatory_ids": [],
+      "rule": "policy_v2_copy",
+      "version": "draft-2026-11-13-v2"
+     },
      "safe_source_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
      "rank": 1
     },
@@ -259,6 +264,11 @@
       "evidence_applied": true,
       "policy_version": "draft-2026-11-13-v2"
      },
+     "score_review": {
+      "excluded_mandatory_ids": [],
+      "rule": "policy_v2_copy",
+      "version": "draft-2026-11-13-v2"
+     },
      "safe_source_sha256": "964af580232a4916af6cad3eebfdf885565f75b5fc16ad63a2b813f68761a383",
      "rank": 2
     }
@@ -315,7 +325,7 @@
       "mandatory": "confirmed",
       "disputed_ids": [],
       "excluded_mandatory_ids": [],
-      "evidence_applied": false,
+      "evidence_applied": true,
       "policy_version": "draft-2026-11-13-v2"
      },
      "rows": [
@@ -400,8 +410,8 @@
      ],
      "score_review": {
       "excluded_mandatory_ids": [],
-      "rule": "structurally_unbound_mandatory_uses_regular_weight",
-      "version": "mandatory-structure-0.1"
+      "rule": "policy_v2_copy",
+      "version": "draft-2026-11-13-v2"
      },
      "requirements_draft": {
       "vacancy_id": "job-001",
@@ -533,7 +543,7 @@
       "mandatory": "violated",
       "disputed_ids": [],
       "excluded_mandatory_ids": [],
-      "evidence_applied": false,
+      "evidence_applied": true,
       "policy_version": "draft-2026-11-13-v2"
      },
      "rows": [
@@ -579,8 +589,8 @@
      ],
      "score_review": {
       "excluded_mandatory_ids": [],
-      "rule": "structurally_unbound_mandatory_uses_regular_weight",
-      "version": "mandatory-structure-0.1"
+      "rule": "policy_v2_copy",
+      "version": "draft-2026-11-13-v2"
      },
      "requirements_draft": {
       "vacancy_id": "job-003",
@@ -662,6 +672,7 @@
    ],
    "final_allowed": false
   },
+  "run_id": "run-e9-incomplete",
   "profile": {
    "schema_version": "candidate-profile-0.1",
    "state": "structure_ok",

@@ -83,7 +83,7 @@ def expected(queue):
 
 
 def save(name, report, note):
-    report = {k: v for k, v in report.items() if k != 'events'}
+    report = {**{k: v for k, v in report.items() if k != 'events'}, 'run_id': f"run-{name.split('.')[0]}"}
     queue = build_review_queue(report)
     data = {'schema_version': 'egor-e8-fixture-0.1', 'note': note, 'report': report, 'expected': expected(queue),
             'by_priority': queue.by_priority}

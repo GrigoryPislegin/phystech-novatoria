@@ -74,7 +74,7 @@ class IncompleteModel(ReplayModel):
 
 def save(name, report, resume, jobs, profile, conditions, note):
     report = {k: v for k, v in report.items() if k != 'events'}
-    wired = wire(report, resume, dict(jobs), profile, conditions)
+    wired = wire(report, resume, dict(jobs), profile, conditions, run_id=f'run-e9-{name}')
     data = {'schema_version': 'egor-e9-contract-0.1', 'note': note, 'report': wired, 'derived': derived(wired)}
     Path(__file__).with_name(f'e9-contract-{name}.json').write_text(
         json.dumps(data, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')

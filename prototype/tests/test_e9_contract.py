@@ -40,7 +40,9 @@ class ContractShapeTests(unittest.TestCase):
                 for job in report['ranking']['jobs']:
                     self.assertEqual(job['score']['policy_version'], POLICY_VERSION)
                     self.assertTrue(job['score']['evidence_applied'])
-                    self.assertNotIn('score_review', job)
+                    # score_review is only a copy of the v2 field for old readers, never a second correction
+                    self.assertEqual(job['score_review']['excluded_mandatory_ids'],
+                                     job['score']['excluded_mandatory_ids'])
                     if 'conditions' in job:
                         self.assertLessEqual({'items', 'findings', 'conflicts', 'needs_review', 'has_invalid'},
                                              set(job['conditions']))
@@ -93,6 +95,44 @@ class ScenarioTests(unittest.TestCase):
         self.assertIn('incomplete_run', c.caveats)
         for job in ('job-001', 'job-003', 'job-002'):
             self.assertEqual(assess_handoff(report, [], job).state, 'blocked')
+
+
+class ReviewFindingTests(unittest.TestCase):
+    def test_presentation_is_built_from_the_wired_scores(self):
+        for name in ('normal', 'disputed', 'incomplete'):
+            report = load(name)['report']
+            ranking = {j['job_id']: j['score'] for j in report['ranking']['jobs']}
+            for job in report['presentation']['jobs']:
+                with self.subTest(name=name, job=job['job_id']):
+                    self.assertEqual(job['score'], ranking[job['job_id']])
+        job_b = next(j for j in load('disputed')['report']['presentation']['jobs'] if j['job_id'] == 'job-b')
+        self.assertFalse(job_b['rows'][0]['mandatory_applied_to_score'])
+
+    def test_profile_or_conditions_error_does_not_make_the_run_incomplete(self):
+        report = copy.deepcopy(load('normal')['report'])
+        report['errors'] = [{'job_id': None, 'code': 'model_invalid', 'stage': 'profile', 'type': 'ValueError'},
+                            {'job_id': 'job-001', 'code': 'model_invalid', 'stage': 'conditions',
+                             'type': 'ValueError'}]
+        queue = build_review_queue(report)
+        self.assertNotIn('processing_error', queue.by_reason)
+        self.assertIn((None, 'profile_review'), reasons(report))
+        self.assertIn(('conditions', 'condition_review'), reasons(report, 'job-001'))
+        self.assertTrue(assess_handoff(report, [], 'job-001').processing_complete)
+
+    def test_report_without_run_id_is_never_handed_off(self):
+        report = copy.deepcopy(load('normal')['report'])
+        del report['run_id']
+        job = next(j for j in report['ranking']['jobs'] if j['job_id'] == 'job-001')
+        versions = current_versions(report, job)
+        decisions = [{'decision_id': f'd{n}', 'job_id': 'job-001', 'item_id': None, 'action': action, **versions,
+                      'decided_by': 'recruiter', 'recorded_by': 'service', 'decided_at': 't'}
+                     for n, action in enumerate(('confirm_requirements', 'mark_for_handoff'))]
+        result = assess_handoff(report, decisions, 'job-001')
+        self.assertEqual(result.state, 'draft')
+        self.assertIn('run_unbound', {i.code for i in result.reasons})
+        report['run_id'] = 'run-x'
+        decisions = [{**d, **current_versions(report, job)} for d in decisions]
+        self.assertEqual(assess_handoff(report, decisions, 'job-001').state, 'reviewed_for_handoff')
 
 
 class HazardTests(unittest.TestCase):
