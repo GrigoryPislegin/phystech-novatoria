@@ -33,5 +33,6 @@ RUN python -m unittest discover -s prototype/tests -p 'test_core.py' -v \
     && chown -R 10001:10001 /app/data
 USER 10001:10001
 EXPOSE 8765
+STOPSIGNAL SIGINT
 ENTRYPOINT ["python", "-m", "prototype"]
 CMD ["serve", "--host", "0.0.0.0", "--port", "8765", "--state-dir", "/app/data/private/local-app"]

@@ -9,6 +9,7 @@ on:
       - prototype/**
       - scripts/privacy_smoke.py
       - scripts/check_cli_replays.py
+      - scripts/check_container_stop.py
       - .github/workflows/docker-smoke.yml
 permissions:
   contents: read
@@ -26,3 +27,4 @@ jobs:
       - run: docker run --rm --network none --entrypoint python recruiter-ci scripts/check_cli_replays.py --without-ui
       - run: docker run --rm --network none --entrypoint python recruiter-ci -m unittest prototype.tests.test_run_store prototype.tests.test_local_service prototype.tests.test_web_app -q
       - run: docker run --rm --network none --entrypoint python recruiter-ci scripts/privacy_smoke.py --models-dir /opt/privacy-models --model-mock
+      - run: python3 scripts/check_container_stop.py --image recruiter-ci
