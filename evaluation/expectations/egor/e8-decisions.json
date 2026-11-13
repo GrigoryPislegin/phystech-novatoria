@@ -1,0 +1,275 @@
+{
+ "schema_version": "egor-e8-decisions-0.1",
+ "scenarios": [
+  {
+   "scenario": "normal-ready",
+   "note": "Список подтверждён, сигналов нет, передача отмечена → reviewed_for_handoff.",
+   "report": "e8-queue-normal.json",
+   "job_id": "job-001",
+   "decisions": [
+    {
+     "decision_id": "normal-ready-1",
+     "job_id": "job-001",
+     "item_id": null,
+     "action": "confirm_requirements",
+     "report_sha256": "059b14e8470beb7e1563abfcecd1abd8adfb12ab25c2d6f5c42b62c7724b3465",
+     "resume_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+     "source_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
+     "requirements_sha256": "c27782f10ec408908250e6ab18d780835bc745e96587a7a0f50e8d6dd9c2e033",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:01:00+03:00"
+    },
+    {
+     "decision_id": "normal-ready-2",
+     "job_id": "job-001",
+     "item_id": null,
+     "action": "mark_for_handoff",
+     "report_sha256": "059b14e8470beb7e1563abfcecd1abd8adfb12ab25c2d6f5c42b62c7724b3465",
+     "resume_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+     "source_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
+     "requirements_sha256": "c27782f10ec408908250e6ab18d780835bc745e96587a7a0f50e8d6dd9c2e033",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:02:00+03:00"
+    }
+   ],
+   "expected": {
+    "job_id": "job-001",
+    "state": "reviewed_for_handoff",
+    "model_status": "model_proposed",
+    "requirements_confirmed": true,
+    "processing_complete": true,
+    "blockers": [],
+    "open_items": [],
+    "acknowledged": [
+     "92b27a2cd471f758"
+    ],
+    "accepted_exceptions": [],
+    "reason_codes": []
+   }
+  },
+  {
+   "scenario": "normal-open-unknown",
+   "note": "Неизвестное обязательное не прочитано → draft, отметка передачи не помогает.",
+   "report": "e8-queue-normal.json",
+   "job_id": "job-002",
+   "decisions": [
+    {
+     "decision_id": "normal-open-unknown-1",
+     "job_id": "job-002",
+     "item_id": null,
+     "action": "confirm_requirements",
+     "report_sha256": "059b14e8470beb7e1563abfcecd1abd8adfb12ab25c2d6f5c42b62c7724b3465",
+     "resume_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+     "source_sha256": "1c45ff0cbf14039070863347ed0cc5021f8576d9380ff9518db9248b1a897870",
+     "requirements_sha256": "401a488164dfb83e8e0707e8b29a1e26294c5fcd493176fbf6ed748d14a928e0",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:01:00+03:00"
+    },
+    {
+     "decision_id": "normal-open-unknown-2",
+     "job_id": "job-002",
+     "item_id": null,
+     "action": "mark_for_handoff",
+     "report_sha256": "059b14e8470beb7e1563abfcecd1abd8adfb12ab25c2d6f5c42b62c7724b3465",
+     "resume_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+     "source_sha256": "1c45ff0cbf14039070863347ed0cc5021f8576d9380ff9518db9248b1a897870",
+     "requirements_sha256": "401a488164dfb83e8e0707e8b29a1e26294c5fcd493176fbf6ed748d14a928e0",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:02:00+03:00"
+    }
+   ],
+   "expected": {
+    "job_id": "job-002",
+    "state": "draft",
+    "model_status": "model_proposed",
+    "requirements_confirmed": true,
+    "processing_complete": true,
+    "blockers": [],
+    "open_items": [
+     "a11a9bbf709ca06b"
+    ],
+    "acknowledged": [
+     "0faac10644568e6c"
+    ],
+    "accepted_exceptions": [],
+    "reason_codes": [
+     "marked_with_open_items"
+    ]
+   }
+  },
+  {
+   "scenario": "normal-unknown-read",
+   "note": "Неизвестное обязательное прочитано → передача возможна, статус остаётся unknown.",
+   "report": "e8-queue-normal.json",
+   "job_id": "job-002",
+   "decisions": [
+    {
+     "decision_id": "normal-unknown-read-1",
+     "job_id": "job-002",
+     "item_id": null,
+     "action": "confirm_requirements",
+     "report_sha256": "059b14e8470beb7e1563abfcecd1abd8adfb12ab25c2d6f5c42b62c7724b3465",
+     "resume_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+     "source_sha256": "1c45ff0cbf14039070863347ed0cc5021f8576d9380ff9518db9248b1a897870",
+     "requirements_sha256": "401a488164dfb83e8e0707e8b29a1e26294c5fcd493176fbf6ed748d14a928e0",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:01:00+03:00"
+    },
+    {
+     "decision_id": "normal-unknown-read-2",
+     "job_id": "job-002",
+     "item_id": "a11a9bbf709ca06b",
+     "action": "read_context",
+     "report_sha256": "059b14e8470beb7e1563abfcecd1abd8adfb12ab25c2d6f5c42b62c7724b3465",
+     "resume_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+     "source_sha256": "1c45ff0cbf14039070863347ed0cc5021f8576d9380ff9518db9248b1a897870",
+     "requirements_sha256": "401a488164dfb83e8e0707e8b29a1e26294c5fcd493176fbf6ed748d14a928e0",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:02:00+03:00"
+    },
+    {
+     "decision_id": "normal-unknown-read-3",
+     "job_id": "job-002",
+     "item_id": null,
+     "action": "mark_for_handoff",
+     "report_sha256": "059b14e8470beb7e1563abfcecd1abd8adfb12ab25c2d6f5c42b62c7724b3465",
+     "resume_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
+     "source_sha256": "1c45ff0cbf14039070863347ed0cc5021f8576d9380ff9518db9248b1a897870",
+     "requirements_sha256": "401a488164dfb83e8e0707e8b29a1e26294c5fcd493176fbf6ed748d14a928e0",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:03:00+03:00"
+    }
+   ],
+   "expected": {
+    "job_id": "job-002",
+    "state": "reviewed_for_handoff",
+    "model_status": "model_proposed",
+    "requirements_confirmed": true,
+    "processing_complete": true,
+    "blockers": [],
+    "open_items": [],
+    "acknowledged": [
+     "0faac10644568e6c",
+     "a11a9bbf709ca06b"
+    ],
+    "accepted_exceptions": [],
+    "reason_codes": []
+   }
+  },
+  {
+   "scenario": "disputed-blocked",
+   "note": "Неоднозначная цитата и неполный запуск не закрываются кликом → blocked; конфликт принят и виден.",
+   "report": "e8-queue-disputed.json",
+   "job_id": "job-a",
+   "decisions": [
+    {
+     "decision_id": "disputed-blocked-1",
+     "job_id": "job-a",
+     "item_id": null,
+     "action": "confirm_requirements",
+     "report_sha256": "9088769620d4f4412a34bb161b8423eec5326f54b6b6b0e1a47b5f2746ab8096",
+     "resume_sha256": "fff6f9ae8dfead4019269d0f2422686c37a297a0e89cce3688f4a97169cc6044",
+     "source_sha256": "0818e90a9d6a51e6976c4cc6007cac8fb0aaf7d5e1cdf56718f3c8d23039a4e2",
+     "requirements_sha256": "7d70379fb2044272748b6d2d61d4b8d3eff280fa2cc844cbc7b23f60d0cf5e84",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:01:00+03:00"
+    },
+    {
+     "decision_id": "disputed-blocked-2",
+     "job_id": "job-a",
+     "item_id": "b4f1792201769d2b",
+     "action": "read_context",
+     "report_sha256": "9088769620d4f4412a34bb161b8423eec5326f54b6b6b0e1a47b5f2746ab8096",
+     "resume_sha256": "fff6f9ae8dfead4019269d0f2422686c37a297a0e89cce3688f4a97169cc6044",
+     "source_sha256": "0818e90a9d6a51e6976c4cc6007cac8fb0aaf7d5e1cdf56718f3c8d23039a4e2",
+     "requirements_sha256": "7d70379fb2044272748b6d2d61d4b8d3eff280fa2cc844cbc7b23f60d0cf5e84",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:02:00+03:00"
+    },
+    {
+     "decision_id": "disputed-blocked-3",
+     "job_id": "job-a",
+     "item_id": "5615c023603dd1f7",
+     "action": "accept_condition",
+     "report_sha256": "9088769620d4f4412a34bb161b8423eec5326f54b6b6b0e1a47b5f2746ab8096",
+     "resume_sha256": "fff6f9ae8dfead4019269d0f2422686c37a297a0e89cce3688f4a97169cc6044",
+     "source_sha256": "0818e90a9d6a51e6976c4cc6007cac8fb0aaf7d5e1cdf56718f3c8d23039a4e2",
+     "requirements_sha256": "7d70379fb2044272748b6d2d61d4b8d3eff280fa2cc844cbc7b23f60d0cf5e84",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:03:00+03:00"
+    },
+    {
+     "decision_id": "disputed-blocked-4",
+     "job_id": "job-a",
+     "item_id": "fb9ccd24523a3293",
+     "action": "read_context",
+     "report_sha256": "9088769620d4f4412a34bb161b8423eec5326f54b6b6b0e1a47b5f2746ab8096",
+     "resume_sha256": "fff6f9ae8dfead4019269d0f2422686c37a297a0e89cce3688f4a97169cc6044",
+     "source_sha256": "0818e90a9d6a51e6976c4cc6007cac8fb0aaf7d5e1cdf56718f3c8d23039a4e2",
+     "requirements_sha256": "7d70379fb2044272748b6d2d61d4b8d3eff280fa2cc844cbc7b23f60d0cf5e84",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:04:00+03:00"
+    },
+    {
+     "decision_id": "disputed-blocked-5",
+     "job_id": "job-a",
+     "item_id": null,
+     "action": "mark_for_handoff",
+     "report_sha256": "9088769620d4f4412a34bb161b8423eec5326f54b6b6b0e1a47b5f2746ab8096",
+     "resume_sha256": "fff6f9ae8dfead4019269d0f2422686c37a297a0e89cce3688f4a97169cc6044",
+     "source_sha256": "0818e90a9d6a51e6976c4cc6007cac8fb0aaf7d5e1cdf56718f3c8d23039a4e2",
+     "requirements_sha256": "7d70379fb2044272748b6d2d61d4b8d3eff280fa2cc844cbc7b23f60d0cf5e84",
+     "policy_version": "draft-2026-11-12-v1",
+     "decided_by": "recruiter",
+     "recorded_by": "service",
+     "decided_at": "2026-11-14T01:05:00+03:00"
+    }
+   ],
+   "expected": {
+    "job_id": "job-a",
+    "state": "blocked",
+    "model_status": "model_proposed",
+    "requirements_confirmed": true,
+    "processing_complete": false,
+    "blockers": [
+     "8746415d3d39e0d4",
+     "b4f1792201769d2b"
+    ],
+    "open_items": [],
+    "acknowledged": [
+     "fb9ccd24523a3293",
+     "55d1a04a5e8c7e45",
+     "ca0ee031ca9631a5"
+    ],
+    "accepted_exceptions": [
+     "5615c023603dd1f7"
+    ],
+    "reason_codes": [
+     "blocker_not_closable"
+    ]
+   }
+  }
+ ]
+}
