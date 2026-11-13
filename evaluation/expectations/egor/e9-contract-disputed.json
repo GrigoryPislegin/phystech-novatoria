@@ -213,7 +213,8 @@
         "upper": 25.0
        }
       },
-      "repeated_ids": []
+      "repeated_ids": [],
+      "marker_scenarios": []
      },
      "conditions": {
       "items": [
@@ -438,7 +439,24 @@
         "upper": 100.0
        }
       },
-      "repeated_ids": []
+      "repeated_ids": [],
+      "marker_scenarios": [
+       {
+        "applied": [
+         "r1"
+        ],
+        "mandatory": "clarify",
+        "units": [
+         {
+          "ids": [
+           "r1"
+          ],
+          "group": "core",
+          "state": "disputed"
+         }
+        ]
+       }
+      ]
      },
      "conditions": {
       "items": [],
@@ -480,7 +498,7 @@
     "challengers": [
      {
       "job_id": "job-b",
-      "answers_needed": null
+      "answers_needed": 0
      }
     ],
     "unassessed": [],
@@ -501,7 +519,7 @@
       "requirement_ids": [
        "r1"
       ],
-      "kind": "marker",
+      "kind": "disputed",
       "role": "challenger",
       "effect": 100.0
      }
@@ -1010,7 +1028,8 @@
         "upper": 25.0
        }
       },
-      "repeated_ids": []
+      "repeated_ids": [],
+      "marker_scenarios": []
      },
      "rows": [
       {
@@ -1259,7 +1278,24 @@
         "upper": 100.0
        }
       },
-      "repeated_ids": []
+      "repeated_ids": [],
+      "marker_scenarios": [
+       {
+        "applied": [
+         "r1"
+        ],
+        "mandatory": "clarify",
+        "units": [
+         {
+          "ids": [
+           "r1"
+          ],
+          "group": "core",
+          "state": "disputed"
+         }
+        ]
+       }
+      ]
      },
      "rows": [
       {

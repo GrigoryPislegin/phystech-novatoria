@@ -300,6 +300,83 @@ class ReviewRegressionTests(unittest.TestCase):
         self.assertEqual(ranked(top=rows_job(('x', 'full'), ('y', 'full'), ('z', 'fail')), rival=far)['leader']['state'],
                          'stable')
 
+    def test_applying_an_unapplied_marker_is_really_rescored(self):
+        top = rows_job(('x', 'full'), ('y', 'full'), ('z', 'fail'))
+        def rival(marker):
+            return build_job({'job_id': 'rival', 'rows': [
+                {'id': 'r0', 'text': 'a', 'm': True, 'marker': marker, 'status': 'full'},
+                *[{'id': f'r{i}', 'text': t, 'm': False, 'status': 'fail'} for i, t in enumerate('bcd', 1)]]})
+        s = score(*rival('review'))
+        self.assertEqual((s['lower'], s['upper'], s['excluded_mandatory_ids']), (25, 25, ['r0']))  # H does not bound it
+        ranking = ranked(top=top, rival=rival('review'))
+        leader = ranking['leader']
+        self.assertEqual((ranking['recommendation'], leader['reasons'], leader['challengers']),
+                         ('clarify', ['challenger_doubted'], [{'job_id': 'rival', 'answers_needed': 0}]))
+        self.assertEqual([(d['job_id'], d['requirement_id'], d['kind']) for d in leader['decisive']],
+                         [('rival', 'r0', 'marker')])
+        # The scenario is the real score with only the E3 marker state changed: the rival becomes first.
+        applied = score(*rival('ok'))
+        self.assertEqual(s['marker_scenarios'][0]['units'], applied['units'])
+        self.assertEqual(ranked(top=top, rival=rival('ok'))['jobs'][0]['job_id'], 'rival')
+        # A marker whose application cannot reach the top keeps the first place stable.
+        weak = build_job({'job_id': 'rival', 'rows': [
+            {'id': 'r0', 'text': 'a', 'm': True, 'marker': 'review', 'status': 'fail'},
+            {'id': 'r1', 'text': 'b', 'm': False, 'status': 'full'}, {'id': 'r2', 'text': 'c', 'm': False, 'status': 'fail'}]})
+        self.assertEqual(ranked(top=top, rival=weak)['leader']['state'], 'stable')
+
+    def test_every_marker_combination_or_a_conservative_answer(self):
+        rng = random.Random(23)
+        seen = 0
+        for _ in range(600):
+            reqs, ev, evidence = random_job(rng)
+            s = score(reqs, ev, evidence)
+            for scenario in s['marker_scenarios'] or []:
+                seen += 1
+                markers = [c.model_copy(update={'state': 'structure_ok'}) if c.requirement_id in scenario['applied']
+                           else c for c in evidence.mandatory]
+                real = score(reqs, ev, evidence.model_copy(update={'mandatory': markers}))
+                self.assertEqual((scenario['units'], scenario['mandatory']), (real['units'], real['mandatory']))
+        self.assertGreater(seen, 200)
+        many = build_job({'job_id': 'rival', 'rows': [
+            {'id': f'r{i}', 'text': f't{i}', 'm': True, 'marker': 'review', 'status': 'fail'} for i in range(5)]
+            + [{'id': 'r9', 'text': 'z', 'm': False, 'status': 'partial'}]})
+        self.assertIsNone(score(*many)['marker_scenarios'])
+        ranking = ranked(top=rows_job(('x', 'full')), rival=many)
+        self.assertEqual((ranking['recommendation'], ranking['leader']['challengers']),
+                         ('clarify', [{'job_id': 'rival', 'answers_needed': None}]))
+
+    def test_explanations_walk_requirement_units(self):
+        def report(**jobs):
+            return report_of({'jobs': [{'job_id': name, 'rows': rows} for name, rows in jobs.items()]})
+        row = lambda rid, text, status, quote=None: {'id': rid, 'text': text, 'status': status, 'm': False,
+                                                     **({'quote': quote} if quote else {})}
+        # One optional unit made of two equal full rows gives L 100: the factor must not vanish.
+        r = report(top=[row('r1', 'Python', 'full', 'Python'), row('r2', 'python', 'full', 'python.')],
+                   low=[row('r1', 'Go', 'fail')])
+        self.assertEqual(r['ranking']['jobs'][0]['score']['lower'], 100)
+        self.assertEqual([(f.requirement_id, f.effect) for f in explain_leader(r).factors], [('r1', 100)])
+        c = compare(r, 'top', 'low')
+        self.assertIn(('top', 'r1', 100), [(d.job_id, d.requirement_id, d.effect) for d in c.deciding])
+        # One unknown unit made of two rows is one answer in rank and one swing in compare.
+        r = report(top=[row('r1', 'a', 'full'), row('r2', 'b', 'fail')],
+                   low=[row('r1', 'a', 'partial'), row('r2', 'b', 'unknown', 'Знание B'),
+                        row('r3', 'b', 'unknown', 'знание  b.')])
+        leader = r['ranking']['leader']
+        self.assertEqual(leader['challengers'], [{'job_id': 'low', 'answers_needed': 1}])
+        swings = compare(r, 'top', 'low').swings
+        self.assertEqual([(s.row.job_id, s.row.requirement_id, s.result) for s in swings], [('low', 'r2', 'reversed')])
+        change = explain_leader(r).can_change
+        self.assertEqual([c.requirement_ids for c in change], [['r2', 'r3']])
+        # Conflicting repeats are disputed in every reference, though E3 found each row structurally sound.
+        r = report(top=[row('r1', 'Python', 'full', 'Python'), row('r2', 'python', 'fail', 'python.'),
+                        row('r3', 'SQL', 'full')], low=[row('r1', 'Go', 'fail')])
+        self.assertEqual(r['ranking']['jobs'][0]['score']['disputed_ids'], [])
+        text = explain_leader(r)
+        self.assertEqual([(l.requirement_id, l.disputed) for l in text.limits], [('r1', True)])
+        self.assertEqual([(c.row.disputed, c.kind, c.requirement_ids) for c in text.can_change],
+                         [(True, 'disputed', ['r1', 'r2'])])
+        self.assertEqual([f.requirement_id for f in text.factors], ['r3'])
+
     def test_rival_with_nothing_confirmed_is_not_close(self):
         ranking = ranked(top=rows_job(('a', 'partial'), ('b', 'fail'), ('c', 'fail'), ('d', 'fail')),
                          empty=rows_job(('x', 'unknown')))

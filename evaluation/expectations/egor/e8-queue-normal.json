@@ -200,7 +200,8 @@
         "upper": 25.0
        }
       },
-      "repeated_ids": []
+      "repeated_ids": [],
+      "marker_scenarios": []
      },
      "conditions": {
       "items": [],
@@ -330,7 +331,8 @@
        },
        "extra": null
       },
-      "repeated_ids": []
+      "repeated_ids": [],
+      "marker_scenarios": []
      },
      "conditions": {
       "items": [],
@@ -470,7 +472,8 @@
        },
        "extra": null
       },
-      "repeated_ids": []
+      "repeated_ids": [],
+      "marker_scenarios": []
      },
      "conditions": {
       "items": [],
@@ -952,7 +955,8 @@
         "upper": 25.0
        }
       },
-      "repeated_ids": []
+      "repeated_ids": [],
+      "marker_scenarios": []
      },
      "rows": [
       {
@@ -1201,7 +1205,8 @@
        },
        "extra": null
       },
-      "repeated_ids": []
+      "repeated_ids": [],
+      "marker_scenarios": []
      },
      "rows": [
       {
@@ -1342,7 +1347,8 @@
        },
        "extra": null
       },
-      "repeated_ids": []
+      "repeated_ids": [],
+      "marker_scenarios": []
      },
      "rows": [
       {
