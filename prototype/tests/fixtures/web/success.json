@@ -1,0 +1,307 @@
+{
+  "schema_version": "0.1",
+  "mode": "synthetic_replay_NOT_model_output",
+  "model": null,
+  "demo_scenario": "success",
+  "ranking": {
+    "jobs": [
+      {
+        "job_id": "job-001",
+        "requirements": {
+          "items": [
+            {
+              "id": "r1",
+              "text": "Python",
+              "quote": "Python обязателен.",
+              "mandatory_quote": "Python обязателен."
+            },
+            {
+              "id": "r2",
+              "text": "SQL",
+              "quote": "SQL желателен.",
+              "mandatory_quote": null
+            }
+          ]
+        },
+        "evaluation": {
+          "rows": [
+            {
+              "requirement_id": "r1",
+              "status": "full",
+              "fact_ids": [
+                "f1"
+              ],
+              "comment": "Опыт Python указан.",
+              "question": null
+            },
+            {
+              "requirement_id": "r2",
+              "status": "full",
+              "fact_ids": [
+                "f2"
+              ],
+              "comment": "Опыт SQL указан.",
+              "question": null
+            }
+          ]
+        },
+        "score": {
+          "lower": 100.0,
+          "upper": 100.0,
+          "coverage": 100.0,
+          "mandatory": "confirmed",
+          "policy_version": "draft-2026-11-12-v1"
+        },
+        "score_review": {
+          "excluded_mandatory_ids": [],
+          "rule": "structurally_unbound_mandatory_uses_regular_weight",
+          "version": "mandatory-structure-0.1"
+        },
+        "rank": 1
+      },
+      {
+        "job_id": "job-002",
+        "requirements": {
+          "items": [
+            {
+              "id": "r1",
+              "text": "Java обязателен.",
+              "quote": "Java обязателен.",
+              "mandatory_quote": "Java обязателен."
+            }
+          ]
+        },
+        "evaluation": {
+          "rows": [
+            {
+              "requirement_id": "r1",
+              "status": "unknown",
+              "fact_ids": [],
+              "comment": "Java не указан.",
+              "question": "Есть опыт Java?"
+            }
+          ]
+        },
+        "score": {
+          "lower": 0.0,
+          "upper": 100.0,
+          "coverage": 0.0,
+          "mandatory": "clarify",
+          "policy_version": "draft-2026-11-12-v1"
+        },
+        "score_review": {
+          "excluded_mandatory_ids": [],
+          "rule": "structurally_unbound_mandatory_uses_regular_weight",
+          "version": "mandatory-structure-0.1"
+        },
+        "rank": 2
+      },
+      {
+        "job_id": "job-003",
+        "requirements": {
+          "items": [
+            {
+              "id": "r1",
+              "text": "SQL: обязательно не менее 3 лет опыта.",
+              "quote": "SQL: обязательно не менее 3 лет опыта.",
+              "mandatory_quote": "SQL: обязательно не менее 3 лет опыта."
+            }
+          ]
+        },
+        "evaluation": {
+          "rows": [
+            {
+              "requirement_id": "r1",
+              "status": "fail",
+              "fact_ids": [
+                "f2"
+              ],
+              "comment": "Указан 1 год SQL, требуется не менее 3.",
+              "question": "Есть дополнительный опыт SQL, не включённый в резюме?"
+            }
+          ]
+        },
+        "score": {
+          "lower": 0.0,
+          "upper": 0.0,
+          "coverage": 100.0,
+          "mandatory": "violated",
+          "policy_version": "draft-2026-11-12-v1"
+        },
+        "score_review": {
+          "excluded_mandatory_ids": [],
+          "rule": "structurally_unbound_mandatory_uses_regular_weight",
+          "version": "mandatory-structure-0.1"
+        },
+        "rank": 3
+      }
+    ],
+    "recommendation": "review_top",
+    "complete": true,
+    "requires_human_review": true
+  },
+  "facts": {
+    "items": [
+      {
+        "id": "f1",
+        "text": "Python 3 года",
+        "quote": "Разрабатывал на Python 3 года."
+      },
+      {
+        "id": "f2",
+        "text": "SQL 1 год",
+        "quote": "Использовал SQL 1 год."
+      }
+    ]
+  },
+  "verification": {
+    "requirements": "not_reviewed",
+    "evidence": "quotes_checked_semantics_unverified",
+    "final_allowed": false
+  },
+  "presentation": {
+    "version": "0.1",
+    "jobs": [
+      {
+        "job_id": "job-001",
+        "rank": 1,
+        "score": {
+          "lower": 100.0,
+          "upper": 100.0,
+          "coverage": 100.0,
+          "mandatory": "confirmed",
+          "policy_version": "draft-2026-11-12-v1"
+        },
+        "rows": [
+          {
+            "requirement_id": "r1",
+            "label": "Python",
+            "requirement_quote": "Python обязателен.",
+            "mandatory_quote": "Python обязателен.",
+            "mandatory_verification": "not_reviewed",
+            "mandatory_check": {
+              "requirement_id": "r1",
+              "state": "structure_ok",
+              "reasons": []
+            },
+            "mandatory_applied_to_score": true,
+            "status": "full",
+            "status_verification": "model_proposed",
+            "evidence_check": {
+              "requirement_id": "r1",
+              "state": "structure_ok",
+              "reasons": []
+            },
+            "resume_quotes": [
+              "Разрабатывал на Python 3 года."
+            ],
+            "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+            "question": null
+          },
+          {
+            "requirement_id": "r2",
+            "label": "SQL",
+            "requirement_quote": "SQL желателен.",
+            "mandatory_quote": null,
+            "mandatory_verification": "not_reviewed",
+            "mandatory_check": {
+              "requirement_id": "r2",
+              "state": "not_mandatory",
+              "reasons": []
+            },
+            "mandatory_applied_to_score": false,
+            "status": "full",
+            "status_verification": "model_proposed",
+            "evidence_check": {
+              "requirement_id": "r2",
+              "state": "structure_ok",
+              "reasons": []
+            },
+            "resume_quotes": [
+              "Использовал SQL 1 год."
+            ],
+            "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
+            "question": null
+          }
+        ]
+      },
+      {
+        "job_id": "job-002",
+        "rank": 2,
+        "score": {
+          "lower": 0.0,
+          "upper": 100.0,
+          "coverage": 0.0,
+          "mandatory": "clarify",
+          "policy_version": "draft-2026-11-12-v1"
+        },
+        "rows": [
+          {
+            "requirement_id": "r1",
+            "label": "Java обязателен.",
+            "requirement_quote": "Java обязателен.",
+            "mandatory_quote": "Java обязателен.",
+            "mandatory_verification": "not_reviewed",
+            "mandatory_check": {
+              "requirement_id": "r1",
+              "state": "structure_ok",
+              "reasons": []
+            },
+            "mandatory_applied_to_score": true,
+            "status": "unknown",
+            "status_verification": "model_proposed",
+            "evidence_check": {
+              "requirement_id": "r1",
+              "state": "no_evidence",
+              "reasons": []
+            },
+            "resume_quotes": [],
+            "explanation": "Подтверждающие сведения не указаны в извлечённых фактах; это не доказательство отсутствия опыта.",
+            "question": "Уточните опыт по требованию «Java обязателен.»: какие задачи выполняли, когда и с каким результатом?"
+          }
+        ]
+      },
+      {
+        "job_id": "job-003",
+        "rank": 3,
+        "score": {
+          "lower": 0.0,
+          "upper": 0.0,
+          "coverage": 100.0,
+          "mandatory": "violated",
+          "policy_version": "draft-2026-11-12-v1"
+        },
+        "rows": [
+          {
+            "requirement_id": "r1",
+            "label": "SQL: обязательно не менее 3 лет опыта.",
+            "requirement_quote": "SQL: обязательно не менее 3 лет опыта.",
+            "mandatory_quote": "SQL: обязательно не менее 3 лет опыта.",
+            "mandatory_verification": "not_reviewed",
+            "mandatory_check": {
+              "requirement_id": "r1",
+              "state": "structure_ok",
+              "reasons": []
+            },
+            "mandatory_applied_to_score": true,
+            "status": "fail",
+            "status_verification": "model_proposed",
+            "evidence_check": {
+              "requirement_id": "r1",
+              "state": "structure_ok",
+              "reasons": []
+            },
+            "resume_quotes": [
+              "Использовал SQL 1 год."
+            ],
+            "explanation": "Модель предложила несоответствие; проверьте противоречие до решения о кандидате.",
+            "question": "Уточните опыт по требованию «SQL: обязательно не менее 3 лет опыта.»: какие задачи выполняли, когда и с каким результатом?"
+          }
+        ]
+      }
+    ],
+    "final_allowed": false
+  },
+  "unprocessed_job_ids": [],
+  "unprocessed": []
+}
