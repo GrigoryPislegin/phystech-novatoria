@@ -25,13 +25,13 @@ from pydantic import ValidationError
 
 from .contracts import Evaluation, Requirements, StrictModel
 from .evidence import PairCheck
-from .scoring import POLICY_VERSION, rank, score
+from .scoring import POLICIES, POLICY_VERSION, is_close, rank, score
 
 INTEGRATED = True
 MAX_DECIDING = 3
 
 Status = Literal['full', 'partial', 'fail', 'unknown']
-Caveat = Literal['different_requirement_lists', 'incomplete_run', 'evidence_not_applied']
+Caveat = Literal['different_requirement_lists', 'incomplete_run', 'evidence_not_applied', 'close_margin']
 
 
 class RowRef(StrictModel):
@@ -71,6 +71,8 @@ class Comparison(StrictModel):
     swings: list[Swing]
     caveats: list[Caveat]
     summary: str
+    margin: float | None = None  # L of the higher job minus L of the lower one, in points
+    close: bool = False  # v3: the gap is below one status step of the coarser list; the order is not established
 
 
 def _key(quote: str) -> str:
@@ -86,7 +88,8 @@ class _Job:
         self.requirements = Requirements.model_validate(job['requirements'])
         self.evaluation = Evaluation.model_validate(job['evaluation'])
         reported = job['score']
-        if reported.get('policy_version') != POLICY_VERSION:
+        self.policy = reported.get('policy_version')
+        if self.policy not in POLICIES:  # a report is explained only by the policy that scored it
             raise ValueError('policy_mismatch')
         checks = PairCheck.model_validate(job['evidence_check']) if 'evidence_check' in job else None
         if reported.get('evidence_applied'):
@@ -127,7 +130,7 @@ class _Job:
                 evidence = evidence.model_copy(update={'rows': [
                     c.model_copy(update={'status': status, 'state': state}) if c.requirement_id == requirement_id
                     else c for c in evidence.rows]})
-        return score(self.requirements, evaluation, evidence)
+        return score(self.requirements, evaluation, evidence, policy=self.policy)
 
     def contribution(self, rid: str) -> float:
         """Points of L the row gives now: L minus L with the row unknown."""
@@ -143,6 +146,13 @@ class _Job:
 
     def scale(self) -> list[tuple[str, bool]]:
         return sorted((_key(r.quote), r.id in self.mandatory) for r in self.requirements.items)
+
+
+def _one_policy(report: dict, jobs) -> None:
+    """Every job of the report, and the report itself, name one policy; a mixed report is refused."""
+    versions = {(j.get('score') or {}).get('policy_version') for j in jobs}
+    if len(versions) != 1 or report.get('policy_version', next(iter(versions))) not in versions:
+        raise ValueError('policy_mismatch')
 
 
 def _order(a: dict, b: dict) -> Literal['a_higher', 'b_higher', 'tie']:
@@ -224,6 +234,9 @@ def _summary(a: _Job, b: _Job, outcome: str, reason: str, deciding: list[RowRef]
             f'{s.row.job_id} «{s.row.requirement_quote}»' for s in swings) + '.'
     if 'different_requirement_lists' in caveats:
         text += ' Списки требований или их веса разные: L считается внутри своей вакансии.'
+    if 'close_margin' in caveats:
+        text += (' Разрыв меньше одного шага оценки одного требования в более коротком списке: '
+                 'превосходство по проценту не установлено, сравните вакансии по существу.')
     if 'evidence_not_applied' in caveats:
         text += ' Балл посчитан без учёта спорных доказательств; такие строки помечены и в различия не входят.'
     if 'incomplete_run' in caveats:
@@ -242,6 +255,7 @@ def compare(report: dict, job_a: str, job_b: str) -> Comparison:
         a, b = _Job(jobs[job_a], facts), _Job(jobs[job_b], facts)
     except (KeyError, TypeError, ValidationError):
         raise ValueError('incomplete_report') from None
+    _one_policy(report, jobs.values())
 
     paired = a.scale() == b.scale()
     outcome = _order(a.score, b.score)
@@ -253,12 +267,117 @@ def compare(report: dict, job_a: str, job_b: str) -> Comparison:
         reason = 'mandatory_violation' if violated == {low.id} else 'lower_bound'
         deciding = _deciding(high, low, reason, paired)
     swings = _swings(a, b, outcome)
+    margin = None if outcome == 'tie' else round(abs(a.score['lower'] - b.score['lower']), 4)
+    # The same rule `rank` applies to the first place: one status step of the coarser list of units.
+    close = (a.policy == POLICY_VERSION and outcome != 'tie' and reason == 'lower_bound'
+             and is_close(a.score, b.score))
     caveats = ((['different_requirement_lists'] if not paired else [])
                + (['incomplete_run'] if not report['ranking'].get('complete', True) else [])
-               + (['evidence_not_applied'] if a.unscored_review or b.unscored_review else []))
+               + (['evidence_not_applied'] if a.unscored_review or b.unscored_review else [])
+               + (['close_margin'] if close else []))
     return Comparison(
-        policy_version=POLICY_VERSION, job_a=job_a, job_b=job_b, outcome=outcome, reason=reason,
+        margin=margin, close=close,
+        policy_version=a.policy, job_a=job_a, job_b=job_b, outcome=outcome, reason=reason,
         scores={j.id: JobScore(rank=j.rank, **{k: j.score[k] for k in ('lower', 'upper', 'coverage', 'mandatory')})
                 for j in (a, b)},
         deciding=deciding, swings=swings, caveats=caveats,
         summary=_summary(a, b, outcome, reason, deciding, swings, caveats, paired))
+
+
+# ---------- first place (E11, policy v3) ---------------------------------------------------------
+
+class Change(StrictModel):
+    """A row whose resolution could change the first place. A sensitivity check, not a forecast."""
+    row: RowRef  # effect: points of L the resolution can move
+    kind: Literal['unknown', 'disputed', 'partial', 'marker']
+    role: Literal['leader', 'challenger']
+
+
+class LeaderExplanation(StrictModel):
+    policy_version: str
+    job_ids: list[str]
+    state: Literal['stable', 'tie', 'close', 'open', 'none_fit']
+    reasons: list[str]
+    factors: list[RowRef]  # up to three confirmed rows that give the leader most of its L
+    limits: list[RowRef]  # up to three rows where the leader loses or lacks points
+    condition_conflicts: list[str]  # E5 kinds; shown apart, they never enter the score
+    can_change: list[Change]
+    challengers: list[str]
+    close_to: list[str]
+    unassessed: list[str]
+    summary: str
+
+
+_STATE_TEXT = {
+    'stable': 'Первое место устойчиво: ни чтение спорных строк, ни один-два ответа кандидата его не меняют.',
+    'tie': 'Первое место делят несколько вакансий с равной оценкой.',
+    'close': 'Первое место не установлено: отрыв меньше одного шага оценки одного требования.',
+    'open': 'Первое место предварительное: его могут изменить перечисленные уточнения.',
+    'none_fit': 'У всех вакансий модель предложила несоответствие обязательному требованию; решение за HR.',
+}
+
+
+def explain_leader(report: dict) -> LeaderExplanation | None:
+    """Two or three deciding factors of the first place, its limits and what could change it.
+
+    Built only from the report and re-checked against `scoring.rank`: the explanation is refused
+    ('score_not_reproducible') when the stored leader block differs from the recomputed one.
+    Returns None for a report scored by a policy without a leader analysis (v2) or with no jobs."""
+    try:
+        ranking = report['ranking']
+        if not ranking['jobs'] or 'leader' not in ranking:
+            return None
+        facts = {f['id']: f['quote'] for f in report['facts']['items']}
+        _one_policy(report, ranking['jobs'])
+        jobs = {j['job_id']: _Job(j, facts) for j in ranking['jobs']}
+    except (KeyError, TypeError, ValidationError):
+        raise ValueError('incomplete_report') from None
+    again = rank([{'job_id': j.id, 'score': j.score} for j in jobs.values()], len(jobs))
+    leader = again['leader']
+    if leader != ranking['leader'] or {j['job_id']: j['rank'] for j in again['jobs']} != {
+            j.id: j.rank for j in jobs.values()}:
+        raise ValueError('score_not_reproducible')
+
+    top = [jobs[i] for i in leader['job_ids']]
+    factors, limits = [], []
+    for job in top:
+        for rid, status in job.status.items():
+            if rid in job.unresolved():
+                limits.append(job.ref(rid, job.score['weights'][rid]))
+            elif status != 'full':
+                limits.append(job.ref(rid, job.rescore(rid, 'full')['lower'] - job.score['lower']))
+            if rid not in job.unresolved() and status != 'fail':
+                factors.append(job.ref(rid, job.contribution(rid)))
+    order = lambda r: (not r.mandatory_applied, -r.effect, r.job_id, r.requirement_id)
+    conflicts = sorted({k for j in ranking['jobs'] if j['job_id'] in leader['job_ids']
+                        for k in (j.get('conditions') or {}).get('conflicts', [])})
+    changes = [Change(row=jobs[d['job_id']].ref(d['requirement_id'], d['effect']), kind=d['kind'], role=d['role'])
+               for d in leader['decisive']]
+    factors = sorted((r for r in factors if r.effect > 0), key=order)[:MAX_DECIDING]
+    limits = sorted(limits, key=order)[:MAX_DECIDING]
+
+    names = ', '.join(leader['job_ids'])
+    text = f'{names}: {_STATE_TEXT[leader["state"]]}'
+    if factors and leader['state'] != 'none_fit':
+        text += ' Решающие основания: ' + '; '.join(
+            f'«{r.requirement_quote}» — {r.status}, {r.effect} п' for r in factors) + '.'
+    if limits:
+        text += ' Ограничения: ' + '; '.join(
+            f'«{r.requirement_quote}» — {"спорно" if r.disputed else r.status}' for r in limits) + '.'
+    if conflicts:
+        text += ' Условия работы расходятся (' + ', '.join(conflicts) + '): в оценку не входят, решает HR.'
+    if changes:
+        text += ' Может изменить выбор: ' + '; '.join(
+            f'{c.row.job_id} «{c.row.requirement_quote}»' for c in changes) + '.'
+    if leader['close_to']:
+        text += ' Близкие вакансии: ' + ', '.join(leader['close_to']) + '.'
+    if leader['unassessed']:
+        text += (' Без подтверждённых совпадений: ' + ', '.join(leader['unassessed'])
+                 + ' — это отсутствие сведений, не отказ.')
+    if not ranking.get('complete', True):
+        text += ' Обработаны не все вакансии: место предварительное.'
+    return LeaderExplanation(
+        policy_version=top[0].policy, job_ids=leader['job_ids'], state=leader['state'], reasons=leader['reasons'],
+        factors=factors, limits=limits, condition_conflicts=conflicts, can_change=changes,
+        challengers=[c['job_id'] for c in leader['challengers']], close_to=leader['close_to'],
+        unassessed=leader['unassessed'], summary=text)

@@ -156,6 +156,22 @@
       ]
      },
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "disputed"
+       },
+       {
+        "ids": [
+         "r2"
+        ],
+        "group": "extra",
+        "state": "full"
+       }
+      ],
       "lower": 25.0,
       "upper": 100.0,
       "coverage": 25.0,
@@ -165,7 +181,33 @@
       ],
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 12.5,
+      "weights": {
+       "r1": 75.0,
+       "r2": 25.0
+      },
+      "mandatory_ids": [
+       "r1"
+      ],
+      "unknown_ids": [],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": {
+        "share": 75.0,
+        "units": 1,
+        "lower": 0.0,
+        "upper": 75.0
+       },
+       "extra": {
+        "share": 25.0,
+        "units": 1,
+        "lower": 25.0,
+        "upper": 25.0
+       }
+      },
+      "repeated_ids": []
      },
      "conditions": {
       "items": [
@@ -212,7 +254,7 @@
      "score_review": {
       "excluded_mandatory_ids": [],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "0818e90a9d6a51e6976c4cc6007cac8fb0aaf7d5e1cdf56718f3c8d23039a4e2",
      "rank": 1
@@ -320,6 +362,15 @@
       ]
      },
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "extra",
+        "state": "disputed"
+       }
+      ],
       "lower": 0.0,
       "upper": 100.0,
       "coverage": 0.0,
@@ -331,7 +382,25 @@
        "r1"
       ],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 50.0,
+      "weights": {
+       "r1": 100.0
+      },
+      "mandatory_ids": [],
+      "unknown_ids": [],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": null,
+       "extra": {
+        "share": 100.0,
+        "units": 1,
+        "lower": 0.0,
+        "upper": 100.0
+       }
+      },
+      "repeated_ids": []
      },
      "conditions": {
       "items": [],
@@ -345,7 +414,7 @@
        "r1"
       ],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "d298f2487f9b2e5b7f5b5e1fb7c15b4a815fb79cc0aa8d43e9ad10b2e6361653",
      "rank": 2
@@ -425,6 +494,15 @@
       ]
      },
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "unknown"
+       }
+      ],
       "lower": 0.0,
       "upper": 100.0,
       "coverage": 0.0,
@@ -432,7 +510,29 @@
       "disputed_ids": [],
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 50.0,
+      "weights": {
+       "r1": 100.0
+      },
+      "mandatory_ids": [
+       "r1"
+      ],
+      "unknown_ids": [
+       "r1"
+      ],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": {
+        "share": 100.0,
+        "units": 1,
+        "lower": 0.0,
+        "upper": 100.0
+       },
+       "extra": null
+      },
+      "repeated_ids": []
      },
      "conditions": {
       "items": [],
@@ -444,7 +544,7 @@
      "score_review": {
       "excluded_mandatory_ids": [],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "37312ba021c114f55180967aabdf4c5d674e696e7d656aac36207a0175fced2c",
      "rank": 2
@@ -452,7 +552,57 @@
    ],
    "recommendation": "incomplete",
    "complete": false,
-   "requires_human_review": true
+   "requires_human_review": true,
+   "leader": {
+    "job_ids": [
+     "job-a"
+    ],
+    "state": "open",
+    "reasons": [
+     "own_mandatory_unresolved",
+     "own_disputed",
+     "challenger_doubted",
+     "close_margin"
+    ],
+    "margin": 25.0,
+    "resolution": 50.0,
+    "close_to": [
+     "job-b"
+    ],
+    "challengers": [
+     {
+      "job_id": "job-b",
+      "answers_needed": null
+     }
+    ],
+    "unassessed": [
+     "job-c"
+    ],
+    "decisive": [
+     {
+      "job_id": "job-a",
+      "requirement_id": "r1",
+      "requirement_ids": [
+       "r1"
+      ],
+      "kind": "disputed",
+      "role": "leader",
+      "effect": 75.0
+     },
+     {
+      "job_id": "job-b",
+      "requirement_id": "r1",
+      "requirement_ids": [
+       "r1"
+      ],
+      "kind": "marker",
+      "role": "challenger",
+      "effect": 100.0
+     }
+    ],
+    "decisive_total": 2,
+    "answers_limit": 2
+   }
   },
   "errors": [
    {
@@ -473,7 +623,7 @@
   ],
   "safe_resume_sha256": "fff6f9ae8dfead4019269d0f2422686c37a297a0e89cce3688f4a97169cc6044",
   "analysis_schema_version": "analysis-0.2",
-  "policy_version": "draft-2026-11-13-v2",
+  "policy_version": "draft-2026-11-14-v3",
   "profile": {
    "schema_version": "candidate-profile-0.1",
    "state": "structure_ok",
@@ -508,7 +658,7 @@
   },
   "comparisons": [
    {
-    "policy_version": "draft-2026-11-13-v2",
+    "policy_version": "draft-2026-11-14-v3",
     "job_a": "job-a",
     "job_b": "job-b",
     "outcome": "a_higher",
@@ -582,12 +732,15 @@
     ],
     "caveats": [
      "different_requirement_lists",
-     "incomplete_run"
+     "incomplete_run",
+     "close_margin"
     ],
-    "summary": "job-a выше job-b: нижняя граница 25.0 против 0.0; обязательные: job-a — clarify, job-b — not_set. Наибольший вклад: job-a «SQL желателен.» — full. Вывод может измениться после уточнения: job-a «Обязателен опыт Python.»; job-b «Python». Списки требований или их веса разные: L считается внутри своей вакансии. Обработаны не все вакансии."
+    "summary": "job-a выше job-b: нижняя граница 25.0 против 0.0; обязательные: job-a — clarify, job-b — not_set. Наибольший вклад: job-a «SQL желателен.» — full. Вывод может измениться после уточнения: job-a «Обязателен опыт Python.»; job-b «Python». Списки требований или их веса разные: L считается внутри своей вакансии. Разрыв меньше одного шага оценки одного требования в более коротком списке: превосходство по проценту не установлено, сравните вакансии по существу. Обработаны не все вакансии.",
+    "margin": 25.0,
+    "close": true
    },
    {
-    "policy_version": "draft-2026-11-13-v2",
+    "policy_version": "draft-2026-11-14-v3",
     "job_a": "job-a",
     "job_b": "job-c",
     "outcome": "a_higher",
@@ -659,14 +812,17 @@
     ],
     "caveats": [
      "different_requirement_lists",
-     "incomplete_run"
+     "incomplete_run",
+     "close_margin"
     ],
-    "summary": "job-a выше job-c: нижняя граница 25.0 против 0.0; обязательные: job-a — clarify, job-c — clarify. Наибольший вклад: job-a «SQL желателен.» — full. Вывод может измениться после уточнения: job-a «Обязателен опыт Python.»; job-c «Rust обязателен.». Списки требований или их веса разные: L считается внутри своей вакансии. Обработаны не все вакансии."
+    "summary": "job-a выше job-c: нижняя граница 25.0 против 0.0; обязательные: job-a — clarify, job-c — clarify. Наибольший вклад: job-a «SQL желателен.» — full. Вывод может измениться после уточнения: job-a «Обязателен опыт Python.»; job-c «Rust обязателен.». Списки требований или их веса разные: L считается внутри своей вакансии. Разрыв меньше одного шага оценки одного требования в более коротком списке: превосходство по проценту не установлено, сравните вакансии по существу. Обработаны не все вакансии.",
+    "margin": 25.0,
+    "close": true
    }
   ],
   "review_queue": {
    "schema_version": "review-queue-0.1",
-   "policy_version": "draft-2026-11-13-v2",
+   "policy_version": "draft-2026-11-14-v3",
    "model_status": "model_proposed",
    "items": [
     {
@@ -681,7 +837,8 @@
      "explanation": "Обработаны не все вакансии; окончательный общий рейтинг невозможен.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "b4f1792201769d2b",
@@ -715,7 +872,8 @@
      ],
      "detail_codes": [
       "ambiguous_location"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "ab4b0174aacfad44",
@@ -731,21 +889,8 @@
      "contexts": [],
      "detail_codes": [
       "model_invalid"
-     ]
-    },
-    {
-     "id": "fb9ccd24523a3293",
-     "job_id": null,
-     "requirement_id": null,
-     "condition_kind": null,
-     "reason_code": "privacy_may_hide",
-     "kind": "missing_info",
-     "priority": 2,
-     "action": "compare_with_original",
-     "explanation": "Защита данных могла заменить названия технологий; «не указано» может быть потерей данных.",
-     "refs": [],
-     "contexts": [],
-     "detail_codes": []
+     ],
+     "decisive": false
     },
     {
      "id": "8f645475392d2f41",
@@ -776,7 +921,8 @@
      "contexts": [],
      "detail_codes": [
       "evidence_not_linked"
-     ]
+     ],
+     "decisive": true
     },
     {
      "id": "c5313fab23a19b86",
@@ -800,7 +946,23 @@
      "contexts": [],
      "detail_codes": [
       "mandatory_spans_segments"
-     ]
+     ],
+     "decisive": true
+    },
+    {
+     "id": "fb9ccd24523a3293",
+     "job_id": null,
+     "requirement_id": null,
+     "condition_kind": null,
+     "reason_code": "privacy_may_hide",
+     "kind": "missing_info",
+     "priority": 2,
+     "action": "compare_with_original",
+     "explanation": "Защита данных могла заменить названия технологий; «не указано» может быть потерей данных.",
+     "refs": [],
+     "contexts": [],
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "5615c023603dd1f7",
@@ -831,7 +993,8 @@
      "contexts": [],
      "detail_codes": [
       "condition_conflict"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "55d1a04a5e8c7e45",
@@ -845,7 +1008,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "ca0ee031ca9631a5",
@@ -861,7 +1025,8 @@
      "contexts": [
       "Работа в офисе"
      ],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "19b34f4f680a53fb",
@@ -875,7 +1040,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "0ac818eb0ab192f3",
@@ -889,7 +1055,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "3d06bef7223e9d96",
@@ -911,7 +1078,8 @@
       }
      ],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     }
    ],
    "by_reason": {
@@ -1006,6 +1174,22 @@
      "job_id": "job-a",
      "rank": 1,
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "disputed"
+       },
+       {
+        "ids": [
+         "r2"
+        ],
+        "group": "extra",
+        "state": "full"
+       }
+      ],
       "lower": 25.0,
       "upper": 100.0,
       "coverage": 25.0,
@@ -1015,7 +1199,33 @@
       ],
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 12.5,
+      "weights": {
+       "r1": 75.0,
+       "r2": 25.0
+      },
+      "mandatory_ids": [
+       "r1"
+      ],
+      "unknown_ids": [],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": {
+        "share": 75.0,
+        "units": 1,
+        "lower": 0.0,
+        "upper": 75.0
+       },
+       "extra": {
+        "share": 25.0,
+        "units": 1,
+        "lower": 25.0,
+        "upper": 25.0
+       }
+      },
+      "repeated_ids": []
      },
      "rows": [
       {
@@ -1098,7 +1308,7 @@
      "score_review": {
       "excluded_mandatory_ids": [],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "requirements_draft": {
       "vacancy_id": "job-a",
@@ -1225,6 +1435,15 @@
      "job_id": "job-b",
      "rank": 2,
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "extra",
+        "state": "disputed"
+       }
+      ],
       "lower": 0.0,
       "upper": 100.0,
       "coverage": 0.0,
@@ -1236,7 +1455,25 @@
        "r1"
       ],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 50.0,
+      "weights": {
+       "r1": 100.0
+      },
+      "mandatory_ids": [],
+      "unknown_ids": [],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": null,
+       "extra": {
+        "share": 100.0,
+        "units": 1,
+        "lower": 0.0,
+        "upper": 100.0
+       }
+      },
+      "repeated_ids": []
      },
      "rows": [
       {
@@ -1300,7 +1537,7 @@
        "r1"
       ],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "requirements_draft": {
       "vacancy_id": "job-b",
@@ -1399,6 +1636,15 @@
      "job_id": "job-c",
      "rank": 2,
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "unknown"
+       }
+      ],
       "lower": 0.0,
       "upper": 100.0,
       "coverage": 0.0,
@@ -1406,7 +1652,29 @@
       "disputed_ids": [],
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 50.0,
+      "weights": {
+       "r1": 100.0
+      },
+      "mandatory_ids": [
+       "r1"
+      ],
+      "unknown_ids": [
+       "r1"
+      ],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": {
+        "share": 100.0,
+        "units": 1,
+        "lower": 0.0,
+        "upper": 100.0
+       },
+       "extra": null
+      },
+      "repeated_ids": []
      },
      "rows": [
       {
@@ -1440,7 +1708,7 @@
      "score_review": {
       "excluded_mandatory_ids": [],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "requirements_draft": {
       "vacancy_id": "job-c",
@@ -1541,14 +1809,6 @@
    "action": "complete_run"
   },
   {
-   "job_id": null,
-   "requirement_id": null,
-   "condition_kind": null,
-   "reason_code": "privacy_may_hide",
-   "priority": 2,
-   "action": "compare_with_original"
-  },
-  {
    "job_id": "job-b",
    "requirement_id": "r1",
    "condition_kind": null,
@@ -1563,6 +1823,14 @@
    "reason_code": "mandatory_unbound",
    "priority": 2,
    "action": "check_list"
+  },
+  {
+   "job_id": null,
+   "requirement_id": null,
+   "condition_kind": null,
+   "reason_code": "privacy_may_hide",
+   "priority": 2,
+   "action": "compare_with_original"
   },
   {
    "job_id": "job-a",

@@ -15,6 +15,11 @@ Priority:
    heading, a fragment quote), the unconfirmed requirement list, vacancy text no requirement covers.
 Within a priority the order is deterministic (job, requirement, reason); it is not hiring importance.
 
+Policy v3 (E11): rows that `ranking.leader.decisive` names — the few whose resolution could change
+the first place — are marked `decisive`, raised to priority 2 and listed first inside it. An unknown
+optional row gets an item ('decisive_unknown') only in that case; other unknown optional rows stay
+out of the queue, so the queue does not grow into a list of everything that is not known.
+
 Item ids are stable: they depend on the processed resume and vacancy hashes, job id, requirement id
 (or condition kind) and reason, not on the order of jobs or files, and the same signal never yields
 two items. A decision about an item must also be bound to the report version (see the E8b contract):
@@ -36,7 +41,7 @@ ReasonCode = Literal[
     'mandatory_unbound', 'disputed_negative', 'mandatory_fail', 'privacy_may_hide',
     'condition_conflict',
     'mandatory_unknown', 'disputed_evidence', 'requirements_unconfirmed', 'uncovered_text', 'condition_review',
-    'profile_review', 'mandatory_partial', 'condition_unknown']
+    'profile_review', 'mandatory_partial', 'condition_unknown', 'decisive_unknown']
 Kind = Literal['integrity', 'interpretation', 'missing_info', 'conditions', 'requirements']
 Action = Literal['complete_run', 'fix_source', 'read_context', 'check_list', 'ask_candidate',
                  'decide_condition', 'compare_with_original']
@@ -78,9 +83,14 @@ REASONS: dict[str, tuple[int, str, str, str]] = {
                        'Краткий профиль для менеджера содержит непроверенные места; сверьте с резюме до передачи.'),
     'mandatory_partial': (4, 'missing_info', 'ask_candidate',
                           'Обязательное требование подтверждено частично; уточните недостающую часть.'),
+    'decisive_unknown': (2, 'missing_info', 'ask_candidate',
+                         'Сведений по требованию нет, а ответ может изменить первое место; это не несоответствие.'),
     'condition_unknown': (4, 'missing_info', 'ask_candidate',
                           'Условие указано только в одном документе; уточните у кандидата, это не конфликт.'),
 }
+
+
+BLOCKING = {'processing_error', 'incomplete_run', 'invalid_evidence', 'ambiguous_location', 'requirements_stale'}
 
 
 class SourceRef(StrictModel):
@@ -104,6 +114,7 @@ class ReviewItem(StrictModel):
     refs: list[SourceRef]
     contexts: list[str]  # e.g. the different CV contexts of an ambiguous quote
     detail_codes: list[str]  # underlying E3/E4/E5 codes
+    decisive: bool = False  # policy v3: resolving this row could change the first place
 
 
 class ReviewQueue(StrictModel):
@@ -195,7 +206,7 @@ def _condition_items(b: _Builder, scope: str, jid: str, conditions: dict) -> Non
         b.add('invalid_evidence', scope, jid, condition_kind='conditions', details=['has_invalid'])
 
 
-def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str]) -> None:
+def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str], decisive: set) -> None:
     jid = job['job_id']
     scope = f"{resume}|{job.get('safe_source_sha256', '')}"
     requirements = {r['id']: r for r in job['requirements']['items']}
@@ -205,7 +216,8 @@ def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str]) -> No
     applied = {rid for rid, r in requirements.items() if r['mandatory_quote']} - excluded
     checks = job.get('evidence_check') or {}
     row_checks = {c['requirement_id']: RowCheck.model_validate(c) for c in checks.get('rows', [])}
-    disputed_v2 = set(score.get('disputed_ids', []))
+    conflict = set(score.get('conflict_ids', []))  # v3: literal repeats with different known statuses
+    disputed_v2 = set(score.get('disputed_ids', [])) | conflict
 
     def vacancy_ref(rid):
         return SourceRef(source='vacancy', quote=requirements[rid]['quote'], sentence=None, heading=None, fact_id=None)
@@ -219,7 +231,8 @@ def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str]) -> No
         state = check.state if check is not None else 'unchecked'
         if state == 'structure_ok' and rid in disputed_v2:
             state = 'needs_review'
-        codes = [r.code for r in check.reasons] if check is not None else []
+        codes = ([r.code for r in check.reasons] if check is not None else []) + (
+            ['repeat_conflict'] if rid in conflict else [])
         refs = [vacancy_ref(rid)] + _cv_refs(check, row['fact_ids'], facts)
         if state == 'invalid':
             b.add('invalid_evidence', scope, jid, rid, refs=refs, details=codes)
@@ -234,6 +247,8 @@ def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str]) -> No
             b.add('mandatory_unknown', scope, jid, rid, refs=[vacancy_ref(rid)])
         if status == 'partial' and rid in applied and state == 'structure_ok':  # keeps the group at clarify
             b.add('mandatory_partial', scope, jid, rid, refs=refs)
+        if status == 'unknown' and rid not in applied and (jid, rid) in decisive:
+            b.add('decisive_unknown', scope, jid, rid, refs=[vacancy_ref(rid)])
 
     for raw in checks.get('mandatory', []):
         check = MandatoryCheck.model_validate(raw)
@@ -289,11 +304,22 @@ def build_review_queue(report: dict) -> ReviewQueue:
     if isinstance(profile, dict) and profile.get('state') != 'structure_ok':  # E5 ProfileCheck, shown to the manager
         b.add('profile_review', run_scope, details=[profile.get('state', 'malformed')] + [
             f.get('code') for f in profile.get('findings', []) if isinstance(f, dict)])
+    leader = report['ranking'].get('leader') or {}
+    decisive = {(d['job_id'], rid) for d in leader.get('decisive', [])
+                for rid in d.get('requirement_ids', [d['requirement_id']])}
     for job in jobs:
-        _job_items(b, resume, job, facts)
+        _job_items(b, resume, job, facts, decisive)
 
-    items = sorted(b.items.values(), key=lambda i: (i.priority, i.job_id or '', i.requirement_id or '',
-                                                     i.condition_kind or '', i.reason_code, i.id))
+    def marked(item: ReviewItem) -> ReviewItem:
+        if item.requirement_id is None or (item.job_id, item.requirement_id) not in decisive:
+            return item
+        if item.reason_code in BLOCKING:  # an integrity problem stays first and is never a mere question
+            return item
+        return item.model_copy(update={'decisive': True, 'priority': min(item.priority, 2)})
+
+    items = sorted(map(marked, b.items.values()),
+                   key=lambda i: (i.priority, not i.decisive, i.job_id or '', i.requirement_id or '',
+                                  i.condition_kind or '', i.reason_code, i.id))
     versions = {j.get('score', {}).get('policy_version') for j in jobs} - {None}
     return ReviewQueue(
         policy_version=versions.pop() if len(versions) == 1 else None, items=items,

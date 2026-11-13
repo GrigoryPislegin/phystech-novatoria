@@ -151,6 +151,22 @@
       ]
      },
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "full"
+       },
+       {
+        "ids": [
+         "r2"
+        ],
+        "group": "extra",
+        "state": "full"
+       }
+      ],
       "lower": 100.0,
       "upper": 100.0,
       "coverage": 100.0,
@@ -158,7 +174,33 @@
       "disputed_ids": [],
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 12.5,
+      "weights": {
+       "r1": 75.0,
+       "r2": 25.0
+      },
+      "mandatory_ids": [
+       "r1"
+      ],
+      "unknown_ids": [],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": {
+        "share": 75.0,
+        "units": 1,
+        "lower": 75.0,
+        "upper": 75.0
+       },
+       "extra": {
+        "share": 25.0,
+        "units": 1,
+        "lower": 25.0,
+        "upper": 25.0
+       }
+      },
+      "repeated_ids": []
      },
      "conditions": {
       "items": [],
@@ -170,7 +212,7 @@
      "score_review": {
       "excluded_mandatory_ids": [],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
      "rank": 1
@@ -250,6 +292,15 @@
       ]
      },
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "unknown"
+       }
+      ],
       "lower": 0.0,
       "upper": 100.0,
       "coverage": 0.0,
@@ -257,7 +308,29 @@
       "disputed_ids": [],
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 50.0,
+      "weights": {
+       "r1": 100.0
+      },
+      "mandatory_ids": [
+       "r1"
+      ],
+      "unknown_ids": [
+       "r1"
+      ],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": {
+        "share": 100.0,
+        "units": 1,
+        "lower": 0.0,
+        "upper": 100.0
+       },
+       "extra": null
+      },
+      "repeated_ids": []
      },
      "conditions": {
       "items": [],
@@ -269,7 +342,7 @@
      "score_review": {
       "excluded_mandatory_ids": [],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "1c45ff0cbf14039070863347ed0cc5021f8576d9380ff9518db9248b1a897870",
      "rank": 2
@@ -361,6 +434,15 @@
       ]
      },
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "fail"
+       }
+      ],
       "lower": 0.0,
       "upper": 0.0,
       "coverage": 100.0,
@@ -368,7 +450,27 @@
       "disputed_ids": [],
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 50.0,
+      "weights": {
+       "r1": 100.0
+      },
+      "mandatory_ids": [
+       "r1"
+      ],
+      "unknown_ids": [],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": {
+        "share": 100.0,
+        "units": 1,
+        "lower": 0.0,
+        "upper": 0.0
+       },
+       "extra": null
+      },
+      "repeated_ids": []
      },
      "conditions": {
       "items": [],
@@ -380,7 +482,7 @@
      "score_review": {
       "excluded_mandatory_ids": [],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "964af580232a4916af6cad3eebfdf885565f75b5fc16ad63a2b813f68761a383",
      "rank": 3
@@ -388,14 +490,31 @@
    ],
    "recommendation": "review_top",
    "complete": true,
-   "requires_human_review": true
+   "requires_human_review": true,
+   "leader": {
+    "job_ids": [
+     "job-001"
+    ],
+    "state": "stable",
+    "reasons": [],
+    "margin": 100.0,
+    "resolution": null,
+    "close_to": [],
+    "challengers": [],
+    "unassessed": [
+     "job-002"
+    ],
+    "decisive": [],
+    "decisive_total": 0,
+    "answers_limit": 2
+   }
   },
   "errors": [],
   "unprocessed_job_ids": [],
   "unprocessed": [],
   "safe_resume_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
   "analysis_schema_version": "analysis-0.2",
-  "policy_version": "draft-2026-11-13-v2",
+  "policy_version": "draft-2026-11-14-v3",
   "profile": {
    "schema_version": "candidate-profile-0.1",
    "state": "structure_ok",
@@ -465,7 +584,7 @@
   },
   "comparisons": [
    {
-    "policy_version": "draft-2026-11-13-v2",
+    "policy_version": "draft-2026-11-14-v3",
     "job_a": "job-001",
     "job_b": "job-002",
     "outcome": "a_higher",
@@ -534,10 +653,12 @@
     "caveats": [
      "different_requirement_lists"
     ],
-    "summary": "job-001 выше job-002: нижняя граница 100.0 против 0.0; обязательные: job-001 — confirmed, job-002 — clarify. Наибольший вклад: job-001 «Python обязателен.» — full; job-001 «SQL желателен.» — full. Вывод может измениться после уточнения: job-002 «Java обязателен.». Списки требований или их веса разные: L считается внутри своей вакансии."
+    "summary": "job-001 выше job-002: нижняя граница 100.0 против 0.0; обязательные: job-001 — confirmed, job-002 — clarify. Наибольший вклад: job-001 «Python обязателен.» — full; job-001 «SQL желателен.» — full. Вывод может измениться после уточнения: job-002 «Java обязателен.». Списки требований или их веса разные: L считается внутри своей вакансии.",
+    "margin": 100.0,
+    "close": false
    },
    {
-    "policy_version": "draft-2026-11-13-v2",
+    "policy_version": "draft-2026-11-14-v3",
     "job_a": "job-001",
     "job_b": "job-003",
     "outcome": "a_higher",
@@ -603,12 +724,14 @@
     "caveats": [
      "different_requirement_lists"
     ],
-    "summary": "job-001 выше job-003: модель предложила у job-003 несоответствие обязательному требованию. Наибольший вклад: job-003 «SQL: обязательно не менее 3 лет опыта.» — fail; job-001 «Python обязателен.» — full; job-001 «SQL желателен.» — full. Списки требований или их веса разные: L считается внутри своей вакансии."
+    "summary": "job-001 выше job-003: модель предложила у job-003 несоответствие обязательному требованию. Наибольший вклад: job-003 «SQL: обязательно не менее 3 лет опыта.» — fail; job-001 «Python обязателен.» — full; job-001 «SQL желателен.» — full. Списки требований или их веса разные: L считается внутри своей вакансии.",
+    "margin": 100.0,
+    "close": false
    }
   ],
   "review_queue": {
    "schema_version": "review-queue-0.1",
-   "policy_version": "draft-2026-11-13-v2",
+   "policy_version": "draft-2026-11-14-v3",
    "model_status": "model_proposed",
    "items": [
     {
@@ -640,7 +763,8 @@
      "contexts": [],
      "detail_codes": [
       "evidence_not_checked"
-     ]
+     ],
+     "decisive": false
     },
     {
      "id": "92b27a2cd471f758",
@@ -654,7 +778,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "0faac10644568e6c",
@@ -668,7 +793,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "a11a9bbf709ca06b",
@@ -690,7 +816,8 @@
       }
      ],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     },
     {
      "id": "579a5a3f946a6ab7",
@@ -704,7 +831,8 @@
      "explanation": "Список требований не подтверждён рекрутером.",
      "refs": [],
      "contexts": [],
-     "detail_codes": []
+     "detail_codes": [],
+     "decisive": false
     }
    ],
    "by_reason": {
@@ -775,6 +903,22 @@
      "job_id": "job-001",
      "rank": 1,
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "full"
+       },
+       {
+        "ids": [
+         "r2"
+        ],
+        "group": "extra",
+        "state": "full"
+       }
+      ],
       "lower": 100.0,
       "upper": 100.0,
       "coverage": 100.0,
@@ -782,7 +926,33 @@
       "disputed_ids": [],
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 12.5,
+      "weights": {
+       "r1": 75.0,
+       "r2": 25.0
+      },
+      "mandatory_ids": [
+       "r1"
+      ],
+      "unknown_ids": [],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": {
+        "share": 75.0,
+        "units": 1,
+        "lower": 75.0,
+        "upper": 75.0
+       },
+       "extra": {
+        "share": 25.0,
+        "units": 1,
+        "lower": 25.0,
+        "upper": 25.0
+       }
+      },
+      "repeated_ids": []
      },
      "rows": [
       {
@@ -867,7 +1037,7 @@
      "score_review": {
       "excluded_mandatory_ids": [],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "requirements_draft": {
       "vacancy_id": "job-001",
@@ -993,6 +1163,15 @@
      "job_id": "job-002",
      "rank": 2,
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "unknown"
+       }
+      ],
       "lower": 0.0,
       "upper": 100.0,
       "coverage": 0.0,
@@ -1000,7 +1179,29 @@
       "disputed_ids": [],
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 50.0,
+      "weights": {
+       "r1": 100.0
+      },
+      "mandatory_ids": [
+       "r1"
+      ],
+      "unknown_ids": [
+       "r1"
+      ],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": {
+        "share": 100.0,
+        "units": 1,
+        "lower": 0.0,
+        "upper": 100.0
+       },
+       "extra": null
+      },
+      "repeated_ids": []
      },
      "rows": [
       {
@@ -1034,7 +1235,7 @@
      "score_review": {
       "excluded_mandatory_ids": [],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "requirements_draft": {
       "vacancy_id": "job-002",
@@ -1105,6 +1306,15 @@
      "job_id": "job-003",
      "rank": 3,
      "score": {
+      "units": [
+       {
+        "ids": [
+         "r1"
+        ],
+        "group": "core",
+        "state": "fail"
+       }
+      ],
       "lower": 0.0,
       "upper": 0.0,
       "coverage": 100.0,
@@ -1112,7 +1322,27 @@
       "disputed_ids": [],
       "excluded_mandatory_ids": [],
       "evidence_applied": true,
-      "policy_version": "draft-2026-11-13-v2"
+      "policy_version": "draft-2026-11-14-v3",
+      "resolution": 50.0,
+      "weights": {
+       "r1": 100.0
+      },
+      "mandatory_ids": [
+       "r1"
+      ],
+      "unknown_ids": [],
+      "partial_ids": [],
+      "conflict_ids": [],
+      "groups": {
+       "core": {
+        "share": 100.0,
+        "units": 1,
+        "lower": 0.0,
+        "upper": 0.0
+       },
+       "extra": null
+      },
+      "repeated_ids": []
      },
      "rows": [
       {
@@ -1158,7 +1388,7 @@
      "score_review": {
       "excluded_mandatory_ids": [],
       "rule": "evidence_applied_by_scoring_policy",
-      "version": "draft-2026-11-13-v2"
+      "version": "draft-2026-11-14-v3"
      },
      "requirements_draft": {
       "vacancy_id": "job-003",

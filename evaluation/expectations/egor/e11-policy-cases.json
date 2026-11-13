@@ -1,0 +1,252 @@
+{
+ "schema_version": "e11-policy-cases-0.1",
+ "split": "dev",
+ "decision_status": "draft",
+ "note": "Полностью вымышленные случаи уровня политики: на входе уже готовые требования, статусы строк и состояния E3. Ожидания — гипотезы команды с обоснованием, не ответы эксперта. Качество извлечения моделью здесь не измеряется. Строка: id, text, m (маркер обязательности в источнике), status, evidence (ok | review), marker (ok | review), quote (цитата вакансии; по умолчанию у каждой строки своя).",
+ "cases": [
+  {
+   "id": "E11-01", "covers": ["formulation", "optional_dilution"],
+   "hypothesis": "Добавление желательных пунктов, которых у кандидата нет, не должно ставить вакансию с подтверждённым обязательным требованием ниже вакансии, где обязательное подтверждено лишь частично.",
+   "jobs": [
+    {"job_id": "base-plus", "rows": [
+     {"id": "r1", "text": "Python", "m": true, "status": "full"},
+     {"id": "r2", "text": "SQL", "m": false, "status": "fail"},
+     {"id": "r3", "text": "Docker", "m": false, "status": "fail"},
+     {"id": "r4", "text": "Kafka", "m": false, "status": "fail"},
+     {"id": "r5", "text": "Airflow", "m": false, "status": "fail"},
+     {"id": "r6", "text": "Grafana", "m": false, "status": "fail"}]},
+    {"job_id": "other", "rows": [
+     {"id": "r1", "text": "Go", "m": true, "status": "partial"},
+     {"id": "r2", "text": "Linux", "m": false, "status": "full"}]}],
+   "expect": {"order": [["base-plus", "other"]]}
+  },
+  {
+   "id": "E11-02", "covers": ["critical_gap", "many_small_pluses", "decisive_question"],
+   "hypothesis": "Пять желательных совпадений не должны ставить вакансию без сведений по обязательному требованию выше вакансии, где обязательное подтверждено. При этом один ответ по обязательному может изменить выбор, и его нужно назвать.",
+   "jobs": [
+    {"job_id": "core-ok", "rows": [
+     {"id": "r1", "text": "1С", "m": true, "status": "full"},
+     {"id": "r2", "text": "Excel", "m": false, "status": "fail"},
+     {"id": "r3", "text": "Английский", "m": false, "status": "fail"},
+     {"id": "r4", "text": "SAP", "m": false, "status": "fail"}]},
+    {"job_id": "pluses", "rows": [
+     {"id": "r1", "text": "Стаж учёта ОС от 3 лет", "m": true, "status": "unknown"},
+     {"id": "r2", "text": "Excel", "m": false, "status": "full"},
+     {"id": "r3", "text": "Инвентаризация", "m": false, "status": "full"},
+     {"id": "r4", "text": "Отчётность", "m": false, "status": "full"},
+     {"id": "r5", "text": "ЭДО", "m": false, "status": "full"},
+     {"id": "r6", "text": "Внимательность", "m": false, "status": "full"}]}],
+   "expect": {"order": [["core-ok", "pluses"]], "established": false, "decisive": [["pluses", "r1"]]}
+  },
+  {
+   "id": "E11-03", "covers": ["formulation", "repeat"],
+   "hypothesis": "Требование, дословно повторённое в двух местах вакансии, не должно считаться дважды: вакансия с повтором оценивается как та же вакансия без повтора и не опускается ниже третьей из-за повтора.",
+   "jobs": [
+    {"job_id": "repeat", "rows": [
+     {"id": "r1", "text": "Python", "m": false, "status": "full"},
+     {"id": "r2", "text": "SQL", "quote": "Знание SQL", "m": false, "status": "fail"},
+     {"id": "r3", "text": "sql.", "quote": "знание  SQL.", "m": false, "status": "fail"}]},
+    {"job_id": "plain", "rows": [
+     {"id": "r1", "text": "Python", "m": false, "status": "full"},
+     {"id": "r2", "text": "SQL", "m": false, "status": "fail"}]},
+    {"job_id": "mid", "rows": [
+     {"id": "r1", "text": "Java", "m": false, "status": "full"},
+     {"id": "r2", "text": "Spring", "m": false, "status": "partial"},
+     {"id": "r3", "text": "Kotlin", "m": false, "status": "fail"},
+     {"id": "r4", "text": "Gradle", "m": false, "status": "fail"}]}],
+   "expect": {"tie": [["repeat", "plain"]], "order": [["repeat", "mid"], ["plain", "mid"]]}
+  },
+  {
+   "id": "E11-04", "covers": ["formulation", "rename", "permutation"],
+   "hypothesis": "Та же вакансия с другими id, именем файла и порядком строк получает ту же оценку (контроль: v2 это уже соблюдает).",
+   "jobs": [
+    {"job_id": "vacancy-a", "rows": [
+     {"id": "r1", "text": "React", "m": true, "status": "full"},
+     {"id": "r2", "text": "TypeScript", "m": true, "status": "partial"},
+     {"id": "r3", "text": "Next.js", "m": false, "status": "unknown"}]},
+    {"job_id": "zz-copy", "rows": [
+     {"id": "x9", "text": "Next.js", "m": false, "status": "unknown"},
+     {"id": "x1", "text": "TypeScript", "m": true, "status": "partial"},
+     {"id": "x4", "text": "React", "m": true, "status": "full"}]}],
+   "expect": {"tie": [["vacancy-a", "zz-copy"]]}
+  },
+  {
+   "id": "E11-05", "covers": ["formulation", "split", "known_limit"],
+   "limit": true,
+   "hypothesis": "Одна компетенция, разбитая на три строки разными словами, весит больше той же компетенции одной строкой. Ни v2, ни v3 не умеют доказать, что строки равны по смыслу; v3 только ограничивает эффект своей группой. Ожидание не задаётся: это открытое ограничение, а не пройденная проверка.",
+   "jobs": [
+    {"job_id": "split", "rows": [
+     {"id": "r1", "text": "Python", "m": false, "status": "full"},
+     {"id": "r2", "text": "Опыт разработки на Python", "m": false, "status": "full"},
+     {"id": "r3", "text": "Уверенное знание Python 3", "m": false, "status": "full"},
+     {"id": "r4", "text": "SQL", "m": false, "status": "fail"}]},
+    {"job_id": "single", "rows": [
+     {"id": "r1", "text": "Python", "m": false, "status": "full"},
+     {"id": "r2", "text": "SQL", "m": false, "status": "fail"}]}],
+   "expect": {}
+  },
+  {
+   "id": "E11-06", "covers": ["mandatory_source", "misattributed_marker"],
+   "hypothesis": "«Обязательно: SQL. Python желателен»: маркер, структурно не привязанный к Python, не делает вакансию нарушенной и не опускает её ниже вакансии с настоящим подтверждённым нарушением. Первое место при этом не объявляется установленным.",
+   "jobs": [
+    {"job_id": "unbound", "rows": [
+     {"id": "r1", "text": "Python", "m": true, "marker": "review", "status": "fail"},
+     {"id": "r2", "text": "SQL", "m": false, "status": "full"}]},
+    {"job_id": "violated", "rows": [
+     {"id": "r1", "text": "Java", "m": true, "status": "fail"},
+     {"id": "r2", "text": "Spring", "m": false, "status": "full"},
+     {"id": "r3", "text": "Maven", "m": false, "status": "full"}]}],
+   "expect": {"order": [["unbound", "violated"]], "established": false}
+  },
+  {
+   "id": "E11-07", "covers": ["unknown_vs_fail"],
+   "hypothesis": "Отсутствие сведений по обязательному требованию не равно явному отрицанию: вакансия с unknown стоит выше вакансии с подтверждённым fail, но без единого подтверждённого совпадения первое место не установлено.",
+   "jobs": [
+    {"job_id": "silent", "rows": [{"id": "r1", "text": "Moodle", "m": true, "status": "unknown"}]},
+    {"job_id": "denied", "rows": [{"id": "r1", "text": "1С", "m": true, "status": "fail"}]}],
+   "expect": {"order": [["silent", "denied"]], "established": false}
+  },
+  {
+   "id": "E11-08", "covers": ["disputed_full", "disputed_fail"],
+   "hypothesis": "Спорный full не подтверждает соответствие, спорный fail не создаёт нарушение. Вакансия с бесспорными основаниями стоит выше обеих, но первое место открыто: чтение спорной строки может его изменить.",
+   "jobs": [
+    {"job_id": "solid", "rows": [
+     {"id": "r1", "text": "SQL", "m": true, "status": "partial"},
+     {"id": "r2", "text": "Excel", "m": false, "status": "full"}]},
+    {"job_id": "disputed-full", "rows": [{"id": "r1", "text": "Python", "m": true, "status": "full", "evidence": "review"}]},
+    {"job_id": "disputed-fail", "rows": [{"id": "r1", "text": "Go", "m": true, "status": "fail", "evidence": "review"}]}],
+   "expect": {"order": [["solid", "disputed-full"], ["solid", "disputed-fail"]], "tie": [["disputed-full", "disputed-fail"]],
+              "established": false}
+  },
+  {
+   "id": "E11-09", "covers": ["weak_matches_vs_relevant_experience"],
+   "hypothesis": "Подтверждённые обязательные стаж и стек важнее, чем много совпадений по желательным пунктам при лишь частично подтверждённых обязательных.",
+   "jobs": [
+    {"job_id": "relevant", "rows": [
+     {"id": "r1", "text": "Коммерческий опыт от 3 лет", "m": true, "status": "full"},
+     {"id": "r2", "text": "React", "m": true, "status": "full"},
+     {"id": "r3", "text": "GraphQL", "m": false, "status": "fail"},
+     {"id": "r4", "text": "Storybook", "m": false, "status": "fail"},
+     {"id": "r5", "text": "Figma", "m": false, "status": "fail"},
+     {"id": "r6", "text": "Jest", "m": false, "status": "fail"}]},
+    {"job_id": "weak", "rows": [
+     {"id": "r1", "text": "Коммерческий опыт от 3 лет", "m": true, "status": "partial"},
+     {"id": "r2", "text": "Vue", "m": true, "status": "partial"},
+     {"id": "r3", "text": "Git", "m": false, "status": "full"},
+     {"id": "r4", "text": "HTML", "m": false, "status": "full"},
+     {"id": "r5", "text": "CSS", "m": false, "status": "full"},
+     {"id": "r6", "text": "Английский", "m": false, "status": "full"}]}],
+   "expect": {"order": [["relevant", "weak"]]}
+  },
+  {
+   "id": "E11-10", "covers": ["comparability", "close_results"],
+   "hypothesis": "Три требования против шести: отрыв в 8 пунктов меньше, чем один шаг оценки одного требования в коротком списке (16,7). Такой отрыв не даёт права объявлять первое место установленным.",
+   "jobs": [
+    {"job_id": "short", "rows": [
+     {"id": "r1", "text": "Excel", "m": false, "status": "full"},
+     {"id": "r2", "text": "Word", "m": false, "status": "full"},
+     {"id": "r3", "text": "Почта", "m": false, "status": "partial"}]},
+    {"job_id": "long", "rows": [
+     {"id": "r1", "text": "Python", "m": false, "status": "full"},
+     {"id": "r2", "text": "SQL", "m": false, "status": "full"},
+     {"id": "r3", "text": "Airflow", "m": false, "status": "full"},
+     {"id": "r4", "text": "Spark", "m": false, "status": "full"},
+     {"id": "r5", "text": "Kafka", "m": false, "status": "partial"},
+     {"id": "r6", "text": "Scala", "m": false, "status": "fail"}]}],
+   "expect": {"established": false}
+  },
+  {
+   "id": "E11-11", "covers": ["comparability", "clear_lead"],
+   "hypothesis": "Контроль к E11-10: полный набор против 75% — отрыв больше шага шкалы, первое место установлено. Правило близости не должно делать открытым любой результат на разных списках.",
+   "jobs": [
+    {"job_id": "short", "rows": [
+     {"id": "r1", "text": "Excel", "m": false, "status": "full"},
+     {"id": "r2", "text": "Word", "m": false, "status": "full"},
+     {"id": "r3", "text": "Почта", "m": false, "status": "full"}]},
+    {"job_id": "long", "rows": [
+     {"id": "r1", "text": "Python", "m": false, "status": "full"},
+     {"id": "r2", "text": "SQL", "m": false, "status": "full"},
+     {"id": "r3", "text": "Airflow", "m": false, "status": "full"},
+     {"id": "r4", "text": "Spark", "m": false, "status": "full"},
+     {"id": "r5", "text": "Kafka", "m": false, "status": "partial"},
+     {"id": "r6", "text": "Scala", "m": false, "status": "fail"}]}],
+   "expect": {"order": [["short", "long"]], "established": true}
+  },
+  {
+   "id": "E11-12", "covers": ["tie"],
+   "hypothesis": "Равные оценки делят первое место; порядок показа по имени не является превосходством.",
+   "jobs": [
+    {"job_id": "a", "rows": [{"id": "r1", "text": "Python", "m": true, "status": "full"},
+                             {"id": "r2", "text": "SQL", "m": false, "status": "partial"}]},
+    {"job_id": "b", "rows": [{"id": "r1", "text": "Go", "m": true, "status": "full"},
+                             {"id": "r2", "text": "Linux", "m": false, "status": "partial"}]}],
+   "expect": {"tie": [["a", "b"]], "established": true}
+  },
+  {
+   "id": "E11-13", "covers": ["lower_job_can_overtake", "decisive_question"],
+   "hypothesis": "У второй вакансии обязательное подтверждено и не хватает одного ответа, после которого она обгоняет первую. Первое место нельзя объявлять установленным, и именно этот вопрос должен быть назван.",
+   "jobs": [
+    {"job_id": "top", "rows": [
+     {"id": "r1", "text": "Python", "m": true, "status": "full"},
+     {"id": "r2", "text": "Django", "m": false, "status": "full"},
+     {"id": "r3", "text": "Celery", "m": false, "status": "fail"}]},
+    {"job_id": "second", "rows": [
+     {"id": "r1", "text": "Python", "m": true, "status": "full"},
+     {"id": "r2", "text": "FastAPI", "m": false, "status": "partial"},
+     {"id": "r3", "text": "PostgreSQL", "m": false, "status": "unknown"}]}],
+   "expect": {"order": [["top", "second"]], "established": false, "decisive": [["second", "r3"]]}
+  },
+  {
+   "id": "E11-14", "covers": ["empty_job", "optimistic_upper"],
+   "hypothesis": "Вакансия, по которой нет ни одного подтверждённого совпадения, не должна за счёт верхней границы 100 держать открытым первое место вакансии с полностью подтверждёнными требованиями.",
+   "jobs": [
+    {"job_id": "fit", "rows": [
+     {"id": "r1", "text": "Python", "m": true, "status": "full"},
+     {"id": "r2", "text": "SQL", "m": false, "status": "full"}]},
+    {"job_id": "empty", "rows": [{"id": "r1", "text": "Java", "m": true, "status": "unknown"}]}],
+   "expect": {"order": [["fit", "empty"]], "established": true}
+  },
+  {
+   "id": "E11-15", "covers": ["far_challenger"],
+   "hypothesis": "Вакансии, которой до первого места не хватает пяти положительных ответов, не делает первое место открытым: один-два ответа выбор не меняют.",
+   "jobs": [
+    {"job_id": "top", "rows": [
+     {"id": "r1", "text": "Python", "m": true, "status": "full"},
+     {"id": "r2", "text": "SQL", "m": false, "status": "full"},
+     {"id": "r3", "text": "Docker", "m": false, "status": "fail"}]},
+    {"job_id": "far", "rows": [
+     {"id": "r1", "text": "Scala", "m": false, "status": "full"},
+     {"id": "r2", "text": "Spark", "m": false, "status": "unknown"},
+     {"id": "r3", "text": "Hadoop", "m": false, "status": "unknown"},
+     {"id": "r4", "text": "Hive", "m": false, "status": "unknown"},
+     {"id": "r5", "text": "Kafka", "m": false, "status": "unknown"},
+     {"id": "r6", "text": "Flink", "m": false, "status": "unknown"}]}],
+   "expect": {"order": [["top", "far"]], "established": true}
+  },
+  {
+   "id": "E11-16", "covers": ["incomplete_run"],
+   "hypothesis": "Если обработаны не все вакансии, итог только incomplete, каким бы уверенным ни был порядок обработанных.",
+   "expected_count": 3,
+   "jobs": [
+    {"job_id": "a", "rows": [{"id": "r1", "text": "Python", "m": true, "status": "full"}]},
+    {"job_id": "b", "rows": [{"id": "r1", "text": "Go", "m": true, "status": "fail"}]}],
+   "expect": {"recommendation": ["incomplete"], "established": false}
+  },
+  {
+   "id": "E11-17", "covers": ["cost_of_v3", "marker_error"],
+   "cost": true,
+   "hypothesis": "Цена v3: если маркер обязательности структурно верен, но по смыслу относится к второстепенному пункту, v3 отдаёт этому пункту 75 пунктов шкалы, и вакансия с тремя подтверждёнными навыками опускается ниже. Формула это не исправляет; требуется, чтобы первое место не было объявлено установленным, а строка с маркером была названа решающей.",
+   "jobs": [
+    {"job_id": "marker", "rows": [
+     {"id": "r1", "text": "Знание Jira", "m": true, "status": "unknown"},
+     {"id": "r2", "text": "Python", "m": false, "status": "full"},
+     {"id": "r3", "text": "SQL", "m": false, "status": "full"},
+     {"id": "r4", "text": "Django", "m": false, "status": "full"}]},
+    {"job_id": "other", "rows": [
+     {"id": "r1", "text": "PHP", "m": false, "status": "full"},
+     {"id": "r2", "text": "MySQL", "m": false, "status": "partial"},
+     {"id": "r3", "text": "Laravel", "m": false, "status": "fail"}]}],
+   "expect": {"established": false, "decisive": [["marker", "r1"]]}
+  }
+ ]
+}
