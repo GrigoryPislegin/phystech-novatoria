@@ -236,7 +236,7 @@ def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str]) -> No
     review = job.get('requirements_review') or {}
     if review.get('state') in {'stale', 'invalid'} or review.get('vacancy_id') not in (None, jid):
         b.add('requirements_stale', scope, jid, details=[r['code'] for r in review.get('reasons', [])])
-    elif review.get('state') != 'confirmed':
+    else:  # a 'confirmed' field in the report proves nothing; confirmation is a recorded decision (E8b)
         b.add('requirements_unconfirmed', scope, jid)
     uncovered = (job.get('requirements_draft') or {}).get('uncovered', [])
     if uncovered:
