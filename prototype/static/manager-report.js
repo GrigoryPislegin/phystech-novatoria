@@ -168,40 +168,40 @@
   }
 
   const styles = `
-    :root { color-scheme: light; font-family: "Inter", "Segoe UI", system-ui, sans-serif; color: #17233c; }
+    :root { color-scheme: light; font-family: "Inter", "Segoe UI", system-ui, sans-serif; color: #1d1d1d; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: #edf1f7; font-size: 15px; line-height: 1.52; }
+    body { margin: 0; background: #fafafa; font-size: 15px; line-height: 1.52; }
     main { width: min(100% - 32px, 840px); margin: 28px auto; padding: clamp(20px, 5vw, 48px);
-      background: #fff; border: 1px solid #dce2ec; border-radius: 12px; overflow-wrap: anywhere; }
+      background: #fff; border: 1px solid #dfdfe0; border-radius: 12px; overflow-wrap: anywhere; }
     h1, h2, h3, h4, p { margin: 0; }
     h1 { font-size: clamp(25px, 5vw, 38px); line-height: 1.1; letter-spacing: -.04em; }
     h2 { font-size: 1.13em; line-height: 1.3; }
     h3 { font-size: 1.04em; }
     h4 { font-size: .88em; margin-top: .7em; }
     p { margin-top: .35em; }
-    a { color: #214bbe; text-underline-offset: .16em; }
-    a:focus-visible { outline: 2px solid #214bbe; outline-offset: 3px; }
-    article:target, .profile-sources > div:target { background: #f1f5ff; }
-    .eyebrow, .state, .provenance { color: #4d5c76; font-size: .88em; }
+    a { color: #4d61f4; text-underline-offset: .16em; }
+    a:focus-visible { outline: 2px solid #4d61f4; outline-offset: 3px; }
+    article:target, .profile-sources > div:target { background: #eef0ff; }
+    .eyebrow, .state, .provenance { color: #6b6b6b; font-size: .88em; }
     .eyebrow { margin: 0 0 8px; font-weight: 700; }
     .vacancy { font-size: 1.25em; margin-top: 13px; font-weight: 680; }
-    .run-state { padding: 8px 12px; border-left: 3px solid #214bbe; background: #edf3ff;
+    .run-state { padding: 8px 12px; border-left: 3px solid #4d61f4; background: #eef0ff;
       margin: 0 0 14px; font-weight: 650; }
     .incomplete { border-color: #805000; background: #fff3da; color: #634000; }
     .print-toolbar { display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
       flex-wrap: wrap; margin-bottom: 16px; }
-    .print-toolbar p { margin: 0; color: #4d5c76; font-size: .88em; }
-    .print-toolbar button { font: inherit; color: #183c9e; background: #fff; cursor: pointer;
-      border: 1px solid #bbcdfb; border-radius: 7px; padding: 6px 12px; }
-    .print-toolbar button:focus-visible { outline: 2px solid #214bbe; outline-offset: 3px; }
+    .print-toolbar p { margin: 0; color: #6b6b6b; font-size: .88em; }
+    .print-toolbar button { font: inherit; color: #394cce; background: #fff; cursor: pointer;
+      border: 1px solid #d7dbfc; border-radius: 7px; padding: 6px 12px; }
+    .print-toolbar button:focus-visible { outline: 2px solid #4d61f4; outline-offset: 3px; }
     .print-toolbar button:hover { background: #eef3ff; }
-    .recommendation { padding-block: 13px; border-block: 1px solid #dce2ec; }
+    .recommendation { padding-block: 13px; border-block: 1px solid #dfdfe0; }
     .recommendation h3 { margin-top: .6em; }
     .fit-verdict { font-size: 1.15em; font-weight: 720; }
     .fit-notes { margin-top: .45em; }
-    .fit-citation { display: block; color: #4d5c76; font-size: .9em; }
-    .unavailable { margin-top: 8px; color: #4d5c76; font-size: .88em; }
-    .condition-list > div { margin-top: 8px; padding: 6px 10px; border-left: 2px solid #dce2ec; }
+    .fit-citation { display: block; color: #6b6b6b; font-size: .9em; }
+    .unavailable { margin-top: 8px; color: #6b6b6b; font-size: .88em; }
+    .condition-list > div { margin-top: 8px; padding: 6px 10px; border-left: 2px solid #dfdfe0; }
     .condition-list .condition-conflict { border-color: #805000; background: #fff3da; }
     .condition-conflict h3 { color: #634000; }
     .condition-list p { margin-top: .15em; white-space: pre-wrap; }
@@ -209,10 +209,10 @@
     section { margin-top: 19px; }
     ul, ol { padding-left: 1.35em; margin: .38em 0 0; }
     li + li { margin-top: .35em; }
-    .evidence, .provenance { border-top: 1px solid #dce2ec; padding-top: 12px; }
+    .evidence, .provenance { border-top: 1px solid #dfdfe0; padding-top: 12px; }
     article { padding-block: 10px; }
-    article + article { border-top: 1px solid #dce2ec; }
-    blockquote { margin: .3em 0 0; padding-left: .75em; border-left: 2px solid #a9b9df;
+    article + article { border-top: 1px solid #dfdfe0; }
+    blockquote { margin: .3em 0 0; padding-left: .75em; border-left: 2px solid #c8cffc;
       white-space: pre-wrap; overflow-wrap: anywhere; }
     dl { display: grid; gap: 5px; margin: .45em 0 0; }
     dl div { display: grid; grid-template-columns: minmax(8em, 1fr) minmax(0, 2fr); gap: 8px; }
@@ -234,7 +234,7 @@
       .unavailable { margin-top: 5px; }
       .recommendation { padding-block: 8px; }
       .evidence, .provenance { padding-top: 8px; }
-      .condition-list > div { break-inside: avoid; }
+      .condition-list > div { break-inside: auto; }
       article { padding-block: 6px; }
       dl { gap: 2px; }
       dl div { grid-template-columns: minmax(0, 155pt) minmax(0, 1fr); break-inside: avoid; }
@@ -276,7 +276,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-${printScriptDigest}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-  <title>Nanimai — Отчёт для менеджера</title>
+  <title>AI-рекрутер — Отчёт для менеджера</title>
   <style>${styles}</style>
 </head>
 <body>
@@ -287,7 +287,7 @@
   </div>
   <header>
     <p class="run-state${report.complete ? '' : ' incomplete'}">${progress}</p>
-    <p class="eyebrow">Nanimai · ${run.mode} · Черновик для проверки · Версия отчёта ${escape(report.schemaVersion)}</p>
+    <p class="eyebrow">AI-рекрутер · ${run.mode} · Черновик для проверки · Версия отчёта ${escape(report.schemaVersion)}</p>
     <h1>Отчёт для менеджера</h1>
     <p class="vacancy">Вакансия ${escape(job.title)}</p>
     <p>${place} · Диапазон L–H ${scoreRange(job.score)}</p>

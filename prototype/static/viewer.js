@@ -2,17 +2,23 @@
   'use strict';
 
   const {
-    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeRun, describeFit, scoreRange,
-    assessments, mandatoryStates, evidenceLabel, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
+    MAX_REPORT_BYTES, parseReport, filterRows, describeDashboard, describeRun, describeFit, scoreRange,
+    assessments, mandatoryStates, evidenceLabel, mandatoryLabel, requirementReviewLabel
   } = window.NanimaiReport;
   const { renderManagerReport } = window.NanimaiManagerReport;
   const byId = id => document.getElementById(id);
   const input = byId('report-file');
   const search = byId('requirement-search');
   const managerButton = byId('manager-report');
+  const views = Array.from(byId('report-views').querySelectorAll('button'));
   const filterButtons = Array.from(byId('row-filters').querySelectorAll('button'));
   const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 4 });
 
+  const indicators = { ok: '✓', warning: '◐', neutral: '–', danger: '×' };
+  const conditionStates = {
+    conflict: ['Возможный конфликт', 'warning'], compatible: ['Совпадают по отчёту', 'ok'],
+    unknown: ['Нужно уточнить', 'neutral'], invalid: ['Не удалось проверить', 'danger']
+  };
   const skipReasons = {
     evaluation_failed: 'Сбой оценки', requirements_failed: 'Сбой извлечения требований',
     facts_failed: 'Сбой извлечения фактов', model_invalid: 'Некорректный ответ модели',
@@ -38,7 +44,11 @@
   }
 
   function tag(label, tone) {
-    return element('span', 'tag tag-' + tone, label);
+    const badge = element('span', 'tag tag-' + tone);
+    const icon = element('span', 'status-icon', indicators[tone]);
+    icon.setAttribute('aria-hidden', 'true');
+    badge.append(icon, element('span', null, label));
+    return badge;
   }
 
   function setFileStatus(text, error = false) {
@@ -52,7 +62,7 @@
     const { mode, modeDetail, scenario, recommendation } = describeRun(report);
     setText('run-mode', mode);
     setText('run-mode-detail', [modeDetail, scenario, report.model].filter(Boolean).join(' · '));
-    setText('run-count', report.processed + ' / ' + report.total);
+    setText('run-count', report.processed + ' из ' + report.total);
     setText('run-progress', report.complete ? 'Все вакансии оценены' : 'Обработка завершилась досрочно');
     setText('run-review', report.requirementsConfirmed ? 'Состав подтверждён' : 'Состав не подтверждён');
     setText('run-review-detail', report.finalAllowed ? 'Подтверждение записано в отчёте' : 'Оценки и цитаты требуют проверки');
@@ -60,6 +70,7 @@
 
     const note = recommendation;
     byId('run-note').hidden = !note;
+    byId('run-note').dataset.tone = report.complete ? 'info' : 'warning';
     setText('run-note-title', note?.[0] || '');
     setText('run-note-text', note?.[1] || '');
     const skipped = byId('skipped-jobs');
@@ -73,6 +84,7 @@
   function renderRanking() {
     setText('ranking-count', report.jobs.length);
     byId('empty-ranking').hidden = report.jobs.length > 0;
+    byId('score-help').hidden = report.jobs.length === 0;
     const knownPolicy = report.jobs.length > 0 &&
       report.jobs.every(job => job.score.policyVersion === 'draft-2026-11-12-v1');
     setText('ranking-method', knownPolicy
@@ -80,29 +92,24 @@
       : 'Места и порядок взяты из отчёта.');
     const list = byId('job-list');
     list.replaceChildren();
-    for (const job of report.jobs) {
-      const counts = statusCounts(job.rows);
-      const item = element('li');
-      const button = element('button', 'job-option');
+    report.jobs.forEach(job => {
+      const item = element('li', 'job-card');
+      const rank = element('p', 'eyeline numeric', (report.complete ? 'Место ' : 'Предварительное место ') + job.rank);
+      const heading = element('h2', 'job-option-name', job.title);
+      const score = element('p', 'job-option-score numeric');
+      score.append(element('strong', null, scoreRange(job.score)), element('span', null, 'Диапазон L–H'));
+      const coverage = element('p', 'support', 'Известные данные · ' + numberFormat.format(job.score.coverage) + '%');
+      const button = element('button', 'job-option button button-secondary', 'Открыть');
       button.type = 'button';
-      button.dataset.jobId = job.id;
+      button.setAttribute('aria-label', 'Открыть вакансию ' + job.title);
       button.setAttribute('aria-controls', 'job-detail');
-      const rank = element('span', 'job-rank numeric', job.rank);
-      rank.setAttribute('aria-label', 'Место ' + job.rank);
-      const content = element('span', 'job-option-content');
-      const top = element('span', 'job-option-top');
-      top.append(element('span', 'job-option-name', job.title),
-        element('span', 'job-option-score numeric', scoreRange(job.score)));
-      content.append(top, element('span', 'job-option-meta', mandatoryStates[job.score.mandatory][0]),
-        element('span', 'job-option-review',
-          'Спорных: ' + job.rows.filter(row => ['partial', 'fail'].includes(row.status) ||
-            ['needs_review', 'invalid'].includes(row.evidence?.state) || mandatoryNeedsReview(row)).length +
-          ' · Не указано: ' + counts.unknown));
-      button.append(rank, content);
-      button.addEventListener('click', () => selectJob(job));
-      item.append(button);
+      button.addEventListener('click', () => {
+        selectJob(job);
+        byId('job-title').focus();
+      });
+      item.append(rank, heading, tag(...mandatoryStates[job.score.mandatory]), score, coverage, button);
       list.append(item);
-    }
+    });
   }
 
   function selectJob(job) {
@@ -113,12 +120,14 @@
     search.value = '';
     updateFilters();
 
-    for (const button of byId('job-list').querySelectorAll('button')) {
-      if (button.dataset.jobId === job?.id) button.setAttribute('aria-current', 'true');
+    const buttons = Array.from(byId('job-list').querySelectorAll('button'));
+    buttons.forEach((button, index) => {
+      const current = report.jobs[index] === job;
+      button.parentElement.toggleAttribute('data-current', current);
+      if (current) button.setAttribute('aria-current', 'true');
       else button.removeAttribute('aria-current');
-    }
+    });
     byId('job-detail').hidden = !job;
-    byId('empty-detail').hidden = Boolean(job);
     if (!job) {
       byId('requirement-rows').replaceChildren();
       return;
@@ -127,27 +136,28 @@
     const sharedPlace = report.jobs.some(other => other !== job && other.rank === job.rank);
     const place = report.complete ? 'Место ' : 'Предварительное место ';
     setText('job-place', place + job.rank + (sharedPlace ? ' · Делит место' : ''));
-    setText('job-title', job.title);
-    setText('job-score-range', scoreRange(job.score));
-    const [mandatory, tone] = mandatoryStates[job.score.mandatory];
-    const mandatoryLabel = byId('job-mandatory');
-    mandatoryLabel.textContent = mandatory;
-    mandatoryLabel.className = 'tag tag-' + tone;
+    setText('job-title', 'Вакансия ' + job.title);
+    const mandatory = tag(...mandatoryStates[job.score.mandatory]);
+    const mandatoryNode = byId('job-mandatory');
+    mandatoryNode.className = mandatory.className;
+    mandatoryNode.replaceChildren(...mandatory.childNodes);
     setText('job-coverage', 'Доля известных данных ' + numberFormat.format(job.score.coverage) + '%');
     setText('job-requirements-review', requirementReviewLabel(job.requirementsReview));
-    setText('job-policy', job.score.policyVersion ? 'Методика ' + job.score.policyVersion : '');
     const scoreReview = byId('job-score-review');
     scoreReview.hidden = job.excluded.length === 0;
     scoreReview.textContent = 'Для ' + job.excluded.length +
-      ' требований привязка обязательности требует проверки. Их учли с обычным весом 1.';
+      ' требований привязка обязательности требует проверки. Балл приведён по отчёту.';
     const fit = describeFit(report, job);
-    setText('job-fit', 'Предварительный вывод · ' + fit.label);
+    setText('job-fit', fit.label);
+    setText('job-fit-notes', fit.notes.join(' '));
+    byId('job-fit-notes').hidden = !fit.notes.length;
     const conditions = byId('job-conditions');
     const conflicts = job.conditions.items.filter(item => item.state === 'conflict');
     conditions.hidden = !conflicts.length;
     conditions.textContent = conflicts.length
-      ? 'Возможный конфликт для HR · ' + conflicts.map(item => item.label).join(', ') + '. Цитаты в отчёте для менеджера.'
+      ? 'Возможный конфликт для HR · ' + conflicts.map(item => item.label).join(', ')
       : '';
+    renderConditions(job.conditions);
     renderRows();
   }
 
@@ -157,6 +167,135 @@
     if (!quotes.length) card.append(element('p', null, emptyText));
     for (const quote of quotes) card.append(element('blockquote', null, quote));
     return card;
+  }
+
+  function sourceText(source) {
+    return source.heading ? source.heading + '\n' + source.sentence : source.sentence;
+  }
+
+  function renderConditions(conditions) {
+    const messages = {
+      missing: 'Условия не сравнивались.',
+      invalid: 'Часть условий не удалось проверить.',
+      available: conditions.items.length ? 'Решение по условиям принимает HR.' : 'В отчёте нет условий для сравнения.'
+    };
+    setText('conditions-summary', messages[conditions.state]);
+    byId('condition-list').replaceChildren(...conditions.items.map(item => {
+      const details = element('details', 'source-disclosure');
+      const summary = element('summary', 'source-heading');
+      summary.append(element('span', null, item.label), tag(...conditionStates[item.state]));
+      details.append(summary);
+      const quotes = element('div', 'evidence-grid source-body');
+      for (const [label, source, unresolved] of [
+        ['Фрагмент вакансии', item.vacancy, item.vacancyUnresolved],
+        ['Фрагмент резюме', item.cv, item.cvUnresolved]
+      ]) {
+        const missing = item.state === 'invalid' || unresolved ? 'Цитату не удалось привязать.' : 'Сведения не указаны.';
+        quotes.append(quoteCard(label, source ? [sourceText(source)] : [], missing));
+      }
+      details.append(quotes);
+      if (item.needsReview) details.append(element('p', 'source-note support', 'Нужна ручная сверка.'));
+      return details;
+    }));
+  }
+
+  function renderProfile() {
+    const { profile } = report;
+    const list = byId('profile-list');
+    list.replaceChildren();
+    const messages = {
+      missing: 'Профиль не извлечён.',
+      invalid: 'Не удалось проверить профиль.',
+      needs_review: 'Часть сведений профиля требует сверки с резюме.',
+      structure_ok: 'Фрагменты резюме, на которых основан профиль.'
+    };
+    setText('profile-summary', messages[profile.state]);
+    if (!profile.claims) return;
+    const groupings = [
+      ['Специализация и опыт', 'summary['],
+      ['Последняя роль, сфера и период', 'last_position.'],
+      ['Стек в контексте резюме', 'stack['],
+      ['Достижения и результаты', 'achievements[']
+    ];
+    for (const [title, prefix] of groupings) {
+      const quotes = new Set();
+      for (const [path, sources] of profile.claims) {
+        if (path.startsWith(prefix)) sources.forEach(source => quotes.add(sourceText(source)));
+      }
+      if (!quotes.size) continue;
+      const details = element('details', 'source-disclosure');
+      details.append(element('summary', 'source-heading', title),
+        quoteCard('Фрагменты резюме', Array.from(quotes)));
+      list.append(details);
+    }
+    list.firstElementChild.open = true;
+  }
+
+  function renderOverview() {
+    const list = byId('overview-list');
+    const entries = describeDashboard(report);
+    const percent = value => numberFormat.format(value) + '%';
+    list.replaceChildren();
+    if (!entries.length) {
+      list.append(element('p', 'empty-panel', 'В этом запуске нет оценённых вакансий.'));
+      return;
+    }
+    entries.forEach((job, index) => {
+      const row = element('article', 'overview-row');
+      const heading = element('header', 'overview-heading');
+      const button = element('button', 'button button-secondary', 'Открыть');
+      button.type = 'button';
+      button.setAttribute('aria-label', 'Открыть вакансию ' + job.title);
+      button.addEventListener('click', () => {
+        selectView('ranking');
+        selectJob(report.jobs[index]);
+        byId('job-title').focus();
+      });
+      const place = report.complete ? 'Место ' : 'Предварительное место ';
+      heading.append(element('h3', null, job.title), element('span', 'support', place + job.rank), button);
+
+      const bounds = element('div', 'overview-metric');
+      bounds.append(element('p', null, 'Диапазон L–H'),
+        element('strong', 'numeric', scoreRange(job)));
+      // Native meters take numeric values under the offline page's strict CSP.
+      // The two meters share a baseline and the upper bound has the lighter fill.
+      const interval = element('div', 'interval');
+      interval.setAttribute('aria-hidden', 'true');
+      interval.append(meter(job.upper, 'high'), meter(job.lower, 'low'));
+      bounds.append(interval);
+
+      const coverage = element('div', 'overview-metric');
+      coverage.append(element('p', null, 'Доля известных данных'),
+        element('strong', 'numeric', percent(job.coverage)));
+      const coverageTrack = meter(job.coverage, 'coverage');
+      coverageTrack.setAttribute('aria-hidden', 'true');
+      coverage.append(coverageTrack);
+
+      const counts = element('ul', 'status-counts');
+      for (const [status, count] of Object.entries(job.counts)) {
+        const item = element('li');
+        item.append(tag(...assessments[status]), element('strong', 'numeric', count));
+        counts.append(item);
+      }
+      row.append(heading, bounds, coverage, counts);
+      list.append(row);
+    });
+  }
+
+  function meter(value, variant) {
+    const elementMeter = element('meter', 'chart-track ' + variant);
+    elementMeter.min = 0;
+    elementMeter.max = 100;
+    elementMeter.value = value;
+    return elementMeter;
+  }
+
+  function selectView(name) {
+    for (const button of views) {
+      const selected = button.dataset.view === name;
+      byId(button.getAttribute('aria-controls')).hidden = !selected;
+      button.setAttribute('aria-pressed', String(selected));
+    }
   }
 
   function addNote(list, title, text) {
@@ -239,7 +378,7 @@
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
     const link = element('a');
     link.href = url;
-    link.download = 'nanimai-manager-report.html';
+    link.download = 'manager-report.html';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -268,15 +407,33 @@
       setFileStatus(prefix + error.message, true);
       return;
     }
+    openReport(next, 'Открыт ' + file.name);
+  }
+
+  function openReport(next, label) {
     report = next;
     renderSummary();
     renderRanking();
     selectJob(report.jobs[0] || null);
+    renderOverview();
+    renderProfile();
+    selectView('ranking');
     byId('welcome').hidden = true;
     byId('report-workspace').hidden = false;
-    setFileStatus('Открыт ' + file.name);
+    setFileStatus(label);
   }
 
+  byId('open-demo').addEventListener('click', () => {
+    ++loadSequence;
+    try {
+      openReport(parseReport(window.RecruiterDemoReport), 'Открыт синтетический пример');
+    } catch (error) {
+      setFileStatus(error.message, true);
+    }
+  });
+  for (const button of views) {
+    button.addEventListener('click', () => selectView(button.dataset.view));
+  }
   input.addEventListener('change', () => {
     const [file] = input.files;
     input.value = '';

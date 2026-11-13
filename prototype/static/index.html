@@ -4,45 +4,45 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; base-uri 'none'; form-action 'none'">
-  <title>Nanimai — Рейтинг вакансий</title>
+  <title>Вакансии · AI-рекрутер</title>
   <link rel="stylesheet" href="report.css">
   <script src="report.js" defer></script>
   <script src="manager-report.js" defer></script>
+  <script src="demo-report.js" defer></script>
   <script src="viewer.js" defer></script>
 </head>
 <body>
   <header class="masthead">
-    <div class="masthead-inner">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true">N</span>
-        <div><strong>Nanimai</strong><span>Рабочее место рекрутера</span></div>
-      </div>
-      <div class="open-report">
+    <div class="shell masthead-inner">
+      <span class="brand">AI-рекрутер</span>
+      <div class="masthead-actions">
         <span class="local-label"><span aria-hidden="true"></span> Локальный просмотр</span>
-        <label class="button button-primary upload">
-          <span>Открыть отчёт</span>
-          <input id="report-file" type="file" accept=".json,application/json">
-        </label>
+        <button class="button button-secondary" id="open-demo" type="button">Открыть демо</button>
       </div>
     </div>
   </header>
 
-  <main class="workspace">
+  <main class="shell workspace">
     <header class="intro">
-      <div>
+      <div class="intro-copy">
         <h1>Рейтинг вакансий</h1>
-        <p id="intro-copy">Сравнение вакансий по одному резюме с цитатами из документов.</p>
+        <p>Сравнение вакансий по одному резюме</p>
       </div>
-      <p id="file-status" class="file-status" role="status" aria-live="polite" hidden></p>
+      <div class="intro-actions">
+        <label class="button button-primary upload">
+          <span class="icon-plus" aria-hidden="true">＋</span> Открыть отчёт
+          <input id="report-file" type="file" accept=".json,application/json" aria-label="Открыть отчёт">
+        </label>
+      </div>
     </header>
+    <p id="file-status" class="file-status" role="status" aria-live="polite" hidden></p>
 
     <section id="welcome" class="welcome" aria-labelledby="welcome-title">
-      <span class="file-icon" aria-hidden="true">JSON</span>
-      <h2 id="welcome-title">Откройте отчёт</h2>
-      <p>Выберите <code>report.json</code> из папки запуска, чтобы увидеть рейтинг и проверить основания оценки. Файл читается на этом устройстве.</p>
+      <h2 id="welcome-title">Откройте сохранённый отчёт</h2>
+      <p>Выберите <code>report.json</code> из папки запуска. Файл читается на этом устройстве.</p>
       <details class="demo-help">
-        <summary>Как получить пример отчёта</summary>
-        <p>Выполните команду из корня проекта и откройте <code>report.json</code> в папке, указанной в выводе.</p>
+        <summary>Как получить собственный отчёт</summary>
+        <p>Запустите синтетический сценарий из корня проекта. Путь к отчёту появится в выводе.</p>
         <pre><code>python -m prototype demo --scenario disputed</code></pre>
       </details>
     </section>
@@ -65,64 +65,54 @@
           <span id="run-review-detail" class="support"></span>
         </div>
       </section>
-
       <section id="run-note" class="run-note" aria-labelledby="run-note-title" hidden>
-        <div><h2 id="run-note-title"></h2><p id="run-note-text"></p></div>
+        <h2 id="run-note-title"></h2>
+        <p id="run-note-text"></p>
         <ul id="skipped-jobs" hidden></ul>
       </section>
-      <p id="privacy-note" class="run-note" hidden>В отчёте указано, что защита могла скрыть часть профессиональных сведений. Сверьте их с локальными оригиналами.</p>
+      <p id="privacy-note" class="run-note" data-tone="warning" hidden>Защита могла скрыть часть профессиональных сведений. Сверьте их с локальными оригиналами.</p>
 
-      <div class="workbench">
-        <nav class="ranking" aria-labelledby="ranking-title">
-          <div class="pane-header">
-            <h2 id="ranking-title">Вакансии</h2>
-            <span id="ranking-count" class="count-badge numeric"></span>
-          </div>
-          <ol id="job-list" class="job-list"></ol>
-          <p id="empty-ranking" class="side-empty" hidden>В этом запуске нет оценённых вакансий.</p>
-          <details class="score-help">
-            <summary>Как читать рейтинг</summary>
-            <p id="ranking-method"></p>
-            <dl>
-              <div><dt>L</dt><dd>Нижняя граница по имеющимся данным.</dd></div>
-              <div><dt>H</dt><dd>Верхняя граница, если неизвестные требования подтвердятся.</dd></div>
-            </dl>
-          </details>
-        </nav>
+      <div id="report-views" class="views" role="group" aria-label="Раздел отчёта">
+        <button type="button" data-view="ranking" aria-controls="view-ranking" aria-pressed="true">Вакансии <span id="ranking-count" class="numeric"></span></button>
+        <button type="button" data-view="overview" aria-controls="view-overview" aria-pressed="false">Сводка</button>
+        <button type="button" data-view="profile" aria-controls="view-profile" aria-pressed="false">Профиль резюме</button>
+      </div>
+
+      <section id="view-ranking" aria-label="Вакансии">
+        <ol id="job-list" class="job-list" aria-label="Рейтинг вакансий"></ol>
+        <p id="empty-ranking" class="empty-panel" hidden>В этом запуске нет оценённых вакансий.</p>
+        <details id="score-help" class="score-help">
+          <summary>Как читать рейтинг</summary>
+          <p id="ranking-method"></p>
+          <p><strong>L</strong> — нижняя граница по известным сведениям. <strong>H</strong> — верхняя граница, если неизвестные требования подтвердятся.</p>
+        </details>
 
         <section id="job-detail" class="detail" aria-labelledby="job-title" hidden>
           <header class="detail-header">
             <div class="detail-heading">
               <div>
                 <p id="job-place" class="eyeline"></p>
-                <h2 id="job-title"></h2>
+                <h2 id="job-title" tabindex="-1"></h2>
               </div>
-              <div class="detail-actions">
-                <div id="job-score" class="job-score">
-                  <strong id="job-score-range" class="numeric"></strong>
-                  <span>Диапазон L–H</span>
-                </div>
-                <button type="button" id="manager-report" class="button button-secondary"
-                  title="Скачать HTML для просмотра и печати" hidden disabled>Отчёт для менеджера</button>
-              </div>
+              <button type="button" id="manager-report" class="button button-secondary" title="Скачать HTML для просмотра и печати" disabled>Отчёт для менеджера ↓</button>
             </div>
             <div class="detail-meta">
               <span id="job-mandatory" class="tag"></span>
               <span id="job-coverage"></span>
               <span id="job-requirements-review"></span>
-              <span id="job-policy" class="policy"></span>
             </div>
-            <p id="job-score-review" class="score-review" hidden></p>
-            <p id="job-fit" class="job-fit"></p>
-            <p id="job-conditions" class="score-review" hidden></p>
+            <div class="fit-block">
+              <h3>Предварительный вывод</h3>
+              <p id="job-fit"></p>
+              <p id="job-fit-notes" class="support" hidden></p>
+            </div>
+            <p id="job-score-review" class="run-note" data-tone="warning" hidden></p>
+            <p id="job-conditions" class="run-note" data-tone="warning" hidden></p>
           </header>
 
-          <section class="requirements" aria-labelledby="requirements-title">
+          <div class="requirements" aria-labelledby="requirements-title">
             <div class="requirements-heading">
-              <div>
-                <h3 id="requirements-title">Требования и доказательства</h3>
-                <p>Откройте строку, чтобы сверить цитаты и увидеть вопрос кандидату.</p>
-              </div>
+              <h3 id="requirements-title">Критерии соответствия</h3>
               <label class="search">
                 <span class="sr-only">Поиск по требованиям</span>
                 <input id="requirement-search" type="search" placeholder="Поиск по требованиям">
@@ -137,17 +127,33 @@
             <p id="result-count" class="sr-only" role="status" aria-live="polite"></p>
             <table id="requirements-table">
               <thead>
-                <tr><th scope="col">Требование</th><th scope="col">Соответствие</th><th scope="col">Основание в резюме</th></tr>
+                <tr><th scope="col">Требование</th><th scope="col">Соответствие</th><th scope="col">Фрагмент резюме</th></tr>
               </thead>
               <tbody id="requirement-rows"></tbody>
             </table>
-            <p id="empty-rows" class="empty-rows" hidden>Под этот фильтр ничего не попало.</p>
-          </section>
+            <p id="empty-rows" class="empty-panel" hidden>По этому фильтру нет требований.</p>
+          </div>
+          <div class="conditions-section">
+            <h3>Условия для HR</h3>
+            <p id="conditions-summary" class="support"></p>
+            <div id="condition-list" class="source-list"></div>
+          </div>
         </section>
-        <div id="empty-detail" class="detail empty-detail" hidden>Откройте другой отчёт, чтобы посмотреть рейтинг.</div>
-      </div>
+      </section>
+
+      <section id="view-overview" class="view-panel" aria-labelledby="overview-title" hidden>
+        <h2 id="overview-title">Сводка по вакансиям</h2>
+        <p class="support">Диапазон L–H и доля известных данных взяты из отчёта. Статусы показывают число требований каждой категории.</p>
+        <div id="overview-list"></div>
+      </section>
+
+      <section id="view-profile" class="view-panel" aria-labelledby="profile-title" hidden>
+        <h2 id="profile-title">Краткий профиль</h2>
+        <p id="profile-summary" class="support"></p>
+        <div id="profile-list" class="source-list"></div>
+      </section>
     </div>
   </main>
-
+  <footer class="footer"><div class="shell footer-inner"><span>AI-рекрутер</span></div></footer>
 </body>
 </html>

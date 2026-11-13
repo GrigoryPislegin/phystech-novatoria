@@ -142,3 +142,35 @@ test('malformed recommendations and oversized job sets cannot replace an open re
   delete incomplete.unprocessed;
   assert.throws(() => parseReport(JSON.stringify(incomplete)), /структур/);
 });
+
+test('dashboard preserves stored rank, bounds and weighted coverage for an incomplete run', () => {
+  const { describeDashboard } = require('../static/report.js');
+  const raw = example('incomplete');
+  Object.assign(raw.ranking.jobs[0].score, { lower: 17.25, upper: 79, coverage: 31.5 });
+  const report = parseReport(JSON.stringify(raw));
+  const dashboard = describeDashboard(report);
+  assert.deepEqual(dashboard.map(job => [job.rank, job.lower, job.upper, job.coverage]), [[1, 17.25, 79, 31.5]]);
+  assert.deepEqual(dashboard[0].counts, statusCounts(report.jobs[0].rows));
+  assert.equal(dashboard[0].total, report.jobs[0].rows.length);
+  assert.deepEqual(describeDashboard({ jobs: [] }), []);
+});
+
+test('the dashboard omits raw vacancy identifiers from imported text', () => {
+  const { describeDashboard } = require('../static/report.js');
+  const raw = example('success');
+  const id = '<img src=x onerror=alert(1)>/private/vacancy';
+  raw.ranking.jobs[0].job_id = id;
+  raw.presentation.jobs[0].job_id = id;
+  const [job] = describeDashboard(parseReport(JSON.stringify(raw)));
+  assert.equal(job.title, '№1');
+  assert.equal(JSON.stringify(job).includes(id), false);
+});
+
+test('bundled demo uses the same validated synthetic input as the manager report tests', () => {
+  const demo = require('../static/demo-report.js');
+  assert.deepEqual(JSON.parse(demo), example('manager-profile'));
+  const report = parseReport(demo);
+  assert.equal(report.mode, 'synthetic_replay_NOT_model_output');
+  assert.equal(report.profile.state, 'structure_ok');
+  assert.ok(report.jobs[0].conditions.items.some(item => item.state === 'conflict'));
+});

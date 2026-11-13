@@ -6,9 +6,11 @@
   const statuses = ['full', 'partial', 'unknown', 'fail'];
   const modes = {
     synthetic_replay_NOT_model_output: ['Синтетический replay', 'Заранее подготовленные ответы'],
-    live_synthetic: ['Анализ на синтетике', 'Ответы модели'],
-    live_local_privacy: ['Защищённый анализ', 'Ответы модели'],
-    live_certum: ['Защищённый анализ', 'Ответы модели']
+    sdk_mock: ['Mock SDK', 'Локальный тест без запросов к модели'],
+    mock_sdk: ['Mock SDK', 'Локальный тест без запросов к модели'],
+    live_synthetic: ['Live · Синтетические данные', 'Ответы модели'],
+    live_local_privacy: ['Live · Защищённый анализ', 'Ответы модели'],
+    live_certum: ['Live · Защищённый анализ', 'Ответы модели']
   };
   const scenarios = { success: 'Подходящая вакансия', disputed: 'Спорный случай' };
   const recommendations = {
@@ -130,7 +132,7 @@
   }
 
   function requireShape(condition) {
-    if (!condition) throw new Error('В файле нет корректной структуры отчёта Nanimai.');
+    if (!condition) throw new Error('В файле нет корректной структуры отчёта.');
   }
 
   function isRecord(value) {
@@ -436,8 +438,20 @@
     return counts;
   }
 
+  function describeDashboard(report) {
+    return report.jobs.map(job => ({
+      title: job.title,
+      rank: job.rank,
+      lower: job.score.lower,
+      upper: job.score.upper,
+      coverage: job.score.coverage,
+      counts: statusCounts(job.rows),
+      total: job.rows.length
+    }));
+  }
+
   const api = {
-    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeRun, describeFit, scoreRange, assessments,
+    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeDashboard, describeRun, describeFit, scoreRange, assessments,
     mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
   };
   if (typeof module === 'object' && module.exports) {
