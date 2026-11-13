@@ -8,7 +8,7 @@ from .model import Model, RATES
 from .pipeline import RunControl, preflight_output
 from .application import analyze, analyze_protected, load_documents
 from .errors import error_code
-from .privacy import certum_privacy, protect_dependency_logs
+from .privacy import local_privacy, protect_dependency_logs
 
 
 async def execute(args):
@@ -23,14 +23,14 @@ async def execute(args):
         result = await analyze(resume, jobs, privacy=privacy,
             model_factory=(ReplayModel if replay else lambda: Model(args.model, privacy, args.budget)),
             out=args.out, control=control, manifest=manifest,
-            mode='synthetic_replay_NOT_model_output' if replay else ('live_synthetic' if args.command == 'demo' else 'live_certum'),
+            mode='synthetic_replay_NOT_model_output' if replay else ('live_synthetic' if args.command == 'demo' else 'live_local_privacy'),
             metadata={'demo_scenario':args.scenario} if args.command == 'demo' else None)
         print(f"Отчёт: {result.path.resolve()}")
         return result.exit_code
     if args.command == 'demo':
         return await process(*demo_inputs(args.scenario), SyntheticPrivacy(), replay=not args.live)
     resume, jobs, manifest = load_documents(args.resume, args.jobs, reader=read_document, control=control)
-    result = await analyze_protected(resume, jobs, privacy_context=certum_privacy,
+    result = await analyze_protected(resume, jobs, privacy_context=local_privacy,
         model_factory=lambda privacy:Model(args.model, privacy, args.budget),
         out=args.out, control=control, manifest=manifest)
     print(f"Отчёт: {result.path.resolve()}")

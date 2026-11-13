@@ -34,9 +34,9 @@ Codex фиксирует расширенную версию отчёта и п�
 
 **Реализованный минимум 13 ноября:** `application.load_documents(resume_path, jobs_root, *, reader, control)` возвращает текст, `(job_id, text)` и локальный manifest. `await application.analyze(resume, jobs, *, model_factory, privacy, out, mode, control=None, manifest=None, metadata=None)` используется синтетическими режимами; `await application.analyze_protected(resume, jobs, *, privacy_context, model_factory, out, control=None, manifest=None)` сам управляет контекстом защиты и публикует только после его успешного закрытия. В protected-варианте `model_factory(privacy)` создаёт модель; в обычном `model_factory()` не принимает аргументов. Результат — `RunResult(report, path)`, `exit_code` 0/2.
 
-`RunControl(timeout_seconds=300, progress=callback)` и `.cancel()` управляют одним запуском. Callback получает только stage/job_id/elapsed_ms; отмена проверяется также после исходящего scan перед SDK. Прогресс не обещает процент/остаток времени. Дедлайн ограничивает асинхронные операции и проверяется между синхронными; один синхронный parser/NER warmup не прерывается принудительно. На закрытие транзакции даётся отдельное окно 30 с; его ошибка запрещает публикацию.
+`RunControl(timeout_seconds=300, progress=callback)` и `.cancel()` управляют одним запуском. Callback получает только stage/job_id/elapsed_ms; отмена проверяется также после исходящего scan перед SDK. Прогресс не обещает процент/остаток времени. Дедлайн ограничивает асинхронные операции и проверяется между синхронными; один синхронный parser/NER warmup не прерывается принудительно. На закрытие контекста защиты даётся отдельное окно 30 с; его ошибка запрещает публикацию.
 
-В JSON 0.1 добавлены `verification`, `presentation`, `unprocessed`, `events`. `verification.final_allowed` пока всегда false: E3/E4 ещё не подключены. Для V3/V5 использовать `presentation.jobs[].rows` и `manager_brief`: там цитаты/шаблонные вопросы, без произвольного комментария модели. Статусы явно model_proposed; manager brief всегда draft_requires_review. Сырые `evaluation.comment/question` остаются неподтверждёнными данными для аудита. CSV также содержит столбец verification. Имена файлов только в закрытом локальном `inputs.manifest.json`, не в model payload.
+В JSON 0.1 добавлены `verification`, `presentation`, `unprocessed`, `events`. `verification.final_allowed` пока всегда false: E3/E4 подключены, но CLI пока не принимает ручное подтверждение и не проверяет смысл автоматически. Для V3/V5 использовать `presentation.jobs[].rows` и `manager_brief`: там цитаты/шаблонные вопросы, без произвольного комментария модели. Статусы явно model_proposed; manager brief всегда draft_requires_review. Сырые `evaluation.comment/question` остаются неподтверждёнными данными для аудита. CSV также содержит столбец verification. Имена файлов только в закрытом локальном `inputs.manifest.json`, не в model payload.
 
 Следующая таблица описывает **пока не реализованные** transport/run-registry операции. `analyze` не является HTTP-сервером или готовыми create/get/delete endpoints; их не выдавать за подключённый UI.
 
@@ -71,3 +71,13 @@ Codex фиксирует расширенную версию отчёта и п�
 ## Контрактные проверки перед слиянием
 
 Один fixture на каждый режим: полный результат, неизвестное обязательное, partial, неполный запуск, needs_review, stale confirmation, ошибочный JSON. Fixture синтетический и подписан. Ваня тестирует UI и транспорт на fake application service без сети; Codex тем же контрактом проверяет реальный service. Кандидат принимается только после их совместного smoke на одном SHA. Производные данные не объявлять настоящим вызовом модели.
+
+## Подключённые поля E3/E4 — 13 ноября
+
+`ranking.jobs[].evidence_check` содержит rows/mandatory/needs_review/has_invalid. Каждая строка presentation имеет evidence_check, mandatory_check и mandatory_applied_to_score. `score_review.excluded_mandatory_ids` — маркеры с недоказанной структурной привязкой: они не создают жёсткую группу/вес 3; текущий расчёт использует обычный вес 1. Объяснение этой коррекции показывать рядом с баллом.
+
+`requirements_draft` содержит исходный обработанный список/хеши/uncovered, `requirements_review` вакансии — unconfirmed, сводка запуска учитывает все ожидаемые id. `final_allowed` сводки E4 касается только списка, а не смысла оценок. Общий verification.final_allowed остаётся false.
+
+При настоящей локальной защите `privacy` содержит backend, счётчики замен и предупреждение professional_information_may_be_hidden. Это не персональный журнал замен и не утверждение о полном обезличивании.
+
+Следующий DTO Егора, ещё не подключённый: профессиональная выжимка, стек, последняя роль/сфера/период, достижения с цитатами и конфликты условий CV ↔ вакансия. Не подменять их facts.text или свободным комментарием модели. До поставки отображать отсутствие данных.

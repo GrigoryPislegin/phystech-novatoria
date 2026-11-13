@@ -13,6 +13,8 @@ from pathlib import Path
 from uuid import uuid4
 from .contracts import Facts, Requirements, Evaluation, validate_pair
 from .scoring import score, rank
+from .evidence import Source, check_pair
+from . import requirements_review as review
 from .errors import ModelOutputError, RunStopped, error_code
 from .presentation import build_presentation, display_label, gap_question, EXPLANATIONS
 
@@ -70,7 +72,8 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
     safe_resume = await control.call(lambda: privacy.redact(resume), 'privacy')
     # Complete privacy preflight before the very first model call.
     safe_jobs = [(jid, await control.call(lambda: privacy.redact(text), 'privacy', jid)) for jid, text in jobs]
-    results, errors = [], []
+    cv_source = Source.of('cv', safe_resume)
+    results, errors, review_checks = [], [], {}
     def finish(facts):
         missing = [jid for jid,_ in jobs if jid not in {r['job_id'] for r in results}]
         by_job = {e['job_id']:e['code'] for e in errors}
@@ -80,6 +83,8 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
                 'unprocessed':[{'job_id':jid, 'reason':by_job.get(jid, by_job.get(None, 'stopped_after_error'))} for jid in missing],
                 'events':control.events,
                 'safe_resume_sha256':hashlib.sha256(safe_resume.encode()).hexdigest()}
+        report['requirements_review'] = review.summarize(report['ranking']['complete'], review_checks,
+            expected_ids=[jid for jid, _ in jobs]).model_dump()
         report['verification'] = {'requirements':'not_reviewed',
                                   'evidence':'quotes_checked_semantics_unverified',
                                   'final_allowed':False}
@@ -104,8 +109,21 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
                 'requirements':requirements.model_dump(), 'facts':facts.model_dump()}), stage, jid)
             stage = 'evaluation_validation'
             validate_pair(requirements, facts, evaluation)
+            evidence = check_pair(requirements, facts, evaluation, cv_source, Source.of(jid, text))
+            if evidence.has_invalid:
+                raise ModelOutputError('invalid_evidence')
+            review_checks[jid] = review.check(None, jid, text, requirements)
+            disputed_mandatory = {m.requirement_id for m in evidence.mandatory if m.state == 'needs_review'}
+            score_requirements = Requirements(items=[r.model_copy(update={'mandatory_quote':None})
+                if r.id in disputed_mandatory else r for r in requirements.items])
             results.append({'job_id':jid, 'requirements':requirements.model_dump(),
-                            'evaluation':evaluation.model_dump(), 'score':score(requirements, evaluation),
+                            'evidence_check':evidence.model_dump(),
+                            'requirements_draft':review.draft(jid, text, requirements).model_dump(),
+                            'requirements_review':review_checks[jid].model_dump(),
+                            'evaluation':evaluation.model_dump(), 'score':score(score_requirements, evaluation),
+                            'score_review':{'excluded_mandatory_ids':sorted(disputed_mandatory),
+                                'rule':'structurally_unbound_mandatory_uses_regular_weight',
+                                'version':'mandatory-structure-0.1'},
                             'safe_source_sha256':hashlib.sha256(text.encode()).hexdigest()})
         except Exception as exc:
             # Never serialize exception messages: upstream errors may contain text/keys/DSNs.
@@ -168,6 +186,8 @@ def _write_report_files(report, out):
              'L — подтверждённые баллы / сумма весов; H — (подтверждённые баллы + вес неизвестных требований) / сумма весов; известность — доля веса с известным статусом. Все значения в процентах.',
              'L/H — границы оценки при неизвестных данных, не вероятность найма.',
              'full — полное соответствие; partial — частичное соответствие; fail — явное несоответствие; unknown — информация не указана.', '']
+    if report.get('privacy', {}).get('professional_information_may_be_hidden'):
+        lines += ['Защита заменила названия организаций; среди них могут быть названия технологий. Сверьте профессиональные сведения с локальным оригиналом.']
     if missing:
         lines += ['Не оценены (ошибка или остановка до обработки): ' + ', '.join(literal(jid) for jid in missing), '']
     ranked = report['ranking']['jobs']
@@ -201,6 +221,9 @@ def _write_report_files(report, out):
         lines += [f"## {job['rank']}. {literal(job['job_id'])}",
                   f"Оценка {s['lower']}–{s['upper']}; известность {s['coverage']}%; обязательные: {s['mandatory']}", '']
         reqs = {r['id']:r for r in job['requirements']['items']}
+        excluded = job.get('score_review', {}).get('excluded_mandatory_ids', [])
+        if excluded:
+            lines.append('Не привязанные к требованию маркеры обязательности не применены при расчёте (вес 1, требуется проверка): ' + ', '.join(literal(i) for i in excluded))
         for row in job['evaluation']['rows']:
             req = reqs[row['requirement_id']]
             evidence = ' / '.join(facts[f]['quote'] for f in row['fact_ids'])
@@ -210,6 +233,11 @@ def _write_report_files(report, out):
             lines += [f"- {literal(display_label(req))} — **{row['status']}**.",
                       f"  Непроверенное объяснение модели: {literal(row['comment'])}",
                       f"  Требование: {literal(req['quote'])}", f"  Резюме: {literal(evidence or 'не указано')}"]
+            check = next((r for r in job.get('evidence_check', {}).get('rows', []) if r['requirement_id'] == req['id']), None)
+            if check:
+                lines.append(f"  Проверка доказательства: {literal(check['state'])}; смысл остаётся непроверенным.")
+                for reason in check['reasons']:
+                    lines.append(f"  Проверить: {literal(reason['message'])}; контекст: {literal(reason.get('context') or 'не указан')}")
             if req['mandatory_quote']:
                 lines.append(f"  Обязательность предложена моделью — подтвердите: {literal(req['mandatory_quote'])}")
             if question: lines.append(f"  Вопрос для уточнения: {literal(question)}")

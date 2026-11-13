@@ -241,3 +241,45 @@ Read-only проверка core дополнительно установила:
 - Полный настоящий core + SDK + локальный MockTransport — **exit 2**, один mock-запрос, facts/privacy_residual_findings. OpenAI network calls=0. Причина: NER трактует SQL в профессиональном факте как company. Защита не обойдена.
 
 [Состав окружения, wheel и точные блокеры C3](23-protected-runtime-status.md). Нового платного live не было. Кеш/параллелизм, интеграция незаконченного handoff Егора, HTTP run registry и protected Docker/чистая установка остаются неподтверждёнными. Транскрипт консультации не получен. Чужие dirty MULTIAGENT_OPTIONS.md/READY.md/scripts/doctor.py/tmp не включаются в поставку.
+
+## 13 ноября 2026, 20:05 МСК — PR №3, PR №4 и собственный privacy_core
+
+Решение владельца «Свой модуль без certum_core» заменяет прежний runtime. Из PR №3 перенесены пять коммитов Егора (исходный head 7c34177) с сохранением авторства; подключены E3/E4. Из PR №4 (469dbe4) приняты documents.py и 13 тестов; README интегрирован отдельно. Scoring.py не менялся параллельно; структурно непривязанные mandatory исключаются из жёсткой группы/веса 3 с явным score_review. Числовая формула остаётся draft.
+
+Исправлено после одного независимого ревью: mismatch vacancy_id, duplicate approval id, подмена сохранённого context, повторные цитаты под противоположными заголовками, глобальный LRU текстов, heading+bullet mandatory, ложная жёсткая обязательность; форматы адресов/дат/соцконтактов, пустой вход NER и поглощение профессионального предложения после email. Не закрыто автоматически: смысловая интерпретация и overredaction технологии Rust (ORG). Отчёт предупреждает о возможной потере профессиональных данных; подробности docs/24.
+
+Фактические проверки на Python 3.13/macOS:
+
+```sh
+.venv/bin/python -m unittest discover -s prototype/tests -q
+.venv/bin/python -m unittest discover -s tests -q
+.venv/bin/python scripts/check_repository.py
+.venv/bin/python -m pip check
+.venv/bin/python -m prototype demo
+.venv/bin/python -m prototype demo --scenario disputed
+.venv/bin/python scripts/privacy_smoke.py
+.venv/bin/python scripts/privacy_smoke.py --model-mock
+git diff --check
+```
+
+- **122 теста прототипа PASS**, включая реальные локальные NER-модели на синтетике; без них класс test_privacy_real явно skip, остальные тесты не доказывают готовность NER.
+- **10 репозиторных тестов PASS**; check_repository PASS (886 файлов/702 Python на момент проверки); pip check без конфликтов; diff check PASS.
+- Оба replay exit 0; 3/3 вакансии, success review_top, disputed clarify, четыре статуса присутствуют, требования не подтверждены автоматически.
+- Privacy smoke PASS. SDK/MockTransport PASS: 7 локальных запросов, 3/3 вакансии. В payload нет проверяемых вымышленных контактов, сетевых OpenAI-запросов 0. .env/настоящий API-ключ не читались. Это не новый live и не измерение качества модели.
+
+Docker, Linux arm64/OrbStack на Mac владельца:
+
+```sh
+.venv/bin/python -m prototype.privacy_core.prepare --from-dir data/private/privacy-models --dir runtime/privacy-models
+docker build --build-arg PRIVACY_MODEL_SOURCE=local -t recruiter-cli:privacy-local .
+docker run --rm --network none recruiter-cli:privacy-local demo
+docker run --rm --network none recruiter-cli:privacy-local demo --scenario disputed
+docker run --rm --network none --entrypoint python recruiter-cli:privacy-local \
+  scripts/privacy_smoke.py --models-dir /opt/privacy-models --model-mock
+```
+
+Сборка PASS, в build также 8 core-тестов и оба privacy smoke PASS. Оба runtime replay PASS без сети. Image manifest list: `sha256:9864f16eaf3e9db3f523d1f1258cfa376c5f837130fa25787bccf110b8fb380f`. Проверка состава: certum_core не установлен, .env и закрытый certum-sandbox отсутствуют; публичные модели проверены по SHA256.
+
+Прямая подготовка публичных моделей в текущей сети завершалась TimeoutError (две Docker-попытки); локальный импорт тех же двух публичных архивов проверен. Это конкретное ограничение доставки через CDN, не повод выключать TLS/NER. Другой компьютер и архитектура amd64 ещё не проверены. Исходный Certum не изменён. Новый protected live, разрешение внешней обработки реальных CV, полнота PII-detection и смысловое качество на реальном комплекте остаются неподтверждёнными.
+
+Ответы интервью внесены в docs/12 и consultation-answers; конкретные случаи не повышены до expert_confirmed. Новое ТЗ Егора опубликовано и назначено в issue #7; Ваня остаётся issue #6. Последующие профиль/условия/объяснение пары ещё не реализованы этой интеграцией.

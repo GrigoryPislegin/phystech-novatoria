@@ -92,6 +92,8 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
         report = await run_pipeline(resume, jobs, model, privacy, control=control)
         report.update(metadata or {})
         report['mode'] = mode
+        if hasattr(privacy, 'summary'):
+            report['privacy'] = privacy.summary()
         report['model'] = getattr(model, 'model', None)
         if hasattr(model, 'budget'):
             report['usage'] = model.usage
@@ -113,7 +115,7 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
 
 
 async def analyze_protected(resume, jobs, *, privacy_context, model_factory, out, control=None, manifest=None):
-    """Commit the privacy transaction before publishing references in a report.
+    """Close the privacy session before publishing references in a report.
 
     Async startup observes the processing deadline; close/commit gets a separate
     30-second cleanup window so a cancelled partial run may still be saved.
@@ -124,7 +126,7 @@ async def analyze_protected(resume, jobs, *, privacy_context, model_factory, out
     try:
         privacy = await control.call(lambda: stack.enter_async_context(privacy_context()), 'privacy_startup')
         result = await analyze(resume, jobs, model_factory=lambda:model_factory(privacy),
-            privacy=privacy, out=out, mode='live_certum', control=control, manifest=manifest,
+            privacy=privacy, out=out, mode='live_local_privacy', control=control, manifest=manifest,
             _defer_publication=True)
     except BaseException:
         await asyncio.wait_for(stack.__aexit__(*sys.exc_info()), timeout=30)

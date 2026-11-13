@@ -122,7 +122,7 @@ class RequirementsReviewTests(unittest.TestCase):
         self.assertNotEqual(source_sha256(TEXT), source_sha256(TEXT + ' '))
 
     def test_not_integrated_flag(self):
-        self.assertFalse(INTEGRATED)
+        self.assertTrue(INTEGRATED)
 
 
 if __name__ == '__main__':

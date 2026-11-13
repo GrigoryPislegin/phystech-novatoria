@@ -6,20 +6,20 @@ a passing row is ``structure_ok`` with ``meaning='model_claim_unverified'``. ``n
 is a check state, not a fifth match status, and the model status is kept as is. Technical
 errors are ``invalid`` and never become ``unknown``.
 
-Pure and local: no network, model calls or file writes. Not wired into pipeline/CLI yet,
-see docs/reviews/egor-development-handoff.md.
+Pure and local: no network, model calls or file writes. Connected to pipeline reports.
+Layouts belong to individual sources and are not retained in a process-global cache.
 """
 import bisect
 import hashlib
 import re
-from functools import lru_cache
+from functools import cached_property
 from typing import Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .contracts import Evaluation, Facts, Requirement, Requirements, Row
 
-INTEGRATED = False
+INTEGRATED = True
 
 # A sentence ends at .!?; only before whitespace or end of text: «Node.js», «ASP.NET», «3.5» stay whole.
 _SENTENCE = re.compile(r'(?:[^\n.!?;]|[.!?;]+(?=[^\s.!?;]))+[.!?;]*')
@@ -100,7 +100,6 @@ class Layout(NamedTuple):
     headings: tuple[Heading, ...]
 
 
-@lru_cache(maxsize=64)
 def layout(text: str) -> Layout:
     """Sentences and list headings of a text, computed once per text.
 
@@ -154,9 +153,14 @@ class _Strict(BaseModel):
 
 
 class Source(_Strict):
+    model_config = ConfigDict(extra='forbid', frozen=True)
     source_id: str
     text: str
     sha256: str
+
+    @cached_property
+    def text_layout(self) -> Layout:
+        return layout(self.text)
 
     @classmethod
     def of(cls, source_id: str, text: str) -> 'Source':
@@ -234,8 +238,12 @@ def locate(source: Source, quote: str, start: int | None = None) -> Located:
         positions = occurrences(text, quote)
         if not positions:
             return Located(span=None, reason=_invalid('quote_not_found', 'Цитаты нет в источнике.'))
-    lay = layout(text)
-    contexts = list(dict.fromkeys(context(lay, p, p + len(quote)) for p in positions))
+    lay = source.text_layout
+    def full_context(pos):
+        heading = heading_above(lay, pos, pos + len(quote))
+        sentence = context(lay, pos, pos + len(quote))
+        return f'{heading.text} → {sentence}' if heading else sentence
+    contexts = list(dict.fromkeys(full_context(p) for p in positions))
     if len(contexts) > 1:
         return Located(span=None, contexts=contexts, reason=_review(
             'ambiguous_location', 'Цитата встречается в разных местах; нужна позиция.', context=' | '.join(contexts)))
@@ -251,10 +259,14 @@ def verify_span(span: Span, sources: dict[str, Source]) -> list[Reason]:
     source = sources.get(span.source_id)
     if source is None:
         return [_invalid('unknown_source', 'Источник не найден.')]
-    if source.sha256 != span.source_sha256:
+    if source.sha256 != span.source_sha256 or source.sha256 != sha256_text(source.text):
         return [_invalid('source_mismatch', 'Источник изменился или не тот.')]
     if span.start < 0 or span.end - span.start != len(span.quote) or source.text[span.start:span.end] != span.quote:
         return [_invalid('range_mismatch', 'Диапазон не совпадает с цитатой.')]
+    # Never use a cached layout copied from a different text via model_copy.
+    current = locate(Source.of(source.source_id, source.text), span.quote, span.start).span
+    if current is None or (current.sentence, current.heading) != (span.sentence, span.heading):
+        return [_invalid('context_mismatch', 'Контекст не совпадает с источником.')]
     return []
 
 
@@ -292,7 +304,7 @@ def check_row(row: Row, requirement: Requirement, facts: Facts, cv: Source) -> R
     reasons, evidence = _row_shape(row, requirement), []
     by_id = {f.id: f for f in facts.items}
     requirement_terms = _terms(f'{requirement.text} {requirement.quote}')
-    lay = layout(cv.text)
+    lay = cv.text_layout
     for fact_id in row.fact_ids:
         fact = by_id.get(fact_id)
         if fact is None:
@@ -325,13 +337,16 @@ def check_mandatory(requirement: Requirement, vacancy: Source) -> MandatoryCheck
         what = 'требования' if not requirement_at else 'обязательности'
         return MandatoryCheck(requirement_id=rid, state='invalid',
                               reasons=[_invalid('quote_not_found', f'Цитаты {what} нет в вакансии.')])
-    lay = layout(text)
+    lay = vacancy.text_layout
 
     def governs(m: int, r: int) -> bool:
         m_end, r_end = m + len(marker), r + len(quote)
         sentence = sentence_at(lay, m, m_end)
-        if sentence is None:  # a marker crossing sentences governs nothing
-            return False
+        if sentence is None:
+            # Contract permits a contiguous heading + bullet quote. It must stay
+            # inside that heading's own list, not cross into another requirement.
+            return any(h.start <= m < h.end and m_end <= h.block_end
+                       and h.end < r and r_end <= m_end for h in lay.headings)
         if sentence.start <= r and r_end <= sentence.end:
             return True
         return any(h.start <= m and m_end <= h.end and h.end <= r and r_end <= h.block_end for h in lay.headings)

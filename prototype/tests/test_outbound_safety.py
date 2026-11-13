@@ -5,18 +5,18 @@ import subprocess
 import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 from prototype.contracts import Fact, Facts
 from prototype.model import Budget, Model
-from prototype.privacy import CertumPrivacy
+from prototype.privacy_core import LocalPrivacy
 
 
 class OutboundSafetyTests(unittest.TestCase):
     def make_model(self):
-        detector = SimpleNamespace(scan=AsyncMock(return_value=[]))
-        privacy = CertumPrivacy(detector, None, None)
-        privacy.issued_refs.add('человек#1')
+        detector = SimpleNamespace(scan=Mock(return_value=[]))
+        privacy = LocalPrivacy(detector)
+        privacy.issued_refs.add('[[PRIV:deadbeefdeadbeef:1:PERSON]]')
         model = Model.__new__(Model)
         model.model, model.privacy = 'gpt-6-luna', privacy
         model.budget, model.usage = Budget(model.model), []
@@ -28,7 +28,7 @@ class OutboundSafetyTests(unittest.TestCase):
         for prefix in ['\n', '\t', '"', '\\']:
             with self.subTest(prefix=repr(prefix)):
                 model, detector = self.make_model()
-                value = prefix + 'человек#1'
+                value = prefix + '[[PRIV:deadbeefdeadbeef:1:PERSON]]'
                 model.client.responses.parse.return_value.output_parsed = Facts(
                     items=[Fact(id='f1', text=value, quote=value)])
                 result = asyncio.run(model.ask(Facts, 'facts', {'text':value}))
@@ -36,7 +36,7 @@ class OutboundSafetyTests(unittest.TestCase):
                 self.assertEqual(model.budget.calls, 1)
 
     def test_unissued_refs_in_nested_keys_and_values_stop_before_sdk(self):
-        for payload in [{'text':['\nчеловек#2']}, {'человек#2':{'text':'Python'}}]:
+        for payload in [{'text':['\n[[PRIV:deadbeefdeadbeef:2:PERSON]]']}, {'[[PRIV:deadbeefdeadbeef:2:PERSON]]':{'text':'Python'}}]:
             model, detector = self.make_model()
             with self.assertRaisesRegex(RuntimeError, 'privacy_untrusted_reference'):
                 asyncio.run(model.ask(Facts, 'facts', payload))

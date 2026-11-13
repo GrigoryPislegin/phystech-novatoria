@@ -47,3 +47,6 @@ vendor/superpowers/
 *.pth
 !services/platform/dist/
 !services/platform/dist/hhsdk-1.0.1-py3-none-any.whl
+
+# Optional checksum-verified public weights for an offline Docker build
+/runtime/privacy-models/

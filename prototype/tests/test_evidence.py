@@ -137,7 +137,7 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual(check_row(bad, req(), facts, cv).state, 'invalid')
 
     def test_not_integrated_flag(self):
-        self.assertFalse(INTEGRATED)
+        self.assertTrue(INTEGRATED)
 
 
 class ReviewRegressionTests(unittest.TestCase):

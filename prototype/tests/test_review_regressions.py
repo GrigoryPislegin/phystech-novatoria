@@ -66,7 +66,7 @@ class ReviewRegressions(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             args=self.inputs(Path(tmp),deadline=0.02)
             start=time.monotonic()
-            with patch('prototype.__main__.certum_privacy',slow):
+            with patch('prototype.__main__.local_privacy',slow):
                 with self.assertRaisesRegex(RuntimeError,'deadline_exceeded'): asyncio.run(execute(args))
             self.assertLess(time.monotonic()-start,0.15)
 
@@ -78,7 +78,7 @@ class ReviewRegressions(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             args=self.inputs(Path(tmp))
             output=io.StringIO()
-            with patch('prototype.__main__.certum_privacy',failure), \
+            with patch('prototype.__main__.local_privacy',failure), \
                  patch('prototype.__main__.Model',return_value=ReplayModel()), redirect_stdout(output):
                 with self.assertRaisesRegex(RuntimeError,'synthetic_commit_failed'): asyncio.run(execute(args))
             self.assertEqual(list(args.out.iterdir()),[])

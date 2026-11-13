@@ -8,7 +8,7 @@ change invalidates it. This is a single-user CLI binding, not authentication or 
 `uncovered` is a hint for comparing against the full text, not proof that nothing was missed.
 
 Pure and local; the integrator's CLI stores approvals in its private directory.
-Not wired into pipeline/CLI yet, see docs/reviews/egor-development-handoff.md.
+Drafts and checks are included in pipeline reports; interactive approval UI is a separate task.
 """
 import json
 from typing import Literal
@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from .contracts import Requirements
 from .evidence import layout, occurrences, sha256_text
 
-INTEGRATED = False
+INTEGRATED = True
 SCHEMA_VERSION = 'requirements-approval-0.1'
 
 
@@ -110,6 +110,8 @@ def draft(vacancy_id: str, text: str, requirements: Requirements) -> Requirement
 
 def approve(vacancy_id: str, text: str, requirements: Requirements, approved_at: str) -> RequirementsApproval:
     """Call only on an explicit recruiter action in the CLI."""
+    if len({r.id for r in requirements.items}) != len(requirements.items):
+        raise ValueError('duplicate_requirement_ids')
     items = _canonical(requirements)
     return RequirementsApproval(schema_version=SCHEMA_VERSION, vacancy_id=vacancy_id,
                                 source_sha256=source_sha256(text), requirements_sha256=_hash(items),
@@ -156,7 +158,8 @@ def check(approval: RequirementsApproval | dict | None, vacancy_id: str, text: s
     if _hash(approval.requirements) != approval.requirements_sha256:
         return _invalid(vacancy_id, 'hash_mismatch', 'Хеш не соответствует подтверждённому списку.')
     ids = [r.id for r in requirements.items]
-    if len(ids) != len(set(ids)):
+    saved_ids = [r.id for r in approval.requirements]
+    if len(ids) != len(set(ids)) or len(saved_ids) != len(set(saved_ids)):
         return _invalid(vacancy_id, 'duplicate_ids', 'Повторяющиеся id требований.')
     issues = _changes(approval, text, requirements)
     return ApprovalCheck(vacancy_id=vacancy_id, state='stale' if issues else 'confirmed', reasons=issues)
@@ -172,7 +175,7 @@ def summarize(processing_complete: bool, checks: dict[str, ApprovalCheck], *,
     expected = set(expected_ids)
     states = dict.fromkeys(expected, 'unconfirmed')
     for vacancy_id, result in checks.items():
-        states[vacancy_id] = result.state if vacancy_id in expected else 'invalid'
+        states[vacancy_id] = result.state if vacancy_id in expected and result.vacancy_id == vacancy_id else 'invalid'
     by_state = {s: sorted(v for v, st in states.items() if st == s) for s in ('unconfirmed', 'stale', 'invalid')}
     confirmed = bool(states) and all(st == 'confirmed' for st in states.values())
     return RunReviewSummary(processing_complete=processing_complete, requirements_confirmed=confirmed,

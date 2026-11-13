@@ -23,7 +23,7 @@ def error_code(exc, stage=''):
     if isinstance(exc, ModelOutputError) or (stage.endswith('_validation') and isinstance(exc, ValueError)):
         return 'model_invalid'
     # Only exact, known local messages may affect the public diagnostic.
-    known = {'privacy_untrusted_reference', 'privacy_residual_findings', 'certum_configuration_missing',
+    known = {'privacy_untrusted_reference', 'privacy_residual_findings', 'privacy_models_missing_or_invalid', 'privacy_detector_failed', 'privacy_closed',
              'openai_key_missing', 'invalid_job_set', 'input_symlink', 'input_invalid',
              'input_too_large', 'input_unsupported', 'output_unavailable', 'invalid_deadline', 'invalid_metadata',
              'budget_must_be_between_0_and_5', 'model_refusal_or_incomplete'}
