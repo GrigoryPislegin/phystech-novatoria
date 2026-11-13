@@ -4,8 +4,7 @@ import unittest
 from pathlib import Path
 
 from prototype.contracts import Evaluation, Fact, Facts, Requirement, Requirements, Row, validate_pair
-from prototype.evidence import (INTEGRATED, Source, Span, check_mandatory, check_pair, check_row, locate,
-                                verify_span)
+from prototype.evidence import INTEGRATED, Source, check_mandatory, check_pair, check_row, locate, verify_span
 
 CASES = Path(__file__).resolve().parents[2] / 'docs/reviews/egor-cases-2026-11-13.json'
 
@@ -108,10 +107,20 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual(locate(cv, 'Python', start=999).reason.code, 'range_mismatch')
         span = locate(cv, 'Разрабатывал на Python 3 года').span
         self.assertEqual(verify_span(span, {'cv': cv}), [])
-        self.assertEqual(verify_span(span.model_copy(update={'source_id': 'cv-x'}), {'cv': cv})[0].code, 'unknown_source')
+
+        def tampered(**change):
+            return verify_span(span.model_copy(update=change), {'cv': cv})[0].code
+
+        self.assertEqual(tampered(source_id='cv-x'), 'unknown_source')
+        self.assertEqual(tampered(end=span.end + 1), 'range_mismatch')
+        self.assertEqual(tampered(start=span.start + 3, end=span.end + 50), 'range_mismatch')
         other = Source.of('cv', 'Разрабатывал на Python 3 года. Добавлено.')
         self.assertEqual(verify_span(span, {'cv': other})[0].code, 'source_mismatch')
-        self.assertEqual(verify_span(span.model_copy(update={'end': span.end + 1}), {'cv': cv})[0].code, 'range_mismatch')
+
+    def test_5c_blank_requirement_quote_is_invalid(self):
+        vacancy = Source.of('job-1', 'Обязательно: Python. ')
+        check = check_mandatory(req('r1', 'Python', ' ', 'Обязательно:'), vacancy)
+        self.assertEqual((check.state, codes(check)), ('invalid', {'quote_not_found'}))
 
     def test_5b_three_kinds_are_distinguishable(self):
         cv = Source.of('cv', 'Разрабатывал на Python 3 года.')
@@ -223,21 +232,21 @@ class SyntheticCasesTests(unittest.TestCase):
                                          r.model_dump())
 
     def test_documented_traps_are_flagged(self):
-        c01 = self.cases['C01-negation']
-        cv = Source.of('cv', c01['cv_text'])
-        trap = check_row(row('full', ['f1']), req(text='Опыт разработки на Python', quote='опыт разработки на Python'),
-                         Facts(items=[Fact(id='f1', text='Python', quote='Python')]), cv)
-        self.assertEqual(trap.state, 'needs_review')
-        c02 = self.cases['C02-irrelevant-fail-evidence']
-        trap = check_row(row('fail', ['f1']), req(text='Python для автоматизации отчётов', quote='Python для автоматизации отчётов'),
-                         Facts(items=[Fact(id='f1', text='Excel', quote='Работал с Excel 5 лет.')]), Source.of('cv', c02['cv_text']))
-        self.assertEqual(trap.state, 'needs_review')
-        c03 = self.cases['C03-headings']['vacancies'][0]
-        vac = Source.of('v1', c03['vacancy_text'])
-        self.assertNotEqual(check_mandatory(req('r2', 'SQL', 'SQL', 'Обязательно:'), vac).state, 'structure_ok')
-        c08 = self.cases['C08-short-vs-detailed']['vacancies'][1]
-        vac = Source.of('v2', c08['vacancy_text'])
-        self.assertNotEqual(check_mandatory(req('r3', 'Docker', 'Docker', 'Обязательно: SQL.'), vac).state, 'structure_ok')
+        def trap_row(case_id, status, requirement_text, fact_quote):
+            cv = Source.of('cv', self.cases[case_id]['cv_text'])
+            facts = Facts(items=[Fact(id='f1', text='x', quote=fact_quote)])
+            return check_row(row(status, ['f1']), req(text=requirement_text, quote=requirement_text), facts, cv).state
+
+        def trap_mandatory(case_id, vacancy_index, quote, marker):
+            vacancy = self.cases[case_id]['vacancies'][vacancy_index]
+            source = Source.of(vacancy['vacancy_id'], vacancy['vacancy_text'])
+            return check_mandatory(req('rx', quote, quote, marker), source).state
+
+        self.assertEqual(trap_row('C01-negation', 'full', 'опыт разработки на Python', 'Python'), 'needs_review')
+        self.assertEqual(trap_row('C02-irrelevant-fail-evidence', 'fail', 'Python для автоматизации отчётов',
+                                  'Работал с Excel 5 лет.'), 'needs_review')
+        self.assertNotEqual(trap_mandatory('C03-headings', 0, 'SQL', 'Обязательно:'), 'structure_ok')
+        self.assertNotEqual(trap_mandatory('C08-short-vs-detailed', 1, 'Docker', 'Обязательно: SQL.'), 'structure_ok')
 
 
 if __name__ == '__main__':
