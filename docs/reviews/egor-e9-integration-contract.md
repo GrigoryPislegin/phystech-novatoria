@@ -40,7 +40,7 @@
 
 ## Находки в файлах интегратора: воспроизведение и патч
 
-`prototype/tests/test_e9_contract.py::IntegrationFindingTests` воспроизводит каждую находку как `expectedFailure`. Проверенный патч — [`egor-e9-pipeline.patch`](egor-e9-pipeline.patch), 53 строки, `git apply --check` проходит. С ним все пять тестов проходят. После применения пометки `expectedFailure` нужно снять: unittest сообщит о «unexpected success».
+`prototype/tests/test_e9_contract.py::IntegrationFindingTests` и `E9cFindingTests` воспроизводят каждую находку как `expectedFailure`. Проверенный патч — [`egor-e9-pipeline.patch`](egor-e9-pipeline.patch), 65 строк, `git apply --check` проходит. Он закрывает R1–R6, с ним все шесть тестов проходят. После применения пометки `expectedFailure` нужно снять: unittest сообщит о «unexpected success».
 
 | # | Приоритет | Где | Воспроизведение | Влияние |
 |---|---|---|---|---|
@@ -56,6 +56,26 @@
 - рейтинг остаётся.
 
 Мой довод: профиль не участвует в балле, а цена «потерять рейтинг всех вакансий из-за одного числа в выжимке» выше риска. С патчем этот тест интегратора падает (1 тест). Если оставить нынешнее поведение, R1 и R2 — сознательное решение, тогда снимите эти два теста.
+
+## E9c — независимое ревью связки на `aeb0429`
+
+Одно независимое ревью E5 → scoring → E7 → E8 → отчёт. Его пункты про очередь профиля и текст `mandatory_fail` уже закрыты выше (D4, D7): ревьюер читал ветку без этого PR. Новое:
+
+| # | Приоритет | Где | Воспроизведение | Что сделано |
+|---|---|---|---|---|
+| C1 | P1 | `scoring.rank` (мой) | CV `Навыки:\n- Python 5 лет`: строка Python спорная (`heading_context`), вакансия Python второй с L=0, H=100, а первая получает `review_top`, хотя разрешение одной строки даёт ничью | `clarify`, пока вакансия ниже со спорными строками или неприменённым маркером может догнать первое место. `E9cFindingTests.test_top_stays_open_while_a_doubted_lower_job_could_reach_it` на настоящем pipeline, `test_lower_job_with_doubted_rows_that_could_overtake_keeps_clarify` |
+| C2 | P2 | `review_queue` (мой) | Проверенный `partial` по применённому обязательному; условие указано только в одном документе | Пункты `mandatory_partial` и `condition_unknown` (приоритет 4, вопрос кандидату, закрываются `read_context`) |
+| C3 | P2 | `ranking_explanation` (мой) | «у job-x не выполнено обязательное требование» выдаёт модельный `fail` за факт | «модель предложила у job-x несоответствие обязательному требованию» |
+| R6 | P2 | `pipeline.py:234-239` | Первое место: обе строки `full`, одна спорная. `report.md` велит «проверить выявленные несоответствия», которых нет | Добавлено в [патч](egor-e9-pipeline.patch): причина берётся из `disputed_ids`/`excluded_mandatory_ids` первого места. `expectedFailure test_p2_clarify_action_names_the_real_cause` |
+
+**Для Sol (UI, не правлю):**
+- `report.js:18` всегда пишет «уточните спорные условия у кандидата»; нужна та же логика причин, что в R6.
+- `manager-report.js:70-75` показывает последнюю роль при профиле `needs_review` только с общей пометкой. Нужно показать конкретную находку (`later_period_in_cv`) у строки.
+- `Comparison.summary` содержит сырые `job_id`. Для показа брать структурные поля `deciding`/`swings` и подписи из manifest.
+
+**Вопрос тимлиду (политика).** `heading_context` отправляет на проверку любой пункт под строкой с «:», включая нейтральные «Навыки:». По v2 такая строка не идёт в L. Поэтому вакансии, совпадающие с перечнем навыков, систематически теряют L до проверки рекрутером. C1 закрывает худшее следствие: ложный `review_top`. Сама осторожность — сознательное правило 4 политики. Альтернатива: метить только отрицающие заголовки, но это словарь, который ТЗ запрещает.
+
+С патчем падает 1 тест интегратора — развилка R1, описанная выше. Остальные его тесты, включая `test_clarify_without_unknown_does_not_invent_missing_information`, проходят.
 
 ## Fixtures
 
@@ -86,7 +106,7 @@
 ## Проверки
 
 ```sh
-python -m unittest discover -s prototype/tests   # 287 OK (skipped=4, expected failures=5)
+python -m unittest discover -s prototype/tests   # 292 OK (skipped=4, expected failures=6)
 python -m unittest discover -s tests             # 10 OK
 python scripts/check_repository.py               # PASS
 python -m prototype demo; python -m prototype demo --scenario disputed

@@ -59,7 +59,7 @@ class CompareTests(unittest.TestCase):
         first = c.deciding[0]
         self.assertEqual((first.job_id, first.status, first.mandatory_applied, first.effect),
                          ('job-003', 'fail', True, 100))
-        self.assertIn('не выполнено обязательное требование', c.summary)
+        self.assertIn('модель предложила у job-003 несоответствие обязательному требованию', c.summary)
 
     def test_tie_has_no_deciding_rows(self):
         report = demo_report()
@@ -201,7 +201,7 @@ class ReasonTests(unittest.TestCase):
 
     def test_both_violated_is_said(self):
         report = manual_report(('a', [('fail', True), ('full', False)]), ('b', [('fail', True), ('fail', False)]))
-        self.assertIn('у обеих не выполнено обязательное требование', compare(report, 'a', 'b').summary)
+        self.assertIn('у обеих несоответствие обязательному требованию', compare(report, 'a', 'b').summary)
 
     def test_v1_report_marks_disputed_rows(self):
         class Fragment(ReplayModel):

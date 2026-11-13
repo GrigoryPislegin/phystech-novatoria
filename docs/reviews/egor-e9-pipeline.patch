@@ -1,5 +1,5 @@
 diff --git a/prototype/pipeline.py b/prototype/pipeline.py
-index b081ed5..cc01d9e 100644
+index b081ed5..9ec0af5 100644
 --- a/prototype/pipeline.py
 +++ b/prototype/pipeline.py
 @@ -119,10 +119,10 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
@@ -28,7 +28,19 @@ index b081ed5..cc01d9e 100644
              evidence = check_pair(requirements, facts, evaluation, cv_source, job_source)
              if evidence.has_invalid:
                  raise ModelOutputError('invalid_evidence')
-@@ -274,11 +273,21 @@ def _write_report_files(report, out):
+@@ -231,7 +230,10 @@ def _write_report_files(report, out):
+         'review_none_fit': 'Проверьте выявленные обязательные несоответствия; автоматический отказ недопустим.',
+         'incomplete': 'Завершите обработку пропущенных вакансий; окончательный выбор по этому отчёту невозможен.',
+     }
+-    if recommendation == 'clarify' and not any(
++    top_scores = [job['score'] for job in ranked if job['rank'] == 1]
++    if recommendation == 'clarify' and any(s.get('disputed_ids') or s.get('excluded_mandatory_ids') for s in top_scores):
++        actions['clarify'] = 'Подтверждённого соответствия недостаточно: у первого места есть спорные доказательства или неприменённые маркеры обязательности. Прочитайте их контекст в очереди проверки до вывода; автоматический отказ недопустим.'
++    elif recommendation == 'clarify' and not any(
+         row['status'] in {'unknown', 'partial'} for job in ranked if job['rank'] == 1
+         for row in job['evaluation']['rows']
+     ):
+@@ -274,11 +276,21 @@ def _write_report_files(report, out):
              if req['mandatory_quote']:
                  lines.append(f"  Обязательность предложена моделью — подтвердите: {literal(req['mandatory_quote'])}")
              if question: lines.append(f"  Вопрос для уточнения: {literal(question)}")

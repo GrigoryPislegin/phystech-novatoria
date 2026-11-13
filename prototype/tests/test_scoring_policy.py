@@ -72,6 +72,20 @@ class DisputedEvidenceTests(unittest.TestCase):
         self.assertEqual(rank([{'job_id': 'job', 'score': s}], 1)['recommendation'], 'clarify')
         self.assertEqual(rank([{'job_id': 'job', 'score': score(reqs, ev)}], 1)['recommendation'], 'review_top')
 
+    def test_lower_job_with_doubted_rows_that_could_overtake_keeps_clarify(self):
+        # E9c: CV «Навыки:\n- Python 5 лет»: the bullet is disputed (heading_context), so the Python vacancy
+        # has L=0, H=100 and sits second, yet resolving that one row would tie first place.
+        top = {'lower': 100.0, 'upper': 100.0, 'mandatory': 'not_set', 'disputed_ids': [],
+               'excluded_mandatory_ids': []}
+        doubted = {'lower': 0.0, 'upper': 100.0, 'mandatory': 'clarify', 'disputed_ids': ['r1'],
+                   'excluded_mandatory_ids': []}
+        jobs = [{'job_id': 'b', 'score': top}, {'job_id': 'a', 'score': doubted}]
+        self.assertEqual(rank(jobs, 2)['recommendation'], 'clarify')
+        unreachable = {**doubted, 'upper': 90.0}
+        self.assertEqual(rank([jobs[0], {'job_id': 'a', 'score': unreachable}], 2)['recommendation'], 'review_top')
+        plain_unknown = {**doubted, 'disputed_ids': []}  # ordinary missing data does not hold the top open
+        self.assertEqual(rank([jobs[0], {'job_id': 'a', 'score': plain_unknown}], 2)['recommendation'], 'review_top')
+
     def test_invalid_evidence_is_an_error_not_unknown(self):
         reqs, ev, evidence = case('Python 3 года.', 'Нужен Python.', 'Python 3 года.', 'full', quote='Python')
         broken = evidence.model_copy(update={'has_invalid': True})

@@ -255,6 +255,25 @@ class TableTests(unittest.TestCase):
         self.assertTrue(all(REASONS[r][1] == 'integrity' for r in integrity))
         self.assertEqual(REASONS['condition_conflict'][0], 3)
 
+    def test_verified_partial_mandatory_is_queued(self):
+        # E9c: a verified partial on an applied mandatory requirement keeps the group at clarify.
+        report = copy.deepcopy(fixture('normal')['report'])
+        job = next(j for j in report['ranking']['jobs'] if j['job_id'] == 'job-001')
+        job['evaluation']['rows'][0]['status'] = 'partial'
+        job['evidence_check']['rows'][0]['status'] = 'partial'
+        self.assertIn(('r1', 'mandatory_partial'), reasons(build_review_queue(report), 'job-001'))
+
+    def test_one_sided_condition_is_queued_as_a_question(self):
+        report = copy.deepcopy(fixture('disputed')['report'])
+        job = next(j for j in report['ranking']['jobs'] if j['job_id'] == 'job-a')
+        item = job['conditions']['items'][0]
+        job['conditions'] = {**job['conditions'], 'conflicts': [],
+                             'items': [{**item, 'state': 'unknown', 'check': 'structure_ok', 'findings': [],
+                                        'cv_span': None}]}
+        queue = build_review_queue(report)
+        self.assertIn(('work_mode', 'condition_unknown'),
+                      {(i.condition_kind, i.reason_code) for i in queue.items if i.job_id == 'job-a'})
+
     def test_mandatory_fail_text_does_not_promise_exclusion(self):
         # The engine demotes a violated vacancy to the lower group; HR decides. «исключает вакансию» was wrong.
         text = REASONS['mandatory_fail'][3]
