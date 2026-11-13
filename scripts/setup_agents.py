@@ -6,15 +6,21 @@ import subprocess
 root = Path(__file__).resolve().parent.parent
 vendor = root / 'vendor/superpowers'
 expected = '22f0b463e7a5e579904dd6211a520321035526f7'
+for destination in (root/'.codex', root/'.codex/agents', root/'.agents', root/'.agents/skills'):
+    if destination.is_symlink():
+        raise SystemExit(f'Refusing symlink destination: {destination}')
 actual = subprocess.check_output(['git', '-C', str(vendor), 'rev-parse', 'HEAD'], text=True).strip()
 if actual != expected:
     raise SystemExit('Unexpected Superpowers revision; review before installing.')
 
+pending_files = []
+
 def write(path, text):
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise SystemExit(f'Refusing symlink configuration: {path}')
     if path.exists() and path.read_text() != text:
         raise SystemExit(f'Refusing to overwrite different configuration: {path}')
-    path.write_text(text)
+    pending_files.append((path, text))
 
 write(root / '.codex/config.toml', '''# Project-scoped. Keep parent authentication, permissions and primary model.
 [agents]
@@ -37,7 +43,7 @@ for name, model, effort, responsibility in [
     ]))
 
 skills = root / '.agents/skills'
-skills.mkdir(parents=True, exist_ok=True)
+pending_links = []
 for directory in (vendor / 'skills').iterdir():
     if not (directory / 'SKILL.md').is_file():
         continue
@@ -47,5 +53,13 @@ for directory in (vendor / 'skills').iterdir():
         continue
     if link.exists() or link.is_symlink():
         raise SystemExit(f'Refusing to overwrite {link}')
+    pending_links.append((link, target))
+
+# Validate every destination before the first mutation, including late conflicts.
+for path, text in pending_files:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+for link, target in pending_links:
+    link.parent.mkdir(parents=True, exist_ok=True)
     link.symlink_to(target, target_is_directory=True)
 print('Installed project roles and local Superpowers skills at pinned revision ' + expected)
