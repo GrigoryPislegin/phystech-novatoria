@@ -64,7 +64,7 @@
     setText('run-mode', mode);
     setText('run-mode-detail', [modeDetail, scenario, report.model].filter(Boolean).join(' · '));
     setText('run-count', report.processed + ' из ' + report.total);
-    setText('run-progress', report.complete ? 'Все вакансии оценены' : 'Обработка завершилась досрочно');
+    setText('run-progress', report.complete ? 'Все вакансии оценены' : 'Часть вакансий не оценена');
     setText('run-review', report.requirementsConfirmed ? 'Состав подтверждён' : 'Состав не подтверждён');
     setText('run-review-detail', report.finalAllowed ? 'Подтверждение записано в отчёте' : 'Оценки и цитаты требуют проверки');
     byId('privacy-note').hidden = !report.privacyWarning;
