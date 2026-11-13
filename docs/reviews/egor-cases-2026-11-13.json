@@ -1,0 +1,721 @@
+{
+  "schema_version": "egor-cases-0.1",
+  "created": "2026-11-13",
+  "synthetic": true,
+  "notice": "Вымышленные тексты, написанные вручную. Не реальные резюме, не ответы модели. Эталоны имеют decision_status=draft, пока эксперт их не подтвердил; формула и веса не согласованы.",
+  "cases": [
+    {
+      "case_id": "C01-negation",
+      "covers": [
+        "отрицание опыта"
+      ],
+      "cv_text": "Аналитик данных 4 года. Не работал с Python, планирую изучить. Отчёты строю в Excel.",
+      "vacancies": [
+        {
+          "vacancy_id": "v1",
+          "vacancy_text": "Обязательно: опыт разработки на Python.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Опыт разработки на Python",
+              "quote": "опыт разработки на Python",
+              "mandatory": true,
+              "mandatory_quote": "Обязательно:"
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "fail",
+              "cv_quotes": [
+                "Не работал с Python, планирую изучить."
+              ],
+              "rationale": "Кандидат прямо указывает, что не работал с Python. Цитата «Python» без «Не работал с» не может подтверждать full.",
+              "question": "Появился ли опыт Python после составления резюме?",
+              "acceptable_statuses": [
+                "fail"
+              ]
+            }
+          ],
+          "expected_mandatory_gate": "violated",
+          "note": null
+        }
+      ],
+      "decision_status": "draft",
+      "trap": "Модель цитирует одно слово «Python» и ставит full → L=100, confirmed.",
+      "open_question": null
+    },
+    {
+      "case_id": "C02-irrelevant-fail-evidence",
+      "covers": [
+        "нерелевантное доказательство fail"
+      ],
+      "cv_text": "Финансовый аналитик. Работал с Excel 5 лет. Строил модели в Power BI.",
+      "vacancies": [
+        {
+          "vacancy_id": "v1",
+          "vacancy_text": "Обязательно: Python для автоматизации отчётов.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Python для автоматизации отчётов",
+              "quote": "Python для автоматизации отчётов",
+              "mandatory": true,
+              "mandatory_quote": "Обязательно:"
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Про Python в резюме ничего нет. Опыт Excel не является фактом против Python: это нехватка сведений, а не подтверждённое несоответствие.",
+              "question": "Есть ли опыт Python? Если да — для каких задач?",
+              "acceptable_statuses": [
+                "unknown"
+              ]
+            }
+          ],
+          "expected_mandatory_gate": "clarify",
+          "note": null
+        }
+      ],
+      "decision_status": "draft",
+      "trap": "fail со ссылкой на факт «Работал с Excel 5 лет.» проходит текущую проверку → violated.",
+      "open_question": null
+    },
+    {
+      "case_id": "C03-headings",
+      "covers": [
+        "заголовки «Обязательно/Желательно»"
+      ],
+      "cv_text": "Backend-разработчик. Разрабатывал на Python 3 года.",
+      "vacancies": [
+        {
+          "vacancy_id": "v1",
+          "vacancy_text": "Обязательно:\n- Python от 2 лет\nЖелательно:\n- SQL",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Python от 2 лет",
+              "quote": "Python от 2 лет",
+              "mandatory": true,
+              "mandatory_quote": "Обязательно:"
+            },
+            {
+              "id": "r2",
+              "text": "SQL",
+              "quote": "SQL",
+              "mandatory": false,
+              "mandatory_quote": null
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "full",
+              "cv_quotes": [
+                "Разрабатывал на Python 3 года."
+              ],
+              "rationale": "3 года ≥ 2 лет.",
+              "question": null
+            },
+            {
+              "requirement_id": "r2",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "SQL в резюме не упомянут.",
+              "question": "Есть ли опыт SQL?",
+              "acceptable_statuses": [
+                "unknown"
+              ]
+            }
+          ],
+          "expected_mandatory_gate": "confirmed",
+          "note": "Обязательность задана заголовком блока, а не фразой в строке требования. SQL под «Желательно» не должен стать обязательным, даже если модель приведёт цитату «Обязательно:» или длинную цитату от «Обязательно» до «SQL»."
+        }
+      ],
+      "decision_status": "draft",
+      "trap": "mandatory_quote=\"Обязательно:\\n- Python от 2 лет\\nЖелательно:\\n- SQL\" для SQL проходит текущую проверку.",
+      "open_question": null
+    },
+    {
+      "case_id": "C04-missed-second-mandatory",
+      "covers": [
+        "пропуск второго обязательного требования"
+      ],
+      "cv_text": "Разработчик. Разрабатывал на Python 3 года.",
+      "vacancies": [
+        {
+          "vacancy_id": "v1",
+          "vacancy_text": "Python обязателен. Go обязателен.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Python",
+              "quote": "Python обязателен.",
+              "mandatory": true,
+              "mandatory_quote": "Python обязателен."
+            },
+            {
+              "id": "r2",
+              "text": "Go",
+              "quote": "Go обязателен.",
+              "mandatory": true,
+              "mandatory_quote": "Go обязателен."
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "full",
+              "cv_quotes": [
+                "Разрабатывал на Python 3 года."
+              ],
+              "rationale": "Опыт Python указан.",
+              "question": null
+            },
+            {
+              "requirement_id": "r2",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Go в резюме не упомянут.",
+              "question": "Есть ли опыт Go?",
+              "acceptable_statuses": [
+                "unknown"
+              ]
+            }
+          ],
+          "expected_mandatory_gate": "clarify",
+          "note": "Если модель извлекла только Python, сейчас получится L=100, confirmed и complete=true — похоже на полное покрытие вакансии. Нужен видимый неподтверждённый список требований (E4)."
+        }
+      ],
+      "decision_status": "draft",
+      "trap": "Requirements содержит только r1 → полный «зелёный» результат.",
+      "open_question": null
+    },
+    {
+      "case_id": "C05-unknown-vs-fail",
+      "covers": [
+        "отсутствие сведений против подтверждённого несоответствия"
+      ],
+      "cv_text": "Аналитик. Использовал SQL 1 год. Разрабатывал на Python 3 года.",
+      "vacancies": [
+        {
+          "vacancy_id": "v1",
+          "vacancy_text": "Обязательно: SQL не менее 3 лет.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "SQL не менее 3 лет",
+              "quote": "SQL не менее 3 лет",
+              "mandatory": true,
+              "mandatory_quote": "Обязательно:"
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "fail",
+              "cv_quotes": [
+                "Использовал SQL 1 год."
+              ],
+              "rationale": "Указан 1 год при требуемых 3: явный факт несоответствия.",
+              "question": "Есть ли опыт SQL, не указанный в резюме?",
+              "acceptable_statuses": [
+                "fail",
+                "partial"
+              ]
+            }
+          ],
+          "expected_mandatory_gate": "violated",
+          "note": "Один год из трёх: fail по архитектуре; эксперт может считать это partial (вопрос 1)."
+        },
+        {
+          "vacancy_id": "v2",
+          "vacancy_text": "Обязательно: Kotlin не менее 3 лет.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Kotlin не менее 3 лет",
+              "quote": "Kotlin не менее 3 лет",
+              "mandatory": true,
+              "mandatory_quote": "Обязательно:"
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Kotlin не упомянут: сведений нет.",
+              "question": "Есть ли опыт Kotlin?",
+              "acceptable_statuses": [
+                "unknown"
+              ]
+            }
+          ],
+          "expected_mandatory_gate": "clarify",
+          "note": "Обе вакансии получают L=0, но v1 — подтверждённое несоответствие, v2 — вопрос кандидату."
+        }
+      ],
+      "decision_status": "draft",
+      "trap": "Одинаковый L=0 скрывает разницу между «не подходит» и «не знаем».",
+      "open_question": "Стаж 1 год вместо обязательных 3: исключение из рекомендации или повод для обсуждения?"
+    },
+    {
+      "case_id": "C06-composite-partial",
+      "covers": [
+        "составное требование",
+        "partial"
+      ],
+      "cv_text": "Backend-разработчик. Разрабатывал на Python 3 года. Писал сервисы на Flask.",
+      "vacancies": [
+        {
+          "vacancy_id": "v1",
+          "vacancy_text": "Обязательно: Python и Django от 2 лет.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Python и Django от 2 лет",
+              "quote": "Python и Django от 2 лет",
+              "mandatory": true,
+              "mandatory_quote": "Обязательно:"
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "partial",
+              "cv_quotes": [
+                "Разрабатывал на Python 3 года."
+              ],
+              "rationale": "Python подтверждён, Django не упомянут (Flask — другой фреймворк).",
+              "question": "Есть ли опыт Django?",
+              "acceptable_statuses": [
+                "partial",
+                "unknown"
+              ]
+            }
+          ],
+          "expected_mandatory_gate": "clarify",
+          "note": "Допустимый вариант разметки — два требования: Python full и Django unknown. Итог по воротам тот же (clarify), но L различается."
+        }
+      ],
+      "decision_status": "draft",
+      "trap": "Flask засчитывается как Django → full.",
+      "open_question": "Составное требование: делить на части или оценивать целиком как partial?"
+    },
+    {
+      "case_id": "C07-equal-scores",
+      "covers": [
+        "равные оценки"
+      ],
+      "cv_text": "Тестировщик. Писал автотесты на Python 2 года. Не работал с Java и C#.",
+      "vacancies": [
+        {
+          "vacancy_id": "v1",
+          "vacancy_text": "Желательно: Go. Желательно: Kubernetes.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Go",
+              "quote": "Желательно: Go.",
+              "mandatory": false,
+              "mandatory_quote": null
+            },
+            {
+              "id": "r2",
+              "text": "Kubernetes",
+              "quote": "Желательно: Kubernetes.",
+              "mandatory": false,
+              "mandatory_quote": null
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Go не упомянут.",
+              "question": "Есть ли опыт Go?"
+            },
+            {
+              "requirement_id": "r2",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Kubernetes не упомянут.",
+              "question": "Есть ли опыт Kubernetes?"
+            }
+          ],
+          "expected_mandatory_gate": "not_set",
+          "note": "L=0, H=100, известно 0%."
+        },
+        {
+          "vacancy_id": "v2",
+          "vacancy_text": "Желательно: Java. Желательно: C#.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Java",
+              "quote": "Желательно: Java.",
+              "mandatory": false,
+              "mandatory_quote": null
+            },
+            {
+              "id": "r2",
+              "text": "C#",
+              "quote": "Желательно: C#.",
+              "mandatory": false,
+              "mandatory_quote": null
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "fail",
+              "cv_quotes": [
+                "Не работал с Java и C#."
+              ],
+              "rationale": "Прямо указано отсутствие опыта.",
+              "question": "Планирует ли изучать Java?"
+            },
+            {
+              "requirement_id": "r2",
+              "status": "fail",
+              "cv_quotes": [
+                "Не работал с Java и C#."
+              ],
+              "rationale": "Прямо указано отсутствие опыта.",
+              "question": "Планирует ли изучать C#?"
+            }
+          ],
+          "expected_mandatory_gate": "not_set",
+          "note": "L=0, H=0, известно 100%. Сейчас делит место 1 с v1."
+        }
+      ],
+      "decision_status": "draft",
+      "trap": "Равный L ставит «не знаем» и «точно нет» на одно место; порядок решает алфавит id.",
+      "open_question": "При равной оценке выше ставить вакансию с большей верхней границей или показывать как равные?"
+    },
+    {
+      "case_id": "C08-short-vs-detailed",
+      "covers": [
+        "короткая вакансия против подробной"
+      ],
+      "cv_text": "Data engineer. Разрабатывал на Python 3 года. Использовал SQL 2 года.",
+      "vacancies": [
+        {
+          "vacancy_id": "v1",
+          "vacancy_text": "Обязательно: Python.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Python",
+              "quote": "Python",
+              "mandatory": true,
+              "mandatory_quote": "Обязательно:"
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "full",
+              "cv_quotes": [
+                "Разрабатывал на Python 3 года."
+              ],
+              "rationale": "Опыт Python указан.",
+              "question": null
+            }
+          ],
+          "expected_mandatory_gate": "confirmed",
+          "note": "L=100."
+        },
+        {
+          "vacancy_id": "v2",
+          "vacancy_text": "Обязательно: Python. Обязательно: SQL. Желательно: Docker, Kafka, Airflow, Spark, Kubernetes, Terraform.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Python",
+              "quote": "Обязательно: Python.",
+              "mandatory": true,
+              "mandatory_quote": "Обязательно: Python."
+            },
+            {
+              "id": "r2",
+              "text": "SQL",
+              "quote": "Обязательно: SQL.",
+              "mandatory": true,
+              "mandatory_quote": "Обязательно: SQL."
+            },
+            {
+              "id": "r3",
+              "text": "Docker",
+              "quote": "Docker",
+              "mandatory": false,
+              "mandatory_quote": null
+            },
+            {
+              "id": "r4",
+              "text": "Kafka",
+              "quote": "Kafka",
+              "mandatory": false,
+              "mandatory_quote": null
+            },
+            {
+              "id": "r5",
+              "text": "Airflow",
+              "quote": "Airflow",
+              "mandatory": false,
+              "mandatory_quote": null
+            },
+            {
+              "id": "r6",
+              "text": "Spark",
+              "quote": "Spark",
+              "mandatory": false,
+              "mandatory_quote": null
+            },
+            {
+              "id": "r7",
+              "text": "Kubernetes",
+              "quote": "Kubernetes",
+              "mandatory": false,
+              "mandatory_quote": null
+            },
+            {
+              "id": "r8",
+              "text": "Terraform",
+              "quote": "Terraform",
+              "mandatory": false,
+              "mandatory_quote": null
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "full",
+              "cv_quotes": [
+                "Разрабатывал на Python 3 года."
+              ],
+              "rationale": "Опыт Python указан.",
+              "question": null
+            },
+            {
+              "requirement_id": "r2",
+              "status": "full",
+              "cv_quotes": [
+                "Использовал SQL 2 года."
+              ],
+              "rationale": "Опыт SQL указан.",
+              "question": null
+            },
+            {
+              "requirement_id": "r3",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Docker не упомянут.",
+              "question": "Есть ли опыт Docker?"
+            },
+            {
+              "requirement_id": "r4",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Kafka не упомянут.",
+              "question": "Есть ли опыт Kafka?"
+            },
+            {
+              "requirement_id": "r5",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Airflow не упомянут.",
+              "question": "Есть ли опыт Airflow?"
+            },
+            {
+              "requirement_id": "r6",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Spark не упомянут.",
+              "question": "Есть ли опыт Spark?"
+            },
+            {
+              "requirement_id": "r7",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Kubernetes не упомянут.",
+              "question": "Есть ли опыт Kubernetes?"
+            },
+            {
+              "requirement_id": "r8",
+              "status": "unknown",
+              "cv_quotes": [],
+              "rationale": "Terraform не упомянут.",
+              "question": "Есть ли опыт Terraform?"
+            }
+          ],
+          "expected_mandatory_gate": "confirmed",
+          "note": "L=50, H=100. Обе вакансии подходят по обязательным, но v2 стоит ниже только из-за подробности."
+        }
+      ],
+      "decision_status": "draft",
+      "trap": "Знаменатель L растёт с числом неупомянутых желательных пунктов.",
+      "open_question": "Что важнее при ранжировании: выполнение обязательных условий или общий балл?"
+    },
+    {
+      "case_id": "C09-incomplete-run",
+      "covers": [
+        "неполный запуск"
+      ],
+      "cv_text": "Разработчик. Разрабатывал на Python 3 года. Использовал SQL 1 год.",
+      "vacancies": [
+        {
+          "vacancy_id": "v1",
+          "vacancy_text": "Python обязателен. SQL желателен.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Python",
+              "quote": "Python обязателен.",
+              "mandatory": true,
+              "mandatory_quote": "Python обязателен."
+            },
+            {
+              "id": "r2",
+              "text": "SQL",
+              "quote": "SQL желателен.",
+              "mandatory": false,
+              "mandatory_quote": null
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "full",
+              "cv_quotes": [
+                "Разрабатывал на Python 3 года."
+              ],
+              "rationale": "Опыт Python указан.",
+              "question": null
+            },
+            {
+              "requirement_id": "r2",
+              "status": "full",
+              "cv_quotes": [
+                "Использовал SQL 1 год."
+              ],
+              "rationale": "Опыт SQL указан.",
+              "question": null
+            }
+          ],
+          "expected_mandatory_gate": "confirmed",
+          "note": "Обработана."
+        },
+        {
+          "vacancy_id": "v2",
+          "vacancy_text": "Java обязателен.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Java",
+              "quote": "Java обязателен.",
+              "mandatory": true,
+              "mandatory_quote": "Java обязателен."
+            }
+          ],
+          "expected_rows": [],
+          "expected_mandatory_gate": "not_evaluated",
+          "note": "Синтетический сбой модели на этой вакансии: строк оценки нет."
+        },
+        {
+          "vacancy_id": "v3",
+          "vacancy_text": "Go обязателен.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Go",
+              "quote": "Go обязателен.",
+              "mandatory": true,
+              "mandatory_quote": "Go обязателен."
+            }
+          ],
+          "expected_rows": [],
+          "expected_mandatory_gate": "not_evaluated",
+          "note": "Не обработана: после сбоя вызовы прекращаются."
+        }
+      ],
+      "decision_status": "draft",
+      "expected_run": {
+        "recommendation": "incomplete",
+        "failed": [
+          "v2"
+        ],
+        "unprocessed": [
+          "v2",
+          "v3"
+        ],
+        "report_must_name": [
+          "v2",
+          "v3"
+        ],
+        "must_not": "Отчёт с одной вакансией нельзя принять за окончательный вывод."
+      },
+      "trap": "report.md показывает только v1 и код incomplete без перечня пропущенных.",
+      "open_question": null
+    },
+    {
+      "case_id": "C10-positive-control",
+      "covers": [
+        "корректный положительный пример"
+      ],
+      "cv_text": "Backend-разработчик. Разрабатывал на Python 3 года. Использовал SQL 2 года в отчётности.",
+      "vacancies": [
+        {
+          "vacancy_id": "v1",
+          "vacancy_text": "Обязательно: Python от 2 лет. Желательно: SQL.",
+          "expected_requirements": [
+            {
+              "id": "r1",
+              "text": "Python от 2 лет",
+              "quote": "Python от 2 лет",
+              "mandatory": true,
+              "mandatory_quote": "Обязательно:"
+            },
+            {
+              "id": "r2",
+              "text": "SQL",
+              "quote": "SQL",
+              "mandatory": false,
+              "mandatory_quote": null
+            }
+          ],
+          "expected_rows": [
+            {
+              "requirement_id": "r1",
+              "status": "full",
+              "cv_quotes": [
+                "Разрабатывал на Python 3 года."
+              ],
+              "rationale": "3 года ≥ 2 лет.",
+              "question": null
+            },
+            {
+              "requirement_id": "r2",
+              "status": "full",
+              "cv_quotes": [
+                "Использовал SQL 2 года в отчётности."
+              ],
+              "rationale": "Опыт SQL указан.",
+              "question": null
+            }
+          ],
+          "expected_mandatory_gate": "confirmed",
+          "note": "Проверки не должны отклонять корректный случай."
+        }
+      ],
+      "decision_status": "draft",
+      "trap": "Слишком строгая проверка отклоняет любой документ.",
+      "open_question": null
+    }
+  ]
+}
