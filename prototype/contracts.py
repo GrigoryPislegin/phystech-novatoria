@@ -37,6 +37,34 @@ class Requirements(StrictModel):
                     raise ValueError('unbound_mandatory_quote')
 
 
+Factor = Literal['stack', 'relevant_experience', 'domain', 'conditions', 'other']
+
+
+class RequirementFactor(StrictModel):
+    requirement_id: str = Field(min_length=1)
+    factor: Factor
+
+
+class RequirementFactors(StrictModel):
+    """Model proposal: which expert factor a requirement belongs to.
+
+    Grouping for display and explanation only. Under policy draft-2026-11-13-v2 the weight
+    never depends on the factor, so a wrong category cannot change the score.
+    A requirement without an entry is 'other'; without this DTO every requirement is 'other'.
+    """
+    items: list[RequirementFactor] = Field(max_length=80)
+
+    def validate_requirements(self, requirements):
+        ids = [x.requirement_id for x in self.items]
+        if len(ids) != len(set(ids)):
+            raise ValueError('duplicate_ids')
+        if not set(ids) <= {r.id for r in requirements.items}:
+            raise ValueError('unknown_requirement_id')
+
+    def factor_of(self, requirement_id) -> Factor:
+        return next((x.factor for x in self.items if x.requirement_id == requirement_id), 'other')
+
+
 class Fact(StrictModel):
     id: str = Field(min_length=1)
     text: str = Field(min_length=1)

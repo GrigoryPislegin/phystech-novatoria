@@ -1,0 +1,122 @@
+{
+  "schema_version": "egor-e5-fixtures-0.1",
+  "policy_version": "draft-2026-11-13-v2",
+  "profile_schema_version": "candidate-profile-0.1",
+  "note": "Синтетические тексты, не реальные резюме. Профиль, условия, факторы и оценки написаны вручную, это не ответ модели. Ожидания — черновик команды, не подтверждение эксперта.",
+  "fixtures": [
+    {
+      "fixture_id": "P1",
+      "title": "Даты есть, условия с обеих сторон",
+      "decision_status": "draft",
+      "cv_text": "Backend-разработчик, 5 лет коммерческой разработки.\nНавыки: Python, Django, PostgreSQL.\n2019–2021 — разработчик, интернет-магазин.\n2021 — по настоящее время — ведущий разработчик, сервис онлайн-обучения.\nСократил время ответа API с 800 до 200 мс.\nФормат работы: удалённо.\nОжидания по доходу: от 250 000 рублей в месяц.",
+      "vacancy_id": "job-p1",
+      "vacancy_text": "Python-разработчик в команду образовательной платформы.\nОбязательно: Python от 3 лет.\nЖелательно: Django.\nФормат работы: удалённо.\nЗарплата: до 300 000 рублей в месяц.",
+      "facts": {"items": [
+        {"id": "f1", "text": "Backend-разработчик, 5 лет", "quote": "Backend-разработчик, 5 лет коммерческой разработки."},
+        {"id": "f2", "text": "Стек: Python, Django, PostgreSQL", "quote": "Навыки: Python, Django, PostgreSQL."},
+        {"id": "f3", "text": "Разработчик в интернет-магазине, 2019–2021", "quote": "2019–2021 — разработчик, интернет-магазин."},
+        {"id": "f4", "text": "Ведущий разработчик, онлайн-обучение, с 2021", "quote": "2021 — по настоящее время — ведущий разработчик, сервис онлайн-обучения."},
+        {"id": "f5", "text": "Ускорил API", "quote": "Сократил время ответа API с 800 до 200 мс."},
+        {"id": "f6", "text": "Удалённая работа", "quote": "Формат работы: удалённо."},
+        {"id": "f7", "text": "Доход от 250 000 в месяц", "quote": "Ожидания по доходу: от 250 000 рублей в месяц."}
+      ]},
+      "requirements": {"items": [
+        {"id": "r1", "text": "Python от 3 лет", "quote": "Python от 3 лет", "mandatory_quote": "Обязательно: Python от 3 лет."},
+        {"id": "r2", "text": "Django", "quote": "Django", "mandatory_quote": null},
+        {"id": "r3", "text": "Образовательная платформа", "quote": "образовательной платформы", "mandatory_quote": null}
+      ]},
+      "factors": {"items": [
+        {"requirement_id": "r1", "factor": "stack"},
+        {"requirement_id": "r2", "factor": "stack"},
+        {"requirement_id": "r3", "factor": "domain"}
+      ]},
+      "profile": {
+        "summary": [
+          {"text": "Backend-разработчик, 5 лет коммерческой разработки", "sources": [{"fact_id": "f1", "quote": "Backend-разработчик, 5 лет коммерческой разработки"}]}
+        ],
+        "stack": [
+          {"text": "Python", "sources": [{"fact_id": "f2", "quote": "Python"}]},
+          {"text": "Django", "sources": [{"fact_id": "f2", "quote": "Django"}]},
+          {"text": "PostgreSQL", "sources": [{"fact_id": "f2", "quote": "PostgreSQL"}]}
+        ],
+        "last_position": {
+          "role": {"text": "ведущий разработчик", "sources": [{"fact_id": "f4", "quote": "ведущий разработчик"}]},
+          "domain": {"text": "сервис онлайн-обучения", "sources": [{"fact_id": "f4", "quote": "сервис онлайн-обучения"}]},
+          "period": {"text": "2021 — по настоящее время", "sources": [{"fact_id": "f4", "quote": "2021 — по настоящее время"}]}
+        },
+        "achievements": [
+          {"action": {"text": "Сократил время ответа API", "sources": [{"fact_id": "f5", "quote": "Сократил время ответа API"}]},
+           "result": {"text": "с 800 до 200 мс", "sources": [{"fact_id": "f5", "quote": "с 800 до 200 мс"}]}}
+        ],
+        "missing": []
+      },
+      "conditions": {"items": [
+        {"kind": "work_mode", "state": "compatible", "cv": {"fact_id": "f6", "quote": "Формат работы: удалённо."}, "vacancy_quote": "Формат работы: удалённо.", "note": "Оба документа указывают удалённый формат."},
+        {"kind": "salary", "state": "compatible", "cv": {"fact_id": "f7", "quote": "от 250 000 рублей в месяц"}, "vacancy_quote": "до 300 000 рублей в месяц", "note": "Ожидание кандидата ниже верхней границы вакансии."},
+        {"kind": "location", "state": "unknown", "cv": null, "vacancy_quote": null, "note": "Город не указан ни в одном документе."}
+      ]},
+      "expected": {
+        "profile_state": "structure_ok",
+        "conditions": {"work_mode": "structure_ok", "salary": "needs_review", "location": "structure_ok"},
+        "conflicts": [],
+        "evaluation": {
+          "r1": {"allowed": ["partial", "full"], "forbidden": ["fail", "unknown"], "rationale": "Python есть в навыках, 5 лет backend-разработки; сколько из них на Python, не сказано. full допустим только с вопросом о стаже Python."},
+          "r2": {"allowed": ["full"], "forbidden": ["fail", "unknown"], "rationale": "Django прямо указан в навыках."},
+          "r3": {"allowed": ["full", "partial"], "forbidden": ["fail"], "rationale": "Последнее место — сервис онлайн-обучения; совпадение сферы — вывод, а не цитата."}
+        },
+        "forbidden": ["Добавить работодателя в профиль", "Считать зарплату совместимой без проверки HR"]
+      }
+    },
+    {
+      "fixture_id": "P2",
+      "title": "Дат нет, отрицание опыта, конфликт города",
+      "decision_status": "draft",
+      "cv_text": "Аналитик данных.\nНе работал с Python, изучал его на курсах.\nExcel, SQL.\nРаботал аналитиком в банке.\nПодготовил отчётность для отдела продаж.\nГотов работать в офисе в Казани.",
+      "vacancy_id": "job-p2",
+      "vacancy_text": "Python-разработчик.\nОбязательно: Python от 2 лет.\nФормат работы: офис в Москве.",
+      "facts": {"items": [
+        {"id": "f1", "text": "Аналитик данных", "quote": "Аналитик данных."},
+        {"id": "f2", "text": "Нет опыта Python, только курсы", "quote": "Не работал с Python, изучал его на курсах."},
+        {"id": "f3", "text": "Excel, SQL", "quote": "Excel, SQL."},
+        {"id": "f4", "text": "Аналитик в банке", "quote": "Работал аналитиком в банке."},
+        {"id": "f5", "text": "Отчётность для продаж", "quote": "Подготовил отчётность для отдела продаж."},
+        {"id": "f6", "text": "Офис в Казани", "quote": "Готов работать в офисе в Казани."}
+      ]},
+      "requirements": {"items": [
+        {"id": "r1", "text": "Python от 2 лет", "quote": "Python от 2 лет", "mandatory_quote": "Обязательно: Python от 2 лет."}
+      ]},
+      "factors": {"items": [
+        {"requirement_id": "r1", "factor": "relevant_experience"}
+      ]},
+      "profile": {
+        "summary": [
+          {"text": "Аналитик данных", "sources": [{"fact_id": "f1", "quote": "Аналитик данных"}]}
+        ],
+        "stack": [
+          {"text": "Excel", "sources": [{"fact_id": "f3", "quote": "Excel"}]},
+          {"text": "SQL", "sources": [{"fact_id": "f3", "quote": "SQL"}]}
+        ],
+        "last_position": null,
+        "achievements": [
+          {"action": {"text": "Подготовил отчётность для отдела продаж", "sources": [{"fact_id": "f5", "quote": "Подготовил отчётность для отдела продаж"}]},
+           "result": null}
+        ],
+        "missing": ["last_position"]
+      },
+      "conditions": {"items": [
+        {"kind": "work_mode", "state": "compatible", "cv": {"fact_id": "f6", "quote": "в офисе"}, "vacancy_quote": "Формат работы: офис в Москве.", "note": "Оба документа предполагают офис."},
+        {"kind": "location", "state": "conflict", "cv": {"fact_id": "f6", "quote": "в Казани"}, "vacancy_quote": "Формат работы: офис в Москве.", "note": "Кандидат указал Казань, вакансия — Москву."},
+        {"kind": "relocation", "state": "unknown", "cv": null, "vacancy_quote": null, "note": "О переезде ничего не сказано."}
+      ]},
+      "expected": {
+        "profile_state": "structure_ok",
+        "conditions": {"work_mode": "structure_ok", "location": "needs_review", "relocation": "structure_ok"},
+        "conflicts": ["location"],
+        "evaluation": {
+          "r1": {"allowed": ["fail"], "forbidden": ["full", "partial", "unknown"], "rationale": "Резюме прямо отрицает опыт Python; курсы не дают двух лет опыта."}
+        },
+        "forbidden": ["Python в стеке профиля", "Последнее место без дат", "Отказ из-за конфликта города без решения HR"]
+      }
+    }
+  ]
+}
