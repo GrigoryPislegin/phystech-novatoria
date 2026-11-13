@@ -15,7 +15,7 @@ from .contracts import Facts, Requirements, Evaluation, validate_pair
 from .scoring import score, rank, POLICY_VERSION
 from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
 from .candidate_profile import check_profile, check_conditions
-from .ranking_explanation import compare
+from .ranking_explanation import compare, explain_leader
 from .review_queue import build_review_queue
 from .review_policy import assess_handoff
 from .evidence import Source, check_pair
@@ -73,6 +73,8 @@ def refresh_derived(report, decisions=()):
     ranked = report['ranking']['jobs']
     report['comparisons'] = [compare(report, ranked[0]['job_id'], job['job_id']).model_dump()
                              for job in ranked[1:]]
+    leader = explain_leader(report)
+    report['leader'] = leader.model_dump() if leader is not None else None
     report['review_queue'] = build_review_queue(report).model_dump()
     report['handoff'] = [assess_handoff(report, list(decisions), job['job_id']).model_dump()
                          for job in ranked]
@@ -217,7 +219,9 @@ def _write_report_files(report, out):
              'Требования не подтверждены человеком; полнота обработки не означает проверенный итог. Пакет менеджеру — черновик.',
              '', 'Порядок вакансий: сначала без выявленного нарушения обязательных требований, затем по убыванию L.',
              'При одинаковом L в одной группе по нарушению обязательных требований вакансии делят место; id определяет только порядок отображения внутри этой группы.',
-             'Черновые веса: обязательное требование — 3, прочее — 1; full=1, partial=0.5, fail=0; unknown учитывается отдельно.',
+             ('Политика v3: обязательная группа — 75 баллов шкалы, прочая — 25; если группа одна, ей отводятся все 100. Внутри группы единицы требований равны. Это правила команды, не подтверждённые экспертом веса.'
+              if report.get('policy_version') == 'draft-2026-11-14-v3' else
+              'Черновые веса: обязательное требование — 3, прочее — 1; full=1, partial=0.5, fail=0; unknown учитывается отдельно.'),
              'L — баллы по структурно сверенным основаниям / сумма весов; H дополнительно включает вес неизвестных и спорных требований. Смысл цитат проверяет рекрутер. Все значения в процентах.',
              'L/H — границы оценки при неизвестных данных, не вероятность найма.',
              'full — полное соответствие; partial — частичное соответствие; fail — явное несоответствие; unknown — информация не указана.', '']
@@ -245,7 +249,11 @@ def _write_report_files(report, out):
         for row in job['evaluation']['rows']
     ):
         actions['clarify'] = 'Подтверждённого соответствия недостаточно. Проверьте выявленные несоответствия и релевантность доказательств; автоматический отказ недопустим.'
+    if recommendation == 'clarify' and (report.get('leader') or {}).get('state') == 'close':
+        actions['clarify'] = 'Оценки близки: превосходство по проценту не установлено. Сравните вакансии по существу и зафиксируйте решение HR.'
     lines += [actions.get(recommendation, 'Проверьте результат вручную.')]
+    if report.get('leader'):
+        lines += ['Первое место по политике: ' + literal(report['leader']['summary'])]
     if ranked:
         label = 'Первое место' if report['ranking']['complete'] else 'Первое место среди обработанных (предварительно)'
         lines += [label + ': ' + ', '.join(literal(j['job_id']) for j in ranked if j['rank'] == 1)]
@@ -265,7 +273,7 @@ def _write_report_files(report, out):
         reqs = {r['id']:r for r in job['requirements']['items']}
         excluded = job.get('score_review', {}).get('excluded_mandatory_ids', [])
         if excluded:
-            lines.append('Не привязанные к требованию маркеры обязательности не применены при расчёте (вес 1, требуется проверка): ' + ', '.join(literal(i) for i in excluded))
+            lines.append('Не привязанные к требованию маркеры обязательности не применены при расчёте (требование учитывается в прочей группе, требуется проверка): ' + ', '.join(literal(i) for i in excluded))
         for row in job['evaluation']['rows']:
             req = reqs[row['requirement_id']]
             evidence = ' / '.join(facts[f]['quote'] for f in row['fact_ids'])

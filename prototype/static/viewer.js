@@ -332,6 +332,8 @@
     quotes.append(quoteCard('Фрагмент вакансии', [ref.row.requirementQuote]),
       quoteCard('Фрагменты резюме', ref.row.resumeQuotes, 'Цитата в отчёте не указана.'));
     details.append(quotes);
+    if (ref.row.scoreConflict) details.append(element('p', 'source-note support',
+      'Повторы одного требования получили разные оценки. Их общий вклад спорный; исходные статусы сохранены.'));
     if (hypothetical) details.append(element('p', 'source-note support', hypothetical));
     return details;
   }

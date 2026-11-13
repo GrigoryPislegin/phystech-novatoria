@@ -367,7 +367,7 @@
       (item.job_id === null || jobs.has(item.job_id)) && isText(item.explanation)).map(item => ({
         id: item.id, job_id: item.job_id, action: isText(item.action) ? item.action : null, explanation: item.explanation,
         decisive: queue.policy_version === 'draft-2026-11-14-v3' && item.decisive === true &&
-          !!leader?.canChange.some(ref => ref.jobId === item.job_id && ref.row.id === item.requirement_id),
+          !!leader?.canChange.some(ref => ref.jobId === item.job_id && ref.unitIds.includes(item.requirement_id)),
         refs: Array.isArray(item.refs) ? item.refs.filter(ref => isRecord(ref) && isText(ref.quote) &&
           ['cv', 'vacancy'].includes(ref.source) && isOptionalText(ref.sentence) && isOptionalText(ref.heading)) : [],
         contexts: Array.isArray(item.contexts) ? item.contexts.filter(isText) : []
@@ -395,7 +395,8 @@
         !Array.isArray(ref.cv_quotes) || row.resumeQuotes.length !== ref.cv_quotes.length ||
         !row.resumeQuotes.every((quote, index) => quote === ref.cv_quotes[index]) ||
         !Number.isFinite(ref.effect) || Math.abs(ref.effect) > 100) return null;
-    return { jobId: job.id, row, effect: ref.effect };
+    return { jobId: job.id, row, effect: ref.effect,
+      unitIds: job.units.find(unit => unit.includes(row.id)) || [row.id] };
   }
 
   function readComparisons(input, jobs, policy) {
@@ -423,8 +424,8 @@
         jobs.every(job => job.score.policyVersion === policy);
       const close = v3 && item.close === true && item.reason === 'lower_bound' && outcome !== 'tie' &&
         a.score.lower > 0 && b.score.lower > 0 && a.score.resolution !== null && b.score.resolution !== null &&
-        Number.isFinite(item.margin) && item.margin > 0 &&
-        item.margin < Math.max(a.score.resolution, b.score.resolution) &&
+        Number.isFinite(item.margin) && item.margin >= 0 &&
+        item.margin <= Math.max(a.score.resolution, b.score.resolution) + 0.0001 &&
         Math.abs(item.margin - Math.abs(a.score.lower - b.score.lower)) < 0.00011;
       const caveats = Array.isArray(item.caveats) ? item.caveats.filter(value =>
         ['different_requirement_lists', 'incomplete_run', 'evidence_not_applied'].includes(value) ||
@@ -450,7 +451,7 @@
     if (['stable', 'tie'].includes(input.state) &&
         ((ranking.complete && ranking.recommendation !== 'review_top') || top.some(job =>
           job.score.mandatory === 'clarify' || job.score.lower === 0 || job.excluded.length ||
-          job.disputed.length || job.rows.some(row => row.evidence?.state === 'needs_review')))) return null;
+          job.disputed.length || job.conflicts.length || job.rows.some(row => row.evidence?.state === 'needs_review')))) return null;
     const refs = values => Array.isArray(values) && values.length <= 3
       ? values.map(ref => factorReference(ref, top)) : null;
     const factors = refs(input.factors);
@@ -459,7 +460,7 @@
       ? input.can_change.map(change => {
         const ref = factorReference(change?.row, jobs);
         const matchesKind = ref && ({unknown:ref.row.status === 'unknown', partial:ref.row.status === 'partial',
-          disputed:ref.row.evidence?.state === 'needs_review', marker:ref.row.mandatoryExcluded})[change.kind] === true;
+          disputed:ref.row.evidence?.state === 'needs_review' || ref.row.scoreConflict, marker:ref.row.mandatoryExcluded})[change.kind] === true;
         return matchesKind &&
           change.role === (top.some(job => job.id === ref.jobId) ? 'leader' : 'challenger')
           ? { ...ref, kind: change.kind, role: change.role } : null;
@@ -471,7 +472,7 @@
       values === null || values.some(value => value === null))) return null;
     if (unassessed.some(job => job.rank === 1 || job.score.lower !== 0) ||
         [...challengers, ...closeTo].some(job => job.rank === 1 || job.score.lower <= 0) ||
-        factors.some(ref => ['unknown', 'fail'].includes(ref.row.status) || ref.row.evidence?.state === 'needs_review') ||
+        factors.some(ref => ['unknown', 'fail'].includes(ref.row.status) || (ref.row.evidence?.state === 'needs_review' || ref.row.scoreConflict)) ||
         (input.state === 'stable' && (canChange.length || closeTo.length || challengers.length))) return null;
     return {state:input.state, jobs:top, factors, limits, canChange, closeTo, challengers, unassessed};
   }
@@ -520,10 +521,22 @@
       const disputed = job.score?.disputed_ids ?? [];
       requireShape(Array.isArray(disputed) && new Set(disputed).size === disputed.length &&
         disputed.every(id => rows.some(row => row.id === id)));
+      const conflicts = job.score?.conflict_ids ?? [];
+      requireShape(Array.isArray(conflicts) && new Set(conflicts).size === conflicts.length &&
+        conflicts.every(id => rows.some(row => row.id === id)));
+      for (const row of rows) row.scoreConflict = conflicts.includes(row.id);
+      // Unit membership is only a display reference; it never recalculates a score.
+      const sourceUnits = job.score?.units;
+      let units = [];
+      if (Array.isArray(sourceUnits) && sourceUnits.length <= rows.length && sourceUnits.every(unit =>
+          Array.isArray(unit?.ids) && unit.ids.length > 0 && unit.ids.every(id => rows.some(row => row.id === id)))) {
+        const ids = sourceUnits.flatMap(unit => unit.ids);
+        if (ids.length === rows.length && new Set(ids).size === ids.length) units = sourceUnits.map(unit => unit.ids.slice());
+      }
       const sourceDigest = digest(job.safe_source_sha256);
       return {
         id: job.job_id, title: vacancyTitle(job.job_id, index), rank: job.rank,
-        score: scoreFrom(job.score), rows, excluded, disputed,
+        score: scoreFrom(job.score), rows, excluded, disputed, conflicts, units,
         requirementsReview: requirementReviewFrom(job),
         sourceDigest, policyDigest: digest(job.score.policy_sha256),
         conditions: conditionsFrom(job.conditions, job.job_id, resumeDigest, sourceDigest, factQuotes)

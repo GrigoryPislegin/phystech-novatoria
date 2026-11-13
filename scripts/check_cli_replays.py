@@ -31,10 +31,13 @@ def check(with_ui=True):
             for job in jobs:
                 statuses.update(row['status'] for row in job['evaluation']['rows'])
                 assert 'comparisons' in report and 'handoff' in report, 'derived_report_artifacts'
+            if report.get('policy_version') == 'draft-2026-11-14-v3':
+                assert report['leader'] and report['leader']['state'] == report['ranking']['leader']['state'], 'leader_explanation_connected'
             if with_ui:
                 subprocess.run(['node', '-e',
                     "const fs=require('fs'); const ui=require('./prototype/static/report.js'); "
-                    "ui.parseReport(fs.readFileSync(process.argv[1],'utf8'));",
+                    "const raw=fs.readFileSync(process.argv[1],'utf8'); const parsed=ui.parseReport(raw); "
+                    "if(JSON.parse(raw).leader && !parsed.leader) throw new Error('leader_projection_lost');",
                     str(path)], cwd=ROOT, check=True, capture_output=True)
             summaries.append({'scenario': scenario, 'jobs': len(jobs), 'recommendation': recommendation})
     assert statuses == {'full', 'partial', 'fail', 'unknown'}, 'four_statuses_across_replays'

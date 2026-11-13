@@ -83,6 +83,39 @@ class RunStoreTests(unittest.TestCase):
         self.store = RunStore(self.root)
         self.assertEqual(self.store.report(rid)['handoff'][0]['state'], 'reviewed_for_handoff')
 
+    def test_v2_history_remains_reviewed_and_its_decisions_do_not_approve_v3(self):
+        from prototype.scoring import score, POLICY_V2, POLICY_VERSION
+        from prototype.review_policy import report_sha256, assess_handoff
+        with patch('prototype.pipeline.POLICY_VERSION', POLICY_V2), patch(
+            'prototype.pipeline.score', side_effect=lambda *args: score(*args, policy=POLICY_V2)
+        ):
+            rid, model = self.complete(key='legacy-v2')
+        for index, action in enumerate(['confirm_requirements', 'mark_for_handoff']):
+            before = self.store.report(rid)
+            self.store.review(rid, {'expected_revision':before['revision'], 'job_id':'job-001',
+                'action':action, 'item_id':None, 'idempotency_key':f'legacy-review-{index}'})
+        before = self.store.report(rid)
+        self.assertIsNone(before['leader'])
+        self.assertEqual(before['handoff'][0]['state'], 'reviewed_for_handoff')
+        self.store.close()
+        self.store = RunStore(self.root)
+        reopened = self.store.report(rid)
+        self.assertEqual(reopened['policy_version'], POLICY_V2)
+        self.assertEqual(report_sha256(reopened), report_sha256(before))
+        self.assertEqual(reopened['ranking'], before['ranking'])
+        self.assertEqual(reopened['review_history'], before['review_history'])
+        self.assertEqual(reopened['handoff'][0]['state'], 'reviewed_for_handoff')
+        self.assertIsNone(reopened['leader'])
+        self.assertEqual(model.calls, 7)
+        current_id, _ = self.complete(key='current-v3')
+        current = self.store.report(current_id)
+        self.assertEqual(current['policy_version'], POLICY_VERSION)
+        self.assertIsNotNone(current['leader'])
+        self.assertNotEqual(current['handoff'][0]['state'], 'reviewed_for_handoff')
+        inherited = assess_handoff(current, before['review_history'], 'job-001')
+        self.assertEqual(inherited.state, 'stale')
+        self.assertIn('stale_policy_version', [reason.code for reason in inherited.reasons])
+
     def test_forged_action_cannot_override_queue_or_change_model_status(self):
         rid, _ = self.complete()
         original = self.store.report(rid)
