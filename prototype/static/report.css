@@ -317,3 +317,10 @@ thead th:nth-child(2) { width: 27%; }
 .button-danger:hover { background: #a51f43; }
 .run-center .error, #review-message.error { color: var(--danger); }
 #review-message:empty { display: none; }
+
+.comparison-section { margin-top: 24px; }
+.comparison-section h3 { font-size: 18px; letter-spacing: -.02em; }
+.comparison-section > .support { margin-top: 6px; }
+.comparison-picker { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 13px; }
+.comparison-picker select { padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: #fff; font: inherit; }
+.comparison-caveats { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.5; }

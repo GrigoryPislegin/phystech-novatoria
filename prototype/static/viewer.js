@@ -161,6 +161,7 @@
     renderConditions(job.conditions);
     renderRows();
     renderReview(job);
+    renderComparison(job);
   }
 
   function quoteCard(title, quotes, emptyText) {
@@ -249,6 +250,82 @@
       }
       list.append(details);
     }
+  }
+
+  const comparisonCaveats = {
+    different_requirement_lists: 'У вакансий разные требования или веса. Нижняя граница рассчитана по требованиям каждой вакансии.',
+    incomplete_run: 'Обработаны не все вакансии.',
+    evidence_not_applied: 'Спорные цитаты отмечены для проверки. При расчёте балла они не учитывались отдельно.'
+  };
+  const swingOutcomes = {
+    reversed: 'порядок может поменяться', tie: 'вакансии могут разделить место', breaks_tie: 'места могут разойтись'
+  };
+
+  function renderComparison(job) {
+    const matches = report.comparisons.filter(item => item.a === job || item.b === job);
+    const section = byId('comparison-section');
+    const picker = byId('comparison-job');
+    section.hidden = report.jobs.length < 2;
+    byId('comparison-picker').hidden = matches.length < 2;
+    picker.replaceChildren(...matches.map((item, index) => {
+      const option = element('option', null, (item.a === job ? item.b : item.a).title);
+      option.value = index;
+      return option;
+    }));
+    renderComparisonDetail(matches[0]);
+  }
+
+  function renderComparisonDetail(item) {
+    const detail = byId('comparison-detail');
+    detail.replaceChildren();
+    if (!item) {
+      setText('comparison-summary', 'В отчёте нет сравнения для этой вакансии.');
+      return;
+    }
+    const { a, b, outcome, reason } = item;
+    const [higher, lower] = outcome === 'b_higher' ? [b, a] : [a, b];
+    const low = job => numberFormat.format(job.score.lower) + '%';
+    let summary = a.title + ' и ' + b.title + ' делят место ' + a.rank + ' · L ' + low(a) + ' и ' + low(b) + '.';
+    if (reason === 'mandatory_violation') {
+      summary = higher.title + ' выше ' + lower.title + ' по правилу обязательных требований. ' +
+        'У ' + lower.title + ' отмечено обязательное несоответствие.';
+    } else if (reason === 'lower_bound') {
+      summary = higher.title + ' выше ' + lower.title + ' по нижней границе L · ' + low(higher) + ' и ' + low(lower) + '.';
+    }
+    setText('comparison-summary', summary);
+
+    for (const ref of item.deciding) detail.append(comparisonFactor(ref));
+    if (item.swings.length) {
+      const finding = element('details', 'source-disclosure');
+      finding.append(element('summary', 'source-heading', 'Что уточнить, чтобы проверить порядок'));
+      const body = element('div', 'source-list source-body');
+      for (const ref of item.swings) {
+        const hypothetical = 'Если оценка станет «' + assessments[ref.assumedStatus][0].toLocaleLowerCase('ru') +
+          '», ' + swingOutcomes[ref.result] + '.';
+        body.append(comparisonFactor(ref, hypothetical));
+      }
+      finding.append(body);
+      detail.append(finding);
+    }
+    if (item.caveats.length) {
+      const notes = element('ul', 'comparison-caveats');
+      for (const caveat of item.caveats) notes.append(element('li', null, comparisonCaveats[caveat]));
+      detail.append(notes);
+    }
+  }
+
+  function comparisonFactor(ref, hypothetical) {
+    const job = report.jobs.find(candidate => candidate.id === ref.jobId);
+    const details = element('details', 'source-disclosure');
+    const title = element('summary', 'source-heading');
+    title.append(element('span', null, job.title + ' · ' + ref.row.label), tag(...assessments[ref.row.status]));
+    details.append(title);
+    const quotes = element('div', 'evidence-grid source-body');
+    quotes.append(quoteCard('Фрагмент вакансии', [ref.row.requirementQuote]),
+      quoteCard('Фрагменты резюме', ref.row.resumeQuotes, 'Цитата в отчёте не указана.'));
+    details.append(quotes);
+    if (hypothetical) details.append(element('p', 'source-note support', hypothetical));
+    return details;
   }
 
   function renderConditions(conditions) {
@@ -520,7 +597,7 @@
       byId('report-workspace').hidden = true;
       byId('welcome').hidden = false;
       for (const container of ['job-list', 'requirement-rows', 'profile-list', 'overview-list',
-        'condition-list', 'review-list', 'review-controls', 'skipped-jobs']) byId(container).replaceChildren();
+        'condition-list', 'comparison-detail', 'comparison-job', 'review-list', 'review-controls', 'skipped-jobs']) byId(container).replaceChildren();
       setFileStatus('Локальный запуск удалён.');
     }
   };
@@ -540,6 +617,11 @@
     const [file] = input.files;
     input.value = '';
     if (file) loadFile(file);
+  });
+  byId('comparison-job').addEventListener('change', event => {
+    if (!activeJob) return;
+    const matches = report.comparisons.filter(item => item.a === activeJob || item.b === activeJob);
+    renderComparisonDetail(matches[Number(event.target.value)]);
   });
   managerButton.addEventListener('click', downloadManagerReport);
   search.addEventListener('input', renderRows);

@@ -383,6 +383,44 @@
     }));
   }
 
+  function readComparisons(input, jobs) {
+    if (!Array.isArray(input)) return [];
+    const [leader] = jobs;
+    const byId = new Map(jobs.map(job => [job.id, job]));
+
+    function factor(ref, a, b) {
+      if (!isRecord(ref)) return null;
+      const job = ref.job_id === a.id ? a : ref.job_id === b.id ? b : null;
+      const row = job?.rows.find(item => item.id === ref.requirement_id);
+      if (!row || row.status !== ref.status || row.requirementQuote !== ref.requirement_quote ||
+          !Array.isArray(ref.cv_quotes) || row.resumeQuotes.length !== ref.cv_quotes.length ||
+          !row.resumeQuotes.every((quote, index) => quote === ref.cv_quotes[index]) ||
+          !Number.isFinite(ref.effect) || Math.abs(ref.effect) > 100) return null;
+      return { jobId: job.id, row, effect: ref.effect };
+    }
+
+    return input.slice(0, 19).flatMap(item => {
+      if (!isRecord(item)) return [];
+      const a = byId.get(item.job_a);
+      const b = byId.get(item.job_b);
+      if (!a || !b || a === b || (a !== leader && b !== leader)) return [];
+      const outcome = a.rank === b.rank ? 'tie' : a.rank < b.rank ? 'a_higher' : 'b_higher';
+      if (item.outcome !== outcome || !(outcome === 'tie' ? item.reason === 'tie' :
+        ['mandatory_violation', 'lower_bound'].includes(item.reason))) return [];
+      const deciding = Array.isArray(item.deciding) ? item.deciding.slice(0, 3)
+        .map(ref => factor(ref, a, b)).filter(Boolean) : [];
+      const swings = Array.isArray(item.swings) ? item.swings.slice(0, 8).flatMap(swing => {
+        const ref = factor(swing?.row, a, b);
+        return ref && ['full', 'fail'].includes(swing.assumed_status) &&
+          ['reversed', 'tie', 'breaks_tie'].includes(swing.result)
+          ? [{ ...ref, assumedStatus: swing.assumed_status, result: swing.result }] : [];
+      }) : [];
+      const caveats = Array.isArray(item.caveats) ? item.caveats.filter(value =>
+        ['different_requirement_lists', 'incomplete_run', 'evidence_not_applied'].includes(value)) : [];
+      return [{ a, b, outcome, reason: item.reason, deciding, swings, caveats: Array.from(new Set(caveats)) }];
+    });
+  }
+
   function parseReport(source) {
     let report;
     try {
@@ -435,7 +473,7 @@
     });
 
     return {
-      jobs, unprocessed, processed: jobs.length, total,
+      jobs, comparisons: readComparisons(report.comparisons, jobs), unprocessed, processed: jobs.length, total,
       complete: report.ranking.complete, recommendation: report.ranking.recommendation,
       requirementsConfirmed: report.ranking.complete && jobs.every(job => job.requirementsReview === 'confirmed'),
       runId: typeof report.run_id === 'string' && /^[0-9a-f]{32}$/.test(report.run_id) ? report.run_id : null,

@@ -174,3 +174,35 @@ test('bundled demo uses the same validated synthetic input as the manager report
   assert.equal(report.profile.state, 'structure_ok');
   assert.ok(report.jobs[0].conditions.items.some(item => item.state === 'conflict'));
 });
+
+test('comparison uses stored outcomes and references an existing quoted row', () => {
+  const raw = example('success');
+  const [leader, next] = raw.ranking.jobs;
+  const row = raw.presentation.jobs[0].rows[0];
+  const deciding = {
+    job_id: leader.job_id, requirement_id: row.requirement_id, status: row.status,
+    requirement_quote: row.requirement_quote, cv_quotes: row.resume_quotes, effect: 75.5
+  };
+  raw.comparisons = [{
+    job_a: leader.job_id, job_b: next.job_id, outcome: 'a_higher', reason: 'lower_bound',
+    summary: 'Не доверять произвольной сводке <script>attacker</script>',
+    deciding: [deciding, { ...deciding, requirement_quote: 'Подменённая цитата' }],
+    swings: [{ row: deciding, assumed_status: 'full', result: 'tie' }],
+    caveats: ['different_requirement_lists']
+  }];
+  const report = parseReport(JSON.stringify(raw));
+  const [comparison] = report.comparisons;
+  assert.deepEqual([comparison.outcome, comparison.reason, comparison.caveats],
+    ['a_higher', 'lower_bound', ['different_requirement_lists']]);
+  assert.deepEqual(comparison.deciding.map(factor => factor.row), [report.jobs[0].rows[0]]);
+  assert.equal(comparison.swings[0].result, 'tie');
+  assert.doesNotMatch(JSON.stringify(comparison), /<script>|Подменённая/);
+
+  leader.rank = next.rank;
+  raw.presentation.jobs[0].rank = leader.rank;
+  assert.deepEqual(parseReport(JSON.stringify(raw)).comparisons, []);
+  raw.comparisons[0].outcome = 'tie';
+  raw.comparisons[0].reason = 'tie';
+  raw.comparisons[0].deciding = [];
+  assert.equal(parseReport(JSON.stringify(raw)).comparisons[0].outcome, 'tie');
+});
