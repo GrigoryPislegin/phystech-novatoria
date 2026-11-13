@@ -286,7 +286,8 @@ def _leader(jobs: list[dict]) -> dict:
             hits = sorted(((len(r[1]), len(v['applied']), v['applied'], v, r) for v in views
                            for r in [reach(v)] if r[0]), key=lambda h: h[:3])
             now = reach(s)
-            if s['marker_scenarios'] is None or (hits and not now[0]):
+            # Fewest answers first; with equal answers the baseline (no marker to apply) wins.
+            if s['marker_scenarios'] is None or (hits and (not now[0] or hits[0][0] < len(now[1]))):
                 reasons.add('challenger_doubted')
                 applied = hits[0][2] if hits else s['excluded_mandatory_ids']
                 asked, read = (hits[0][4][1], hits[0][4][2]) if hits else ([], [])
