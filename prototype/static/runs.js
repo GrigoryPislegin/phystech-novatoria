@@ -79,7 +79,7 @@
     return context;
   }
 
-  async function openRun(id) {
+  async function openRun(id, revealReport = true) {
     if (deletedRuns.has(id)) return;
     const sequence = viewer.beginLoad();
     message('Читаем отчёт запуска…');
@@ -93,6 +93,11 @@
       if (deletedRuns.has(id) || !viewer.isLatest(sequence)) return;
       viewer.openServerReport(next, reportContext(next));
       message('Открыт отчёт запуска.');
+      if (revealReport) {
+        setRunCenterOpen(false);
+        setInputCenterOpen(false);
+        byId('file-status').focus();
+      }
     } catch (error) {
       if (viewer.isLatest(sequence)) message(error.message, true);
     }
@@ -123,7 +128,7 @@
     } catch (error) {
       if (viewer.getContext() !== context) return;
       if (error.status === 409 && error.code === 'stale_revision') {
-        await openRun(context.id);
+        await openRun(context.id, false);
         if (viewer.getContext()?.id === context.id) {
           message('Версия отчёта изменилась. Проверьте текущую запись и повторите действие.', true, 'review-message');
         }
@@ -169,9 +174,12 @@
       Number.isFinite(created.getTime()) && run.created_at ? dateFormat.format(created) : ''
     ].filter(Boolean).join(' · ');
     const progress = Number.isSafeInteger(run.processed) && Number.isSafeInteger(run.total) && run.total > 0
-      ? ' · Обработано ' + run.processed + ' из ' + run.total : '';
+      ? run.processed + ' из ' + run.total : '';
     const stage = isActive(run) ? known(stages, run.stage, '') : '';
-    status.textContent = known(states, run.state, 'Состояние недоступно') + (stage ? ' · ' + stage : '') + progress;
+    const state = known(states, run.state, 'Состояние недоступно');
+    status.textContent = run.state === 'complete' && progress
+      ? state + ' ' + progress
+      : [state, stage, progress && 'Обработано ' + progress].filter(Boolean).join(' · ');
     content.append(title, status);
 
     const actions = document.createElement('div');
@@ -231,11 +239,20 @@
     }
   }
 
-  function showRunCenter() {
-    if (show.hidden) return;
-    center.hidden = false;
-    show.setAttribute('aria-expanded', 'true');
-    refreshRuns();
+  function setRunCenterOpen(open) {
+    center.hidden = !open;
+    show.setAttribute('aria-expanded', String(open));
+    if (open) {
+      refreshRuns();
+    } else {
+      ++listSequence;
+      clearTimeout(activeTimer);
+    }
+  }
+
+  function setInputCenterOpen(open) {
+    inputCenter.hidden = !open;
+    showInputs.setAttribute('aria-expanded', String(open));
   }
 
   async function startRun() {
@@ -374,7 +391,7 @@
         clearInspection();
         message('Защищённый запуск создан.', false, 'inputs-message');
       }
-      showRunCenter();
+      if (!show.hidden) setRunCenterOpen(true);
     } catch (error) {
       if (inspected === input) message(error.message, true, 'inputs-message');
     } finally {
@@ -384,10 +401,7 @@
     }
   }
 
-  showInputs.addEventListener('click', () => {
-    inputCenter.hidden = !inputCenter.hidden;
-    showInputs.setAttribute('aria-expanded', String(!inputCenter.hidden));
-  });
+  showInputs.addEventListener('click', () => setInputCenterOpen(inputCenter.hidden));
   resumeInput.addEventListener('change', clearInspection);
   vacanciesInput.addEventListener('change', clearInspection);
   inspectInputs.addEventListener('click', sendInspection);
@@ -397,16 +411,7 @@
   byId('dismiss-live').addEventListener('click', () => liveDialog.close());
   byId('submit-live').addEventListener('click', startProtected);
 
-  show.addEventListener('click', () => {
-    center.hidden = !center.hidden;
-    show.setAttribute('aria-expanded', String(!center.hidden));
-    if (center.hidden) {
-      ++listSequence;
-      clearTimeout(activeTimer);
-    } else {
-      refreshRuns();
-    }
-  });
+  show.addEventListener('click', () => setRunCenterOpen(center.hidden));
   reload.addEventListener('click', refreshRuns);
   start.addEventListener('click', startRun);
   byId('dismiss-review').addEventListener('click', () => reviewDialog.close());
