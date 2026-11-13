@@ -2,6 +2,7 @@ import json
 import os
 from decimal import Decimal
 from .privacy import check_data, protect_dependency_logs
+from .errors import BudgetLimit, ModelOutputError
 
 # USD / 1M tokens, official model pages checked 2026-11-12. Conservative reservation, not billing.
 RATES = {'gpt-6-luna': (Decimal('0.10'), Decimal('0.50')),
@@ -35,7 +36,7 @@ class Budget:
     def reserve(self, input_tokens, output_tokens):
         cost = (input_tokens*self.rates[0]+output_tokens*self.rates[1])/1_000_000
         if self.calls >= self.max_calls or self.reserved + cost > self.limit:
-            raise ValueError('budget_or_call_limit')
+            raise BudgetLimit('budget_or_call_limit')
         self.reserved += cost
         self.calls += 1
 
@@ -54,21 +55,37 @@ class Model:
     async def close(self):
         await self.client.close()
 
+    def set_run_control(self, control):
+        self.run_control = control
+
     async def ask(self, schema, task, payload):
         protect_dependency_logs()
         await check_data(self.privacy, payload)
+        if getattr(self, 'run_control', None) is not None:
+            self.run_control.checkpoint()
         text = json.dumps({'task':task, 'data':payload}, ensure_ascii=False)
         schema_text = json.dumps(schema.model_json_schema())
         upper_input = len((SYSTEM + text + schema_text).encode('utf-8')) + 4096
-        self.budget.reserve(upper_input, 8000)
-        response = await self.client.responses.parse(
-            model=self.model, store=False, max_output_tokens=8000,
-            input=[{'role':'system','content':SYSTEM}, {'role':'user','content':text}],
-            text_format=schema)
+        # Capacity is a ceiling, not permission to omit requirements. Truncated
+        # output is model_invalid and never becomes a complete evaluation.
+        if task == 'evaluation':
+            capacity = 512 * len(payload.get('requirements', {}).get('items', []))
+        else:
+            capacity = 1024 + 2 * len(payload.get('text', '').encode('utf-8'))
+        output_tokens = min(16000, max(2048, capacity))
+        self.budget.reserve(upper_input, output_tokens)
+        from pydantic import ValidationError
+        try:
+            response = await self.client.responses.parse(
+                model=self.model, store=False, max_output_tokens=output_tokens,
+                input=[{'role':'system','content':SYSTEM}, {'role':'user','content':text}],
+                text_format=schema)
+        except ValidationError:
+            raise ModelOutputError('model_invalid') from None
         if response.usage:
             self.usage.append({'input_tokens':response.usage.input_tokens,
                                'output_tokens':response.usage.output_tokens})
         if response.status != 'completed' or response.output_parsed is None:
-            raise ValueError('model_refusal_or_incomplete')
+            raise ModelOutputError('model_refusal_or_incomplete')
         await check_data(self.privacy, response.output_parsed.model_dump(mode='json'))
         return response.output_parsed

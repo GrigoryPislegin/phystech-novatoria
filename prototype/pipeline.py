@@ -1,13 +1,57 @@
 import csv
+import asyncio
 import hashlib
 import json
 import os
 import re
+import math
+import shutil
+import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 from .contracts import Facts, Requirements, Evaluation, validate_pair
 from .scoring import score, rank
+from .errors import ModelOutputError, RunStopped, error_code
+from .presentation import build_presentation, display_label, gap_question, EXPLANATIONS
+
+
+class RunControl:
+    """One run's deadline, cancellation and text-free stage events."""
+    def __init__(self, timeout_seconds=300, progress=None):
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0 or timeout_seconds > 1800:
+            raise ValueError('invalid_deadline')
+        self.started = time.monotonic()
+        self.deadline = self.started + timeout_seconds
+        self.progress = progress
+        self.cancelled = False
+        self.events = []
+
+    def cancel(self):
+        self.cancelled = True
+
+    def checkpoint(self):
+        if self.cancelled:
+            raise RunStopped('cancelled')
+        if time.monotonic() >= self.deadline:
+            raise RunStopped('deadline_exceeded')
+
+    def emit(self, stage, job_id=None):
+        event = {'stage':stage, 'job_id':job_id, 'elapsed_ms':round((time.monotonic()-self.started)*1000)}
+        self.events.append(event)
+        if self.progress:
+            self.progress(dict(event))
+
+    async def call(self, operation, stage, job_id=None):
+        self.emit(stage, job_id)
+        self.checkpoint()
+        try:
+            result = await asyncio.wait_for(operation(), timeout=max(0, self.deadline-time.monotonic()))
+        except TimeoutError:
+            raise RunStopped('deadline_exceeded') from None
+        self.checkpoint()
+        return result
 
 
 def literal(value):
@@ -17,34 +61,47 @@ def literal(value):
     return f'{fence} {text} {fence}'
 
 
-async def run_pipeline(resume, jobs, model, privacy):
+async def run_pipeline(resume, jobs, model, privacy, *, control=None):
     if not jobs or len(jobs) > 20 or len({j[0] for j in jobs}) != len(jobs):
         raise ValueError('invalid_job_set')
-    safe_resume = await privacy.redact(resume)
+    control = control or RunControl()
+    if hasattr(model, 'set_run_control'):
+        model.set_run_control(control)
+    safe_resume = await control.call(lambda: privacy.redact(resume), 'privacy')
     # Complete privacy preflight before the very first model call.
-    safe_jobs = [(jid, await privacy.redact(text)) for jid, text in jobs]
+    safe_jobs = [(jid, await control.call(lambda: privacy.redact(text), 'privacy', jid)) for jid, text in jobs]
     results, errors = [], []
     def finish(facts):
-        return {'schema_version':'0.1', 'facts':facts.model_dump(), 'ranking':rank(results, len(jobs)),
-                'errors':errors, 'unprocessed_job_ids':[jid for jid,_ in jobs if jid not in {r['job_id'] for r in results}],
+        missing = [jid for jid,_ in jobs if jid not in {r['job_id'] for r in results}]
+        by_job = {e['job_id']:e['code'] for e in errors}
+        control.emit('analysis_finished')
+        report = {'schema_version':'0.1', 'facts':facts.model_dump(), 'ranking':rank(results, len(jobs)),
+                'errors':errors, 'unprocessed_job_ids':missing,
+                'unprocessed':[{'job_id':jid, 'reason':by_job.get(jid, by_job.get(None, 'stopped_after_error'))} for jid in missing],
+                'events':control.events,
                 'safe_resume_sha256':hashlib.sha256(safe_resume.encode()).hexdigest()}
+        report['verification'] = {'requirements':'not_reviewed',
+                                  'evidence':'quotes_checked_semantics_unverified',
+                                  'final_allowed':False}
+        report['presentation'] = build_presentation(report)
+        return report
     stage = 'facts'
     try:
-        facts = await model.ask(Facts, 'facts', {'text':safe_resume})
+        facts = await control.call(lambda: model.ask(Facts, 'facts', {'text':safe_resume}), stage)
         stage = 'facts_validation'
         facts.validate_source(safe_resume)
     except Exception as exc:
-        errors.append({'job_id':None, 'code':'facts_failed', 'stage':stage, 'type':type(exc).__name__})
+        errors.append({'job_id':None, 'code':error_code(exc, stage), 'stage':stage, 'type':type(exc).__name__})
         return finish(Facts(items=[]))
     for jid, text in safe_jobs:
         stage = 'requirements'
         try:
-            requirements = await model.ask(Requirements, 'requirements', {'text':text})
+            requirements = await control.call(lambda: model.ask(Requirements, 'requirements', {'text':text}), stage, jid)
             stage = 'requirements_validation'
             requirements.validate_source(text)
             stage = 'evaluation'
-            evaluation = await model.ask(Evaluation, 'evaluation', {
-                'requirements':requirements.model_dump(), 'facts':facts.model_dump()})
+            evaluation = await control.call(lambda: model.ask(Evaluation, 'evaluation', {
+                'requirements':requirements.model_dump(), 'facts':facts.model_dump()}), stage, jid)
             stage = 'evaluation_validation'
             validate_pair(requirements, facts, evaluation)
             results.append({'job_id':jid, 'requirements':requirements.model_dump(),
@@ -52,16 +109,46 @@ async def run_pipeline(resume, jobs, model, privacy):
                             'safe_source_sha256':hashlib.sha256(text.encode()).hexdigest()})
         except Exception as exc:
             # Never serialize exception messages: upstream errors may contain text/keys/DSNs.
-            errors.append({'job_id':jid, 'code':stage.split('_')[0]+'_failed', 'stage':stage, 'type':type(exc).__name__})
-            # Stop after a failure: no paid retries or requests after a privacy/budget incident.
-            break
+            code = error_code(exc, stage)
+            errors.append({'job_id':jid, 'code':code, 'stage':stage, 'type':type(exc).__name__})
+            # Only known output-validation failures are recoverable, without retry.
+            if code != 'model_invalid':
+                break
     return finish(facts)
 
 
-def write_report(report, root: Path):
-    root.mkdir(parents=True, exist_ok=True)
-    out = root / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex[:8])
-    out.mkdir(mode=0o700)
+def preflight_output(root: Path):
+    try:
+        root = Path(root)
+        if root.is_symlink():
+            raise OSError('symlink destination')
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with tempfile.TemporaryDirectory(prefix='.probe-', dir=root) as probe:
+            (Path(probe) / 'write-check').write_bytes(b'probe')
+    except OSError:
+        raise ValueError('output_unavailable') from None
+
+
+def write_report(report, root: Path, *, manifest=None):
+    preflight_output(root)
+    root = Path(root)
+    staging = Path(tempfile.mkdtemp(prefix='.staging-', dir=root))
+    final = root / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex)
+    try:
+        _write_report_files(report, staging)
+        if manifest is not None:
+            path = staging / 'inputs.manifest.json'
+            with path.open('x', encoding='utf-8') as handle:
+                os.chmod(path, 0o600)
+                json.dump(manifest, handle, ensure_ascii=False, indent=2)
+        staging.rename(final)
+        return final
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+
+
+def _write_report_files(report, out):
     def write(name, text):
         with open(out/name, 'x', encoding='utf-8') as handle:
             os.chmod(out/name, 0o600)
@@ -74,6 +161,7 @@ def write_report(report, root: Path):
              'Рейтинг полный.' if report['ranking']['complete'] else 'Рейтинг неполный — порядок относится только к обработанным вакансиям.',
              f"Рекомендация: {literal(report['ranking']['recommendation'])}",
              'Все рекомендации требуют проверки рекрутером. review_none_fit — гипотеза модели, не окончательный отказ.',
+             'Требования не подтверждены человеком; полнота обработки не означает проверенный итог. Пакет менеджеру — черновик.',
              '', 'Порядок вакансий: сначала без выявленного нарушения обязательных требований, затем по убыванию L.',
              'При одинаковом L в одной группе по нарушению обязательных требований вакансии делят место; id определяет только порядок отображения внутри этой группы.',
              'Черновые веса: обязательное требование — 3, прочее — 1; full=1, partial=0.5, fail=0; unknown учитывается отдельно.',
@@ -116,17 +204,19 @@ def write_report(report, root: Path):
         for row in job['evaluation']['rows']:
             req = reqs[row['requirement_id']]
             evidence = ' / '.join(facts[f]['quote'] for f in row['fact_ids'])
-            records.append([job['job_id'],req['id'],req['text'],req['quote'],req['mandatory_quote'] or '',
-                            row['status'],evidence,row['comment'],row['question'] or ''])
-            lines += [f"- {literal(req['text'])} — **{row['status']}**. {literal(row['comment'])}",
+            question = gap_question(row['status'], req['quote'])
+            records.append([job['job_id'],req['id'],display_label(req),req['quote'],req['mandatory_quote'] or '',
+                            row['status'],evidence,EXPLANATIONS[row['status']],question or '', 'model_proposed_not_verified'])
+            lines += [f"- {literal(display_label(req))} — **{row['status']}**.",
+                      f"  Непроверенное объяснение модели: {literal(row['comment'])}",
                       f"  Требование: {literal(req['quote'])}", f"  Резюме: {literal(evidence or 'не указано')}"]
             if req['mandatory_quote']:
                 lines.append(f"  Обязательность предложена моделью — подтвердите: {literal(req['mandatory_quote'])}")
-            if row['question']: lines.append(f"  Вопрос: {literal(row['question'])}")
+            if question: lines.append(f"  Вопрос для уточнения: {literal(question)}")
         lines.append('')
         for status, label in [('full', 'Сильные стороны'), ('partial', 'Частичное соответствие'),
                               ('fail', 'Выявленные несоответствия'), ('unknown', 'Не хватает сведений')]:
-            names = [literal(reqs[row['requirement_id']]['text']) for row in job['evaluation']['rows'] if row['status'] == status]
+            names = [literal(display_label(reqs[row['requirement_id']])) for row in job['evaluation']['rows'] if row['status'] == status]
             lines.append(label + ': ' + (', '.join(names) if names else 'не выявлены по оценке'))
         lines += ['Риск интерпретации: статусы предложены моделью; дословность цитат не доказывает правильность вывода.',
                   'Действие рекрутера: проверить обоснования и уточнить открытые вопросы; решение остаётся за человеком.', '']
@@ -135,7 +225,7 @@ def write_report(report, root: Path):
     with open(out/'requirements.csv', 'x', encoding='utf-8-sig', newline='') as handle:
         os.chmod(out/'requirements.csv', 0o600)
         writer = csv.writer(handle)
-        writer.writerow(['job_id','requirement_id','requirement','job_quote','mandatory_quote','status','resume_evidence','comment','question'])
+        writer.writerow(['job_id','requirement_id','requirement','job_quote','mandatory_quote','status','resume_evidence','comment','question','verification'])
         # Avoid formula execution when opening untrusted model/document text in a spreadsheet.
         writer.writerows([["'"+str(v) if str(v).lstrip().startswith(('=','+','-','@')) else v for v in row] for row in records])
     return out

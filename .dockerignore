@@ -12,6 +12,9 @@ prototype/**
 !prototype/pipeline.py
 !prototype/privacy.py
 !prototype/scoring.py
+!prototype/application.py
+!prototype/errors.py
+!prototype/presentation.py
 !prototype/requirements.lock.txt
 !prototype/tests/
 prototype/tests/**

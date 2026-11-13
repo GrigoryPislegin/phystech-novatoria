@@ -32,6 +32,14 @@ Codex фиксирует расширенную версию отчёта и п�
 
 ## Application service — ответственность Codex
 
+**Реализованный минимум 13 ноября:** `application.load_documents(resume_path, jobs_root, *, reader, control)` возвращает текст, `(job_id, text)` и локальный manifest. `await application.analyze(resume, jobs, *, model_factory, privacy, out, mode, control=None, manifest=None, metadata=None)` используется синтетическими режимами; `await application.analyze_protected(resume, jobs, *, privacy_context, model_factory, out, control=None, manifest=None)` сам управляет контекстом защиты и публикует только после его успешного закрытия. В protected-варианте `model_factory(privacy)` создаёт модель; в обычном `model_factory()` не принимает аргументов. Результат — `RunResult(report, path)`, `exit_code` 0/2.
+
+`RunControl(timeout_seconds=300, progress=callback)` и `.cancel()` управляют одним запуском. Callback получает только stage/job_id/elapsed_ms; отмена проверяется также после исходящего scan перед SDK. Прогресс не обещает процент/остаток времени. Дедлайн ограничивает асинхронные операции и проверяется между синхронными; один синхронный parser/NER warmup не прерывается принудительно. На закрытие транзакции даётся отдельное окно 30 с; его ошибка запрещает публикацию.
+
+В JSON 0.1 добавлены `verification`, `presentation`, `unprocessed`, `events`. `verification.final_allowed` пока всегда false: E3/E4 ещё не подключены. Для V3/V5 использовать `presentation.jobs[].rows` и `manager_brief`: там цитаты/шаблонные вопросы, без произвольного комментария модели. Статусы явно model_proposed; manager brief всегда draft_requires_review. Сырые `evaluation.comment/question` остаются неподтверждёнными данными для аудита. CSV также содержит столбец verification. Имена файлов только в закрытом локальном `inputs.manifest.json`, не в model payload.
+
+Следующая таблица описывает **пока не реализованные** transport/run-registry операции. `analyze` не является HTTP-сервером или готовыми create/get/delete endpoints; их не выдавать за подключённый UI.
+
 Публичный интерфейс в новом `prototype/application.py`, тонкий транспорт в `prototype/web_app.py`. Ниже договорённость о поведении; точные Python DTO/сигнатуры Codex фиксирует отдельным малым PR до подключения транспорта.
 
 | Операция | Вход / выход | Инвариант |

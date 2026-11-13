@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
 COPY prototype/requirements.lock.txt /app/prototype/requirements.lock.txt
 RUN python -m pip install -r prototype/requirements.lock.txt && python -m pip check
-COPY prototype/__init__.py prototype/__main__.py prototype/contracts.py prototype/demo.py prototype/documents.py prototype/model.py prototype/pipeline.py prototype/privacy.py prototype/scoring.py /app/prototype/
+COPY prototype/__init__.py prototype/__main__.py prototype/contracts.py prototype/demo.py prototype/documents.py prototype/model.py prototype/pipeline.py prototype/privacy.py prototype/scoring.py prototype/application.py prototype/errors.py prototype/presentation.py /app/prototype/
 COPY prototype/tests/test_core.py /app/prototype/tests/test_core.py
 RUN python -m unittest discover -s prototype/tests -p 'test_core.py' -v \
     && mkdir -p /app/data/private/prototype-runs \

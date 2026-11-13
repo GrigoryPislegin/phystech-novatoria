@@ -20,7 +20,9 @@ def protect_dependency_logs():
     previous = logging.getLogRecordFactory()
     if getattr(previous, '_prototype_private', False):
         return
-    namespaces = ('openai', 'httpx', 'httpcore', 'certum_core', 'sqlalchemy', 'asyncpg', 'psycopg')
+    namespaces = ('openai', 'httpx', 'httpcore', 'httpx2', 'httpcore2', 'certum_core',
+                  'presidio-analyzer', 'presidio_analyzer', 'sqlalchemy', 'asyncpg', 'psycopg',
+                  'pdfminer', 'pdfplumber', 'docx', 'PIL', 'pypdfium2')
 
     def factory(name, level, pathname, lineno, msg, args, exc_info, func=None, sinfo=None, **kwargs):
         if any(name == prefix or name.startswith(prefix + '.') for prefix in namespaces):

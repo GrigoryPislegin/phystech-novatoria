@@ -217,3 +217,27 @@ Read-only проверка core дополнительно установила:
 На базе 8741b0b воспроизведены ложный отказ выданного ref после LF/TAB и утечка синтетического маркера при OPENAI_LOG=debug. Проверка теперь получает декодированные строки/ключи до сериализации и после разбора ответа. Диагностика openai/httpx/httpcore/core/DB очищается до обработчиков журналов, включая traceback.
 
 `.venv/bin/python -m unittest discover -s prototype/tests -q` — 40 PASS. Новые регрессии: LF/TAB/кавычки/backslash в обе стороны, чужие refs во вложенных ключах/значениях, остаточный scan, отдельный процесс с настоящим SDK и локальным MockTransport. Оба `.venv/bin/python -m prototype demo --scenario success|disputed` — exit 0. Сеть/платный API не использованы; это не protected live.
+
+
+### 13 ноября, 18:50 МСК — C1/C4, presentation и runtime после независимого ревью
+
+Код интегратора: application/errors/presentation, preflight всех файлов/лимита 20 и out до модели, стабильные id по тексту и локальный manifest, атомарный комплект с правами 700/600. Явные ошибки output-validation позволяют проверить другие вакансии, fatal/privacy/budget прекращают новые запросы. Deadline/cancel/progress и отдельные reserved/usage estimates. Лимиты ответа 2048–16000 не считаются доказанной оптимизацией latency/полноты. presentation содержит цитаты/шаблонные вопросы; сырой комментарий модели не является проверенным brief. E3/E4 пока не интегрированы; final_allowed всегда false.
+
+Независимый Sol нашёл пять существенных краёв. PDF warning с синтетическим операндом действительно попадал в stderr; защита журналов теперь включается до парсинга и включает pdfminer/pdfplumber/docx. Отмена внутри scan могла начать запрос — checkpoint добавлен перед reserve/SDK. Async-вход в privacy теперь ограничен дедлайном; синхронный parser/NER warmup не объявлен принудительно прерываемым. Публикация перенесена после успешного выхода/коммита privacy context, cleanup ограничен отдельными 30 с. Все четыре воспроизведения сначала падали, затем прошли. Экспериментальный HR-фильтр удалён после настоящих NER-примеров работодателя/подрядчика: исправлять false-positive ценой раскрытия сущностей нельзя.
+
+Дополнительно: metadata не может подменить verification/ranking, регрессия RED→GREEN. setup_agents.py проверяет symlink всех назначений до первой записи; четыре варианта в tempdirs RED→GREEN, текущие настройки владельца не менялись.
+
+Фактические проверки итогового кода:
+
+- `.venv/bin/python -m unittest discover -s prototype/tests -v` — **59 PASS** (Python 3.13).
+- `data/private/certum-sandbox/core/.venv/bin/python -m unittest discover -s prototype/tests -q` — **59 PASS** (Python 3.12.16, SDK 3.29.0).
+- `.venv/bin/python -m unittest discover -s tests -q` — **10 PASS**.
+- `.venv/bin/python scripts/check_repository.py` — PASS: 869 файлов / 693 Python на срезе до этой записи. Это статическая эвристика, не полный security scan.
+- `git diff --check` — PASS.
+- `.venv/bin/python -m prototype demo --scenario success` и `--scenario disputed` — exit 0; локальные каталоги `20261113T154949Z-7b35ff25de024e85bfab14a841b5f0c6` и `20261113T154949Z-b4126a69bd30485b827af2e02b6c37d4`.
+- `docker build -t recruiter-cli:integration .` — PASS. Итоговый image manifest list `sha256:c2c23718b793ebae50524b6a9915bb5d1bfb92b4efb5821f07775ee5173fe141`; standalone Linux arm64, не protected Docker.
+- `docker run --rm --network none recruiter-cli:integration demo --scenario success` и `--scenario disputed` — оба exit 0. В /app/prototype 12 runtime-модулей, в /app нет .env.
+- Настоящий core smoke — PASS: редактирование/повторный scan/запрет чужих refs; network OpenAI calls=0. Missing models — exit 2 до SDK.
+- Полный настоящий core + SDK + локальный MockTransport — **exit 2**, один mock-запрос, facts/privacy_residual_findings. OpenAI network calls=0. Причина: NER трактует SQL в профессиональном факте как company. Защита не обойдена.
+
+[Состав окружения, wheel и точные блокеры C3](23-protected-runtime-status.md). Нового платного live не было. Кеш/параллелизм, интеграция незаконченного handoff Егора, HTTP run registry и protected Docker/чистая установка остаются неподтверждёнными. Транскрипт консультации не получен. Чужие dirty MULTIAGENT_OPTIONS.md/READY.md/scripts/doctor.py/tmp не включаются в поставку.

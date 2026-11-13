@@ -75,7 +75,8 @@ async def main():
     try:
         raise ValueError('DSN_CANARY_42')
     except ValueError:
-        logging.getLogger('certum_core.synthetic_late_logger').exception('CORE_CANARY_93')
+        for name in ('certum_core.synthetic_late_logger', 'presidio-analyzer.synthetic', 'httpx2.synthetic'):
+            logging.getLogger(name).exception('CORE_CANARY_93')
     print('completed_synthetic_transport')
 asyncio.run(main())
 '''
