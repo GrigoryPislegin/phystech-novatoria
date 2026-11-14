@@ -166,7 +166,7 @@ class ProfessionalContextTests(unittest.TestCase):
             privacy = LocalPrivacy(self.detector(term, 'ORG'))
             self.assertEqual(asyncio.run(privacy.redact(text)), text)
             privacy.close()
-        for term in ('Nuxt', 'SQL Partners'):
+        for term in ('ZqxPrivate', 'SQL Partners'):
             privacy = LocalPrivacy(self.detector(term, 'ORG'))
             result = asyncio.run(privacy.redact(f'Основной стек: Vue.js, {term}, TypeScript.'))
             self.assertNotIn(term, REFERENCE.sub('', result))
@@ -240,6 +240,79 @@ class RealProfessionalContextTests(unittest.TestCase):
                 await privacy.finalize_sources([await privacy.redact(source)])
                 with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
                     await privacy.check_prepared('text\n\nJohn Smith')
+            finally:
+                privacy.close()
+        asyncio.run(run())
+
+    def test_public_skill_quotes_do_not_become_english_name_headers_in_json(self):
+        from prototype.privacy import check_data
+        async def run():
+            privacy = LocalPrivacy(self.detector)
+            try:
+                source = ('Адаптивная вёрстка Pixel Perfect по макетам.\n'
+                          'Заявки первой линии техподдержки (Service Desk).\n'
+                          'Навыки | TypeScript  Adaptive Design  Git  Agile/Scrum  Code Review')
+                protected = (await privacy.finalize_sources([await privacy.redact(source)]))[0]
+                self.assertEqual(protected, source)
+                # check_data inserts JSON-field boundaries: a short evidence
+                # fragment must retain its verified professional provenance.
+                await check_data(privacy, {'items':[{'quote':word} for word in
+                    ('Pixel Perfect','Service Desk','Adaptive Design','Code Review')]}, prepared=True)
+                identity = await privacy.redact('ФИО: Code Review')
+                await privacy.finalize_sources([protected, identity])
+                with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+                    await check_data(privacy, {'quote':'Code Review'}, prepared=True)
+            finally:
+                privacy.close()
+        asyncio.run(run())
+
+    def test_technical_words_in_employer_fields_cannot_gain_header_provenance(self):
+        async def run():
+            privacy = LocalPrivacy(self.detector)
+            try:
+                source = 'Основной проект: John Smith, поддержка и разработка.\nКлиенты:\nНавыки | Code Review'
+                await privacy.finalize_sources([await privacy.redact(source)])
+                for value in ('John Smith', 'Code Review'):
+                    with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+                        await privacy.check_prepared(value)
+            finally:
+                privacy.close()
+        asyncio.run(run())
+
+    def test_skills_table_must_not_hide_an_identity_or_employer_field(self):
+        async def run(source, hidden):
+            privacy = LocalPrivacy(self.detector)
+            try:
+                safe = (await privacy.finalize_sources([await privacy.redact(source)]))[0]
+                self.assertNotIn(hidden, safe)
+                with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+                    await privacy.check_prepared(hidden)
+            finally:
+                privacy.close()
+        for source, hidden in [('Навыки | Заказчик | Code Review', 'Code Review'),
+                               ('Навыки | Имя руководителя  Adaptive Design', 'Adaptive Design'),
+                               ('Навыки | Заказчик  Tableau', 'Tableau')]:
+            with self.subTest(source=source):
+                asyncio.run(run(source, hidden))
+
+        # English Client is not recognized by this NER, but an unrecognized
+        # table field must never grant a professional-name exemption.
+        from prototype.privacy_core.professional import source_spans
+        self.assertEqual(source_spans('Навыки | Client  Code Review')[0], [])
+
+    def test_bare_site_pattern_does_not_classify_javascript_frameworks_as_links(self):
+        # Isolate the new URL detector from context-sensitive NER: this rule
+        # must not turn the .js framework suffix into an identifying URL.
+        self.assertFalse(any(hit.kind == 'LINK' for hit in self.detector.scan('Vue.js, Node.js.')))
+        async def run():
+            privacy = LocalPrivacy(self.detector)
+            try:
+                source = 'Разработка сайта example.ru.\nМой сайт пример.рф'
+                out = (await privacy.finalize_sources([await privacy.redact(source)]))[0]
+                self.assertNotIn('example.ru', out)
+                self.assertNotIn('пример.рф', out)
+                with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+                    await privacy.check_prepared('example.ru')
             finally:
                 privacy.close()
         asyncio.run(run())

@@ -14,7 +14,7 @@ from collections import Counter
 from ..errors import PrivacyError
 from .professional import source_findings, source_spans
 
-POLICY_VERSION = 'local-privacy-0.7'
+POLICY_VERSION = 'local-privacy-0.8'
 REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
 RESERVED = '[[PRIV:'
 
@@ -51,6 +51,7 @@ _PATTERNS = [
     ('EMAIL', re.compile(r'(?i)\b[\w.+-]+\s*(?:\[at\]|\(at\))\s*[\w.-]+\s*(?:\[dot\]|\(dot\)|\.)\s*\w+')),
     ('LINK', re.compile(r'(?i)(?:https?://|www\.|(?:t|vk)\.me/|vk\.com/|github\.com/|linkedin\.com/|hh\.ru/)[^\s<>]+')),
     ('LINK', re.compile(r'(?i)\b(?:[a-z0-9][a-z0-9-]*\.)+[a-z]{2,24}/[^\s<>]+')),
+    ('LINK', re.compile(r'(?i)(?<![\w.-])(?:[^\W_][\w-]*\.)+(?:com|ru|org|net|io|dev|app|рф)(?![\w-]|\.[\w])')),
     ('HANDLE', re.compile(r'(?<!\w)@[\w.-]{2,}')),
     ('PHONE', re.compile(r'(?<!\w)(?:\+?\d[\s().-]*){10,15}(?!\w)')),
     ('DATE', re.compile(r'(?<!\d)\d{1,2}[./]\d{1,2}[./](?:19|20)\d{2}(?!\d)')),
@@ -160,6 +161,7 @@ class LocalPrivacy:
         self._hidden_values = set()
         self._safe_sources = []
         self._safe_roles = set()
+        self._safe_professional_headers = set()
         self._contextual = Counter()
 
     def _ready(self):
@@ -252,6 +254,7 @@ class LocalPrivacy:
     def _remember_source(self, text):
         self._safe_sources.append(text.casefold())
         self._safe_roles.update(_canonical(text[start:end]) for start, end in source_spans(text)[1])
+        self._safe_professional_headers.update(_canonical(text[start:end]) for start, end in source_spans(text)[0])
 
     async def finalize_sources(self, sources):
         """Reconcile all protected sources against the final run-local index.
@@ -262,6 +265,7 @@ class LocalPrivacy:
         self._ready()
         self._safe_sources.clear()
         self._safe_roles.clear()
+        self._safe_professional_headers.clear()
         sources = list(sources)
         for _ in range(4):
             changed = False
@@ -301,7 +305,7 @@ class LocalPrivacy:
             value = text[item.start:item.end].casefold()
             pattern = re.compile(r'(?<!\w)' + re.escape(value) + r'(?!\w)')
             can_inherit = (item.method == 'ner' or
-                           (item.method == 'name_header' and _canonical(value) in self._safe_roles))
+                           (item.method == 'name_header' and _canonical(value) in self._safe_professional_headers))
             if can_inherit and any(pattern.search(source) for source in self._safe_sources):
                 contextual[item.kind] += 1
             else:
@@ -376,5 +380,6 @@ class LocalPrivacy:
         self._hidden_values.clear()
         self._safe_sources.clear()
         self._safe_roles.clear()
+        self._safe_professional_headers.clear()
         self._key = b''
         self.closed = True

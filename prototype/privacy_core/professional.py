@@ -13,7 +13,10 @@ _TERMS = ('Vue.js', 'Vue', 'NoSQL', 'SQL', 'Git', 'TypeScript', 'JavaScript',
           'REST API', 'REST', 'GraphQL', 'Figma', 'Python', 'Java', 'HTML', 'CSS',
           'React', 'Node.js', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Docker',
           'Kubernetes', 'Excel', 'Power BI', 'CI/CD', 'Kafka', 'Tableau',
-          'ClickHouse', 'Amplitude', 'Airflow', 'Spark', 'DAX', 'МСФО', '1С:Бухгалтерия')
+          'ClickHouse', 'Amplitude', 'Airflow', 'Spark', 'DAX', 'МСФО', '1С:Бухгалтерия',
+          'VueJS', 'Nuxt', 'Vue Router', 'Composition API', 'VueUse', 'vue-i18n',
+          'Sass', 'CSS Modules', 'Tailwind CSS', 'PUG', 'Adaptive Design', 'npm',
+          'Vite', 'Jest', 'Agile', 'Scrum', 'Code Review', 'Pixel Perfect', 'Service Desk')
 _TECH = re.compile(r'(?:' + '|'.join(re.escape(t) for t in sorted(_TERMS, key=len, reverse=True))
                    + r')(?!(?:[\w+-]|\.[\w]))', re.IGNORECASE)
 _START = r'(?:^|(?<=[.!?;]))[ \t]*(?:[-•*—–][ \t]+)?'
@@ -40,8 +43,8 @@ _NEUTRAL_TAIL = re.compile(
     r'\(работа с макетом(?:,[ \t]*экспорт ресурсов)?\)|нет|или[ \t]+аналогах)?[ \t]*', re.IGNORECASE)
 _RELATION = re.compile(
     r'\b(?:компани\w*|организаци\w*|работодател\w*|подрядчик\w*|'
-    r'сотрудник\w*|поставщик\w*|клиент\w*|ооо|зао|пао|ип|'
-    r'company|employer|contractor|employee|ltd|inc)\b|'
+    r'сотрудник\w*|поставщик\w*|клиент\w*|заказчик\w*|руководител\w*|ооо|зао|пао|ип|'
+    r'company|employer|contractor|employee|client|customer|ltd|inc)\b|'
     r'\bгде[ \t]+работ|\bв[ \t]+котор\w*[ \t]+работ', re.IGNORECASE)
 _EXPERIENCE = re.compile(
     _START + r'опыт[ \t]+работы(?:[ \t]*[:—–-]?[ \t]*'
@@ -68,6 +71,11 @@ _REVERSE_USAGE = re.compile(
 _SKILL_LIST = re.compile(
     r'^[ \t]*(?:ключевые[ \t]+)?навыки[ \t]*:[ \t]*\n'
     r'(?P<items>(?:[ \t]*[-•*—–][ \t]+[^\n]+(?:\n|$))+)', re.IGNORECASE | re.MULTILINE)
+_SKILL_ROW = re.compile(r'^[ \t]*(?:ключевые[ \t]+)?навыки[ \t]*\|[ \t]*(?P<items>[^\n]+)',
+                        re.IGNORECASE | re.MULTILINE)
+_PROFESSIONAL_CONCEPT = re.compile(
+    r'\b(?:адаптивная[ \t]+)?в[её]рстка[ \t]+(?P<pixel>Pixel Perfect)(?!\w)|'
+    r'\bтехподдержки[ \t]+\((?P<support>Service Desk)\)', re.IGNORECASE)
 _ACHIEVEMENT = re.compile(
     _START + r'(?P<verb>сократил[аи]?)[ \t]+(?:время|длительность)[ \t]+'
     r'(?:загрузки[ \t]+страницы|выполнения[ \t]+запроса|обработки[ \t]+данных)[ \t]+'
@@ -104,6 +112,29 @@ def _relationship_context(text, pos):
     # allowed; the organization itself still has no professional exemption.
     prefix = re.sub(r'\b(?:ООО|АО|ЗАО|ПАО|ИП)[ \t]+[«"][^»"\n]+[»"]', '', prefix, flags=re.IGNORECASE)
     return bool(_RELATION.search(prefix))
+
+
+def _table_terms(value):
+    """A skills table cell must be a complete flat vocabulary list, not fields."""
+    terms, pos = [], 0
+    while pos < len(value):
+        gap = re.match(r'[ \t,;/]+', value[pos:])
+        if gap:
+            pos += gap.end()
+            continue
+        term = _TECH.match(value, pos)
+        if term:
+            terms.append(term.span())
+            pos = term.end()
+            continue
+        # A masked technology prefix can leave a literal extension behind.
+        # It creates no exempt span; NER findings on it are still checked.
+        suffix = re.match(r'\.(?:js|ts)(?!\w)', value[pos:], re.IGNORECASE)
+        if suffix:
+            pos += suffix.end()
+            continue
+        return []
+    return terms
 
 
 def source_spans(text):
@@ -167,6 +198,14 @@ def source_spans(text):
             if _TECH.fullmatch(value):
                 start = listing.start('items') + item.start('value')
                 spans.append((start, start+len(value)))
+    for row in _SKILL_ROW.finditer(text):
+        if not _RELATION.search(row['items']):
+            spans.extend((row.start('items')+start, row.start('items')+end)
+                         for start, end in _table_terms(row['items']))
+    for concept in _PROFESSIONAL_CONCEPT.finditer(text):
+        if not _RELATION.search(_clause(text, _clause_start(text, concept.start()))):
+            name = 'pixel' if concept['pixel'] else 'support'
+            spans.append(concept.span(name))
     for usage in _REVERSE_USAGE.finditer(text):
         spans.append(usage.span('tool'))
     for achievement in _ACHIEVEMENT.finditer(text):
@@ -190,6 +229,6 @@ def source_findings(text, findings):
     return [item for item in findings if not (
         item.method in {'ner', 'name_header'} and any(
             start <= item.start < item.end <= end
-            for start, end in (roles if item.method == 'name_header' else
+            for start, end in (spans if item.method == 'name_header' else
                                spans if item.kind == 'ORG' else
                                headings if item.kind == 'PERSON' else [])))]
