@@ -17,7 +17,7 @@ from prototype.run_store import RunStore
 
 
 class FixtureSDK(Model):
-    def __init__(self, privacy, mutate):
+    def __init__(self, privacy, mutate, response_usage=None):
         import httpx
         from openai import AsyncOpenAI
         self.model, self.privacy = 'gpt-6-luna', privacy
@@ -34,7 +34,7 @@ class FixtureSDK(Model):
             return httpx.Response(200, request=request, json={
                 'id':'resp_synthetic', 'object':'response', 'created_at':0, 'model':self.model, 'status':'completed',
                 'output':[{'type':'message', 'role':'assistant', 'id':'msg_synthetic', 'status':'completed',
-                           'content':[{'type':'output_text', 'text':json.dumps(value), 'annotations':[]}]}], 'usage':None})
+                           'content':[{'type':'output_text', 'text':json.dumps(value), 'annotations':[]}]}], 'usage':response_usage})
         self.client = AsyncOpenAI(api_key='synthetic-not-a-secret', max_retries=0,
             http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)))
 
@@ -45,10 +45,11 @@ class C14BoundaryTests(unittest.TestCase):
     def setUpClass(cls):
         cls.detector = Detector(load('data/private/privacy-models'))
 
-    def run_fixture(self, mutate, resume_suffix=''):
+    def run_fixture(self, mutate, resume_suffix='', max_calls=50):
         async def run():
             privacy = LocalPrivacy(self.detector)
             model = FixtureSDK(privacy, mutate)
+            model.budget.max_calls = max_calls
             resume, jobs = demo_inputs()
             sources = {}
             try:
@@ -95,7 +96,7 @@ class C14BoundaryTests(unittest.TestCase):
         report, requests, _, _ = self.run_fixture(mutate, '\nФИО: zqxprivate')
         self.assertEqual(report['ranking']['jobs'], [])
         self.assertEqual(report['errors'][0]['code'], 'model_invalid')
-        self.assertEqual(len(requests), 1)
+        self.assertEqual(len(requests), 2)
 
     def test_recovered_claim_preserves_number_boundaries_between_sources(self):
         def mutate(task, payload, value):
@@ -122,10 +123,93 @@ class C14BoundaryTests(unittest.TestCase):
         self.assertIn('Excel', requests[2]['data']['facts']['items'][-1]['text'])
         self.assertTrue(summary['contextual_findings'])
 
+    def test_unsafe_paraphrases_are_replaced_at_every_stage_without_changing_evidence(self):
+        def mutate(task, payload, value):
+            if task in {'facts','requirements'}:
+                value['items'][0]['text'] = 'Мария Петрова работала в Москве. zqxprivate'
+            else:
+                value['rows'][0]['comment'] = 'private@example.org zqxprivate'
+                value['rows'][0]['question'] = 'Спросить Марию Петрову?'
+                value['conditions']['items'] = [{'kind':'work_mode','state':'unknown','cv':None,
+                    'vacancy_quote':None,'note':'private@example.org'}]
+        report, requests, _, sources = self.run_fixture(mutate, '\nФИО: zqxprivate')
+        self.assertTrue(report['ranking']['complete'], report['errors'])
+        self.assertEqual(len(requests), 7)
+        for forbidden in ('zqxprivate','private@example.org','Мария','Марию'):
+            self.assertNotIn(forbidden, json.dumps(report, ensure_ascii=False))
+            self.assertNotIn(forbidden, json.dumps(requests, ensure_ascii=False))
+        for job in report['ranking']['jobs']:
+            for requirement in job['requirements']['items']:
+                self.assertIn(requirement['quote'], sources['jobs'][job['job_id']])
+
+    def test_invalid_quote_gets_one_budgeted_retry_from_protected_source(self):
+        attempts = []
+        def mutate(task, payload, value):
+            if task == 'facts':
+                attempts.append(task)
+                if len(attempts) == 1:
+                    value['items'][0]['quote'] = 'Несуществующая цитата об опыте.'
+        report, requests, _, _ = self.run_fixture(mutate)
+        self.assertTrue(report['ranking']['complete'], report['errors'])
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(len(requests), 8)
+        self.assertNotIn('Несуществующая', json.dumps(requests, ensure_ascii=False))
+
+    def test_retry_respects_budget_and_foreign_refs_never_trigger_it(self):
+        def invalid_quote(task, payload, value):
+            if task == 'facts':
+                value['items'][0]['quote'] = 'Несуществующая цитата об опыте.'
+        report, requests, _, _ = self.run_fixture(invalid_quote, max_calls=1)
+        self.assertEqual(report['errors'][0]['code'], 'budget_limit')
+        self.assertEqual(len(requests), 1)
+        def foreign_prose(task, payload, value):
+            if task == 'facts':
+                value['items'][0]['text'] = '[[PRIV:deadbeefdeadbeef:1:ORG]]'
+        report, requests, _, _ = self.run_fixture(foreign_prose)
+        self.assertEqual(report['errors'][0]['code'], 'privacy_untrusted_reference')
+        self.assertEqual(len(requests), 1)
+
+    def test_prose_recovery_does_not_repair_a_missing_required_question(self):
+        for question in (None, '   '):
+            def mutate(task, payload, value):
+                if task == 'evaluation':
+                    value['rows'][0].update(status='partial', fact_ids=['f1'],
+                                            question=question, comment='private@example.org')
+            report, _, _, _ = self.run_fixture(mutate)
+            self.assertFalse(report['ranking']['complete'])
+            self.assertEqual(report['ranking']['jobs'], [])
+            self.assertTrue(all(e['code'] == 'model_invalid' for e in report['errors']))
+
+    def test_schema_retry_marks_usage_estimate_incomplete(self):
+        from prototype.application import analyze
+        async def run():
+            attempts = []
+            def mutate(task, payload, value):
+                if task == 'facts':
+                    attempts.append(task)
+                    if len(attempts) == 1:
+                        value['items'] = 'invalid-schema'
+            privacy = LocalPrivacy(self.detector)
+            model = FixtureSDK(privacy, mutate, {'input_tokens':10,'output_tokens':10,'total_tokens':20})
+            try:
+                resume, jobs = demo_inputs()
+                with tempfile.TemporaryDirectory() as out:
+                    result = await analyze(resume, jobs, privacy=privacy, model_factory=lambda:model,
+                                           out=Path(out), mode='synthetic_sdk_mock_NOT_model_output')
+                self.assertTrue(result.report['ranking']['complete'])
+                self.assertEqual((len(model.requests), model.budget.calls, len(model.usage)), (8,8,7))
+                self.assertIs(result.report['usage_complete'], False)
+                self.assertIsNone(result.report['usage_usd_estimate'])
+                self.assertGreater(float(result.report['recorded_usage_usd_estimate']), 0)
+            finally:
+                await model.close()
+                privacy.close()
+        asyncio.run(run())
+
     def test_unseen_entity_still_blocks_facts_with_safe_diagnostic(self):
         def mutate(task, payload, value):
             if task == 'facts':
-                value['items'][0]['text'] = 'Мария Петрова работала в Москве.'
+                value['items'][0]['quote'] = 'Мария Петрова работала в Москве.'
         report, requests, _, sources = self.run_fixture(mutate)
         self.assertEqual(len(requests), 1)
         self.assertEqual(report['ranking']['jobs'], [])
@@ -150,12 +234,12 @@ class C14BoundaryTests(unittest.TestCase):
     def test_response_failure_keeps_completed_vacancy(self):
         def mutate(task, payload, value):
             if task == 'requirements' and 'Java' in payload['text']:
-                value['items'][0]['text'] = 'test.person@example.org'
+                value['items'][0]['quote'] = 'test.person@example.org'
         report, requests, _, _ = self.run_fixture(mutate)
         self.assertEqual(len(report['ranking']['jobs']), 1)
         self.assertFalse(report['ranking']['complete'])
         self.assertEqual(len(requests), 4)
-        self.assertEqual(report['errors'][0]['privacy']['findings'], {'EMAIL':1})
+        self.assertGreaterEqual(report['errors'][0]['privacy']['findings']['EMAIL'], 1)
         self.assertNotIn('устойчиво', report['leader']['summary'].lower())
 
     def test_forged_refs_and_quotes_are_never_accepted(self):
@@ -167,7 +251,7 @@ class C14BoundaryTests(unittest.TestCase):
             report, requests, _, _ = self.run_fixture(mutate)
             self.assertEqual(report['errors'][0]['code'], code)
             self.assertEqual(report['ranking']['jobs'], [])
-            self.assertEqual(len(requests), 1)
+            self.assertEqual(len(requests), 1 if code == 'privacy_untrusted_reference' else 2)
 
     def test_hidden_value_cannot_be_restored_even_if_context_now_misses_it(self):
         async def run():
@@ -250,7 +334,7 @@ class C14BoundaryTests(unittest.TestCase):
                 if 'Python' in payload['text']:
                     value['items'] = 'schema-invalid'
                 else:
-                    value['items'][0]['text'] = 'blocked@example.org'
+                    value['items'][0]['quote'] = 'blocked@example.org'
         report, _, _, sources = self.run_fixture(mutate)
         with tempfile.TemporaryDirectory() as root:
             store = RunStore(root)

@@ -34,17 +34,35 @@ unknown — сведений нет, fact_ids пустой. Отсутствие
 comment объясняет связь фактов с требованием, а не добавляет новые сведения.'''
 
 
-def _evidence_only_facts(value):
+def _evidence_only_response(value, payload):
     """Discard unbound paraphrases; never alter citations or source identifiers.
 
     The unchanged quotes still undergo privacy and exact-source validation.
     This is a local response transformation, not another network attempt or a
     permission to accept the offending output.
     """
-    from .analysis_contracts import ResumeAnalysis
-    if not isinstance(value, ResumeAnalysis):
+    from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
+    from .contracts import Requirements
+    if not isinstance(value, (ResumeAnalysis, Requirements, VacancyAnalysis)):
         return None
     value = value.model_copy(deep=True)
+    if isinstance(value, Requirements):
+        for requirement in value.items:
+            requirement.text = requirement.quote
+        return value
+    if isinstance(value, VacancyAnalysis):
+        requirements = {item['id']:item for item in payload['requirements']['items']}
+        facts = {item['id']:item for item in payload['facts']['items']}
+        for row in value.rows:
+            requirement = requirements.get(row.requirement_id, {}).get('quote', '')
+            grounds = [facts[fid]['quote'] for fid in row.fact_ids if fid in facts]
+            row.comment = 'Требование: ' + requirement + ' / Основания: ' + (
+                ' / '.join(grounds) if grounds else 'подтверждающая цитата не указана.')
+            if row.question is not None and row.question.strip():
+                row.question = None if row.status == 'full' else 'Уточните опыт по требованию: ' + requirement
+        for condition in value.conditions.items:
+            condition.note = 'Сверьте условия по цитатам.'
+        return value
     for fact in value.items:
         fact.text = fact.quote
     profile = value.profile
@@ -95,13 +113,40 @@ class Model:
         self.run_control = control
 
     async def ask(self, schema, task, payload):
+        from .contracts import Facts, Requirements, Evaluation, validate_pair
+        # Retry only output-contract failures, once, from the same checked
+        # source. Never send a rejected answer back or retry a privacy failure.
+        for attempt in range(2):
+            try:
+                result = await self._ask_once(schema, task, payload, repair=bool(attempt))
+                try:
+                    if isinstance(result, (Facts, Requirements)):
+                        result.validate_source(payload['text'])
+                    elif isinstance(result, Evaluation):
+                        validate_pair(Requirements.model_validate(payload['requirements']),
+                                      Facts.model_validate(payload['facts']), result)
+                except ValueError:
+                    raise ModelOutputError('model_invalid') from None
+                return result
+            except ModelOutputError as exc:
+                if attempt or str(exc) != 'model_invalid':
+                    raise
+                if not hasattr(self, 'response_retries'):
+                    self.response_retries = []
+                self.response_retries.append({'stage':task, 'reason':'model_invalid', 'attempt':2})
+
+    async def _ask_once(self, schema, task, payload, *, repair=False):
         protect_dependency_logs()
         await check_data(self.privacy, payload, prepared=True, stage=task, direction='outbound')
         if getattr(self, 'run_control', None) is not None:
             self.run_control.checkpoint()
         text = json.dumps({'task':task, 'data':payload}, ensure_ascii=False)
         schema_text = json.dumps(schema.model_json_schema())
-        upper_input = len((SYSTEM + text + schema_text).encode('utf-8')) + 4096
+        system = SYSTEM + ('\nПредыдущий ответ не прошёл проверку формата или цитат. '
+                           'Сформируй ответ заново только из исходных данных. '
+                           'Копируй непрерывные цитаты посимвольно; не соединяй разные фрагменты. '
+                           'Проверь уникальность ids и все ссылки.' if repair else '')
+        upper_input = len((system + text + schema_text).encode('utf-8')) + 4096
         # Capacity is a ceiling, not permission to omit requirements. Truncated
         # output is model_invalid and never becomes a complete evaluation.
         if task == 'evaluation':
@@ -114,13 +159,19 @@ class Model:
         try:
             response = await self.client.responses.parse(
                 model=self.model, store=False, max_output_tokens=output_tokens,
-                input=[{'role':'system','content':SYSTEM}, {'role':'user','content':text}],
+                input=[{'role':'system','content':system}, {'role':'user','content':text}],
                 text_format=schema)
         except ValidationError:
+            # The SDK raises before exposing the Response/usage. Reservation
+            # still covers this call; do not present the remaining usage as a
+            # complete cost estimate after a successful retry.
+            self.usage_complete = False
             raise ModelOutputError('model_invalid') from None
         if response.usage:
             self.usage.append({'input_tokens':response.usage.input_tokens,
                                'output_tokens':response.usage.output_tokens})
+        else:
+            self.usage_complete = False
         if response.status != 'completed' or response.output_parsed is None:
             raise ModelOutputError('model_refusal_or_incomplete')
         result = response.output_parsed
@@ -128,11 +179,13 @@ class Model:
             await check_data(self.privacy, result.model_dump(mode='json'),
                              prepared=True, stage=task, direction='response')
         except PrivacyError as exc:
-            # Only recover unbound facts prose. Any structural/NER finding or
-            # foreign reference remains terminal, including in discarded prose.
-            if task != 'facts' or exc.code != 'privacy_residual_findings' or set(exc.diagnostic['findings']) != {'KNOWN_VALUE'}:
+            # Discard only unbound prose. Source quotes/IDs/statuses stay intact;
+            # the complete transformed DTO must pass the same detectors. Bad
+            # refs, detector errors and scan limits remain terminal even if the
+            # offending value would have been discarded by this transformation.
+            if exc.code != 'privacy_residual_findings':
                 raise
-            grounded = _evidence_only_facts(result)
+            grounded = _evidence_only_response(result, payload)
             if grounded is None:
                 raise
             await check_data(self.privacy, grounded.model_dump(mode='json'),
@@ -140,5 +193,5 @@ class Model:
             result = grounded
             if not hasattr(self, 'response_normalizations'):
                 self.response_normalizations = []
-            self.response_normalizations.append({'stage':'facts', 'action':'paraphrases_replaced_with_quotes'})
+            self.response_normalizations.append({'stage':task, 'action':'paraphrases_replaced_with_evidence'})
         return result

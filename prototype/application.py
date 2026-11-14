@@ -74,7 +74,8 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
                   _defer_publication=False, source_sink=None):
     """Run once and atomically publish. The caller explicitly selects data/mode.
 
-    No retries, task queue, network listener or implicit live fallback. A web
+    No run retries, task queue, network listener or implicit live fallback. The
+    live model may retry an invalid output once within the same budget. A web
     transport must enforce its own upload/session boundary before calling here.
     """
     control = control or RunControl()
@@ -98,12 +99,17 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
         report['model'] = getattr(model, 'model', None)
         if getattr(model, 'response_normalizations', None):
             report['model_response_normalizations'] = list(model.response_normalizations)
+        if getattr(model, 'response_retries', None):
+            report['model_response_retries'] = list(model.response_retries)
         if hasattr(model, 'budget'):
             report['usage'] = model.usage
             report['reserved_usd_estimate'] = str(model.budget.reserved)
             rates = model.budget.rates
             from decimal import Decimal
-            report['usage_usd_estimate'] = str(sum((Decimal(u['input_tokens'])*rates[0] + Decimal(u['output_tokens'])*rates[1])/1_000_000 for u in model.usage))
+            estimate = str(sum((Decimal(u['input_tokens'])*rates[0] + Decimal(u['output_tokens'])*rates[1])/1_000_000 for u in model.usage))
+            report['usage_complete'] = getattr(model, 'usage_complete', True)
+            report['usage_usd_estimate'] = estimate if report['usage_complete'] else None
+            report['recorded_usage_usd_estimate'] = estimate
             report['budget_remaining_reservation_usd'] = str(model.budget.limit - model.budget.reserved)
             report['provider_balance'] = 'unknown'
         # A deadline/cancel must not discard successfully computed partial results.
