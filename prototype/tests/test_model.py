@@ -54,3 +54,57 @@ class ModelBoundaryTests(unittest.TestCase):
         model.client.responses.parse.return_value.status = 'incomplete'
         with self.assertRaises(ValueError):
             asyncio.run(model.ask(Facts, 'facts', {'text':'fictional'}))
+
+    def test_whitespace_only_quote_uses_exact_source_without_retry(self):
+        check = AsyncMock()
+        model = self.model(check)
+        original = Facts(items=[{'id':'f1','text':'Python','quote':'Делал Python 3 года.'}])
+        model.client.responses.parse.return_value.output_parsed = original
+        source = 'Делал Python\t3\nгода.'
+        result = asyncio.run(model.ask(Facts, 'facts', {'text':source}))
+        self.assertEqual(result.items[0].quote, source)
+        self.assertEqual(original.items[0].quote, 'Делал Python 3 года.')
+        self.assertEqual(model.client.responses.parse.await_count, 1)
+        self.assertEqual(check.await_count, 3, 'restored DTO must pass privacy again')
+        self.assertEqual(model.response_normalizations,
+                         [{'stage':'facts','action':'source_quote_whitespace_restored','count':1}])
+
+    def test_ambiguous_or_changed_words_are_not_repaired(self):
+        cases = [('Делал Python 3 года.', 'Делал Python\t3 года.\nДелал Python\n3 года.'),
+                 ('не работал', 'неработал'), ('Python', 'Py thon'),
+                 ('Делал Python.', 'Делал python.'), ('A A', 'A\tA\tA'),
+                 ('Делал Python', 'Делал новый Python')]
+        for quote, source in cases:
+            with self.subTest(quote=quote, source=source):
+                model = self.model(AsyncMock())
+                model.client.responses.parse.return_value.output_parsed = Facts(
+                    items=[{'id':'f1','text':'test','quote':quote}])
+                with self.assertRaisesRegex(ValueError, 'model_invalid'):
+                    asyncio.run(model.ask(Facts, 'facts', {'text':source}))
+                self.assertEqual(model.client.responses.parse.await_count, 2)
+
+    def test_profile_citations_are_restored_inside_the_referenced_fact_only(self):
+        from prototype.analysis_contracts import ResumeAnalysis
+        from prototype.model import _restore_source_quote_whitespace
+        value = ResumeAnalysis(items=[{'id':'f1','text':'Python','quote':'Python 3 года'},
+                                      {'id':'f2','text':'SQL','quote':'SQL\t1 год'}],
+            profile={'summary':[{'text':'Python', 'sources':[{'fact_id':'f1','quote':'Python 3'}]},
+                                {'text':'SQL', 'sources':[{'fact_id':'f1','quote':'SQL 1 год'}]}],
+                     'stack':[], 'last_position':None, 'achievements':[],
+                     'missing':['stack','last_position','achievements']})
+        result, count = _restore_source_quote_whitespace(value, {'text':'Python\n3 года\nSQL\t1 год'})
+        self.assertEqual(count, 2)
+        self.assertEqual(result.items[0].quote, 'Python\n3 года')
+        self.assertEqual(result.profile.summary[0].sources[0].quote, 'Python\n3')
+        self.assertEqual(result.profile.summary[1].sources[0].quote, 'SQL 1 год')
+
+    def test_failed_or_cancelled_request_without_usage_is_not_reported_as_fully_measured(self):
+        for error in (RuntimeError('transport failed'), asyncio.CancelledError()):
+            with self.subTest(error=type(error).__name__):
+                model = self.model(AsyncMock())
+                model.client.responses.parse.side_effect = error
+                with self.assertRaises(type(error)):
+                    asyncio.run(model.ask(Facts, 'facts', {'text':'fictional'}))
+                self.assertFalse(model.usage_complete)
+                self.assertEqual(model.budget.calls, 1)
+                self.assertGreater(model.budget.reserved, 0)

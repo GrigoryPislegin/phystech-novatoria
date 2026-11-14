@@ -250,6 +250,15 @@ def _job_items(b: _Builder, resume: str, job: dict, facts: dict[str, str], decis
         if status == 'unknown' and rid not in applied and (jid, rid) in decisive:
             b.add('decisive_unknown', scope, jid, rid, refs=[vacancy_ref(rid)])
 
+    for warning in job.get('contract_warnings', []):
+        if warning.get('code') == 'mandatory_status_unconfirmed':
+            rid = warning.get('requirement_id')
+            if rid in requirements:
+                b.add('mandatory_unbound', scope, jid, rid, refs=[vacancy_ref(rid)],
+                      details=['mandatory_status_unconfirmed'])
+            else:
+                b.add('invalid_evidence', scope, jid, details=['unknown_requirement_id'])
+
     for raw in checks.get('mandatory', []):
         check = MandatoryCheck.model_validate(raw)
         codes = [r.code for r in check.reasons]

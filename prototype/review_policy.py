@@ -100,10 +100,16 @@ class HandoffAssessment(StrictModel):
 
 def report_sha256(report: dict) -> str:
     """Version of the analysis a decision is made on: resume, facts, errors, privacy summary and,
-    per job, requirements, evaluation, evidence, score and conditions. Order of jobs does not matter."""
+    per job, requirements, evaluation, evidence, score, conditions and contract warnings.
+    Order of jobs does not matter. Missing/empty additive warnings keep legacy digests."""
     content = {k: report.get(k) for k in _REPORT_FIELDS}
-    content['jobs'] = sorted(({k: j.get(k) for k in _JOB_FIELDS} for j in report['ranking']['jobs']),
-                             key=lambda j: j['job_id'])
+    jobs = []
+    for job in report['ranking']['jobs']:
+        snapshot = {k:job.get(k) for k in _JOB_FIELDS}
+        if job.get('contract_warnings'):
+            snapshot['contract_warnings'] = job['contract_warnings']
+        jobs.append(snapshot)
+    content['jobs'] = sorted(jobs, key=lambda j: j['job_id'])
     canon = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
     return hashlib.sha256(canon.encode()).hexdigest()
 

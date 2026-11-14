@@ -8,14 +8,15 @@ import math
 import shutil
 import tempfile
 import time
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
-from .contracts import Facts, Requirements, Evaluation, validate_pair
+from .contracts import Facts, Requirements, RequirementFactors, Evaluation, validate_pair
 from .scoring import score, rank, POLICY_VERSION
-from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
+from .analysis_contracts import ResumeAnalysis, RequirementsAnalysis, VacancyAnalysis
 from .candidate_profile import check_profile, check_conditions
-from .ranking_explanation import compare, explain_leader
+from .ranking_explanation import compare, explain_leader, competency_axes
 from .review_queue import build_review_queue
 from .review_policy import assess_handoff
 from .evidence import Source, check_pair
@@ -27,25 +28,67 @@ from .presentation import build_presentation, display_label, gap_question, EXPLA
 
 class RunControl:
     """One run's deadline, cancellation and text-free stage events."""
-    def __init__(self, timeout_seconds=300, progress=None):
+    def __init__(self, timeout_seconds=300, progress=None, *, defer_start=False):
         if not math.isfinite(timeout_seconds) or timeout_seconds <= 0 or timeout_seconds > 1800:
             raise ValueError('invalid_deadline')
-        self.started = time.monotonic()
-        self.deadline = self.started + timeout_seconds
+        self.timeout_seconds = timeout_seconds
+        self.started, self.deadline = None, math.inf
         self.progress = progress
         self.cancelled = False
+        self._cancelled_at = None
         self.events = []
+        self._pending = set()
+        self._pending_lock = threading.Lock()
+        if not defer_start:
+            self.start()
+
+    def start(self):
+        """Start the execution clock once; queued time must not consume it."""
+        if self.started is None:
+            self.started = time.monotonic()
+            self.deadline = self.started + self.timeout_seconds
 
     def cancel(self):
-        self.cancelled = True
+        # The HTTP transport calls this from a different thread than the
+        # analysis event loop. Wake pending I/O through its owning loop.
+        with self._pending_lock:
+            if self.cancelled:
+                return
+            self.cancelled = True
+            self._cancelled_at = time.monotonic()
+            pending = list(self._pending)
+        for signal in pending:
+            try:
+                signal.get_loop().call_soon_threadsafe(self._signal_cancel, signal)
+            except RuntimeError:
+                pass  # The owning loop already finished and closed.
+
+    @staticmethod
+    def _signal_cancel(signal):
+        if not signal.done():
+            signal.set_result(None)
 
     def checkpoint(self):
-        if self.cancelled:
+        self.start()
+        if self._cancelled_at is not None and self._cancelled_at <= self.deadline:
             raise RunStopped('cancelled')
         if time.monotonic() >= self.deadline:
             raise RunStopped('deadline_exceeded')
 
+    @staticmethod
+    async def _drain(task):
+        """Finish cancellation cleanup even if the caller is cancelled again."""
+        waiter = asyncio.gather(task, return_exceptions=True)
+        interrupted = False
+        while not waiter.done():
+            try:
+                await asyncio.shield(waiter)
+            except asyncio.CancelledError:
+                interrupted = True
+        return interrupted
+
     def emit(self, stage, job_id=None):
+        self.start()
         event = {'stage':stage, 'job_id':job_id, 'elapsed_ms':round((time.monotonic()-self.started)*1000)}
         self.events.append(event)
         if self.progress:
@@ -54,10 +97,42 @@ class RunControl:
     async def call(self, operation, stage, job_id=None):
         self.emit(stage, job_id)
         self.checkpoint()
+        task = asyncio.create_task(operation())
+        signal = asyncio.get_running_loop().create_future()
+        cancelling = False
+        with self._pending_lock:
+            self._pending.add(signal)
+            if self.cancelled:
+                signal.set_result(None)
+                task.cancel()
+                cancelling = True
         try:
-            result = await asyncio.wait_for(operation(), timeout=max(0, self.deadline-time.monotonic()))
-        except TimeoutError:
-            raise RunStopped('deadline_exceeded') from None
+            caller_cancelled = False
+            try:
+                done, _ = await asyncio.wait((task, signal),
+                    timeout=max(0, self.deadline-time.monotonic()), return_when=asyncio.FIRST_COMPLETED)
+            except asyncio.CancelledError:
+                caller_cancelled = True
+                done = set()
+            with self._pending_lock:
+                cancelled_at = self._cancelled_at
+            reason = ('cancelled' if cancelled_at is not None and cancelled_at <= self.deadline
+                      else 'deadline_exceeded' if task not in done else None)
+            if reason or caller_cancelled:
+                # Once a reason wins, there is no second deadline timer to
+                # interrupt the operation's asynchronous cancellation cleanup.
+                if not cancelling:
+                    task.cancel()
+                    cancelling = True
+                caller_cancelled |= await self._drain(task)
+                if caller_cancelled:
+                    raise asyncio.CancelledError
+                raise RunStopped(reason)
+            result = task.result()
+        finally:
+            with self._pending_lock:
+                self._pending.discard(signal)
+            signal.cancel()
         self.checkpoint()
         return result
 
@@ -87,13 +162,32 @@ def refresh_derived(report, decisions=()):
     report['handoff'] = [assess_handoff(report, list(decisions), job['job_id']).model_dump()
                          for job in ranked]
     report['presentation'] = build_presentation(report)
+    for job in ranked:
+        labels = job.get('requirement_factors')
+        factors = RequirementFactors.model_validate(labels) if labels is not None else None
+        if factors is not None:
+            factors.validate_requirements(Requirements.model_validate(job['requirements']))
+        grouped = {item.requirement_id:item.factor for item in factors.items} if factors is not None else None
+        if grouped is not None:
+            # A scoring unit may merge normalized duplicate requirements. No
+            # first-ID choice: contradictory or incomplete labels leave the
+            # entire unit outside the chart while its score stays unchanged.
+            for unit in job['score'].get('units', []):
+                if len({grouped.get(rid) for rid in unit['ids']}) != 1:
+                    for rid in unit['ids']:
+                        grouped.pop(rid, None)
+        # Legacy v3 scores have no additive shares/breakdown. Keep them readable
+        # without silently changing their saved calculation or inventing labels.
+        axes = (competency_axes(job, grouped)
+                if 'shares' in job['score'] and 'breakdown' in job['score'] else None)
+        job['competency_axes'] = axes.model_dump() if axes is not None else None
     return report
 
 
 async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sink=None):
     if not jobs or len(jobs) > MAX_JOBS or len({j[0] for j in jobs}) != len(jobs):
         raise ValueError('invalid_job_set')
-    control = control or RunControl()
+    control = control or RunControl(timeout_seconds=300 if len(jobs) <= 3 else 1800)
     if hasattr(model, 'set_run_control'):
         model.set_run_control(control)
     safe_resume = await control.call(lambda: privacy.redact(resume), 'privacy')
@@ -110,6 +204,9 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
     profile_check = None
     profile_missing = ['summary', 'stack', 'last_position', 'achievements']
     def finish(facts):
+        order = {jid:index for index,(jid,_) in enumerate(jobs)}
+        results.sort(key=lambda result:order[result['job_id']])
+        errors.sort(key=lambda error:order.get(error['job_id'], -1))
         missing = [jid for jid,_ in jobs if jid not in {r['job_id'] for r in results}]
         by_job = {e['job_id']:e['code'] for e in errors}
         control.emit('analysis_finished')
@@ -142,12 +239,16 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
     except Exception as exc:
         errors.append(failure(exc, stage))
         return finish(Facts(items=[]))
-    for jid, text in safe_jobs:
+    async def analyze_job(jid, text):
         stage = 'requirements'
         try:
-            requirements = await control.call(lambda: model.ask(Requirements, 'requirements', {'text':text}), stage, jid)
+            extracted_requirements = await control.call(
+                lambda: model.ask(RequirementsAnalysis, 'requirements', {'text':text}), stage, jid)
             stage = 'requirements_validation'
-            requirements.validate_source(text)
+            contract_warnings = list(getattr(extracted_requirements, '_contract_warnings', []))
+            extracted_requirements = RequirementsAnalysis.model_validate(extracted_requirements.model_dump())
+            extracted_requirements.validate_source(text)
+            requirements = Requirements(items=extracted_requirements.items)
             stage = 'evaluation'
             assessed = await control.call(lambda: model.ask(VacancyAnalysis, 'evaluation', {
                 'requirements':requirements.model_dump(), 'facts':facts.model_dump(),
@@ -165,6 +266,9 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
             review_checks[jid] = review.check(None, jid, text, requirements)
             computed_score = score(requirements, evaluation, evidence)
             results.append({'job_id':jid, 'requirements':requirements.model_dump(),
+                            'contract_warnings':contract_warnings,
+                            'requirement_factors':(extracted_requirements.factors.model_dump()
+                                                   if extracted_requirements.factors is not None else None),
                             'evidence_check':evidence.model_dump(),
                             'requirements_draft':review.draft(jid, text, requirements).model_dump(),
                             'requirements_review':review_checks[jid].model_dump(),
@@ -174,13 +278,57 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
                                 'rule':'evidence_applied_by_scoring_policy', 'version':POLICY_VERSION},
                             'safe_source_sha256':hashlib.sha256(text.encode()).hexdigest()})
             control.emit('job_finished', jid)
+            return False
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling():
+                raise  # Caller/peer cancellation must finish via the pool drain.
+            # A transport that cancels its own task is a terminal operation
+            # failure, not permission to silently skip this vacancy.
+            errors.append(failure(RuntimeError('operation_cancelled'), stage, jid))
+            return True
         except Exception as exc:
             # Never serialize exception messages: upstream errors may contain text/keys/DSNs.
             code = error_code(exc, stage)
             errors.append(failure(exc, stage, jid))
             # Only known output-validation failures are recoverable, without retry.
-            if code != 'model_invalid':
+            return code != 'model_invalid'
+
+    if len(safe_jobs) <= 3:
+        for jid, text in safe_jobs:
+            if await analyze_job(jid, text):
                 break
+    else:
+        # Only the per-vacancy phase overlaps. All sources are finalized and
+        # facts extracted first; workers share one model and its atomic budget.
+        # At most three requests are in flight, with no hidden background work
+        # after cancellation, a terminal failure or the returned report.
+        remaining, workers, stopped = iter(safe_jobs), [], False
+
+        async def worker():
+            nonlocal stopped
+            while not stopped:
+                job = next(remaining, None)
+                if job is None:
+                    return
+                if await analyze_job(*job):
+                    stopped = True
+                    current = asyncio.current_task()
+                    for task in workers:
+                        if task is not current and not task.done():
+                            task.cancel()
+                    return
+
+        workers = [asyncio.create_task(worker()) for _ in range(3)]
+        try:
+            outcomes = await asyncio.gather(*workers, return_exceptions=True)
+            for outcome in outcomes:
+                if isinstance(outcome, BaseException) and not (stopped and isinstance(outcome, asyncio.CancelledError)):
+                    raise outcome
+        finally:
+            for task in workers:
+                if not task.done():
+                    task.cancel()
+            await control._drain(asyncio.gather(*workers, return_exceptions=True))
     return finish(facts)
 
 
@@ -196,13 +344,13 @@ def preflight_output(root: Path):
         raise ValueError('output_unavailable') from None
 
 
-def write_report(report, root: Path, *, manifest=None):
+def write_report(report, root: Path, *, manifest=None, display_aliases=None):
     preflight_output(root)
     root = Path(root)
     staging = Path(tempfile.mkdtemp(prefix='.staging-', dir=root))
     final = root / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex)
     try:
-        _write_report_files(report, staging)
+        _write_report_files(report, staging, display_aliases=display_aliases)
         if manifest is not None:
             path = staging / 'inputs.manifest.json'
             with path.open('x', encoding='utf-8') as handle:
@@ -215,7 +363,24 @@ def write_report(report, root: Path, *, manifest=None):
             shutil.rmtree(staging)
 
 
-def _write_report_files(report, out):
+def _write_report_files(report, out, *, display_aliases=None, _literal=literal):
+    # Restore only human-readable local exports, before Markdown/CSV escaping.
+    # Machine data, evidence offsets, IDs and hashes always stay protected.
+    from .privacy_core import REFERENCE
+    aliases = display_aliases or {}
+    labels = {}
+
+    def display(value):
+        def replace(match):
+            ref = match.group()
+            if ref in aliases:
+                return aliases[ref]
+            return labels.setdefault(ref, f'Фрагмент {len(labels) + 1}')
+        return REFERENCE.sub(replace, str(value))
+
+    def literal(value):
+        return _literal(display(value))
+
     def write(name, text):
         with open(out/name, 'x', encoding='utf-8') as handle:
             os.chmod(out/name, 0o600)
@@ -333,5 +498,6 @@ def _write_report_files(report, out):
         writer = csv.writer(handle)
         writer.writerow(['job_id','requirement_id','requirement','job_quote','mandatory_quote','status','resume_evidence','comment','question','verification'])
         # Avoid formula execution when opening untrusted model/document text in a spreadsheet.
-        writer.writerows([["'"+str(v) if str(v).lstrip().startswith(('=','+','-','@')) else v for v in row] for row in records])
+        displayed = [[display(value) for value in row] for row in records]
+        writer.writerows([["'"+v if v.lstrip().startswith(('=','+','-','@')) else v for v in row] for row in displayed])
     return out

@@ -79,7 +79,7 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
     live model may retry an invalid output once within the same budget. A web
     transport must enforce its own upload/session boundary before calling here.
     """
-    control = control or RunControl()
+    control = control or RunControl(timeout_seconds=1800 if len(jobs) > 3 else 300)
     control.emit('validating_inputs')
     control.checkpoint()
     if metadata and (set(metadata) != {'demo_scenario'} or metadata['demo_scenario'] not in {'success', 'disputed'}):
@@ -131,7 +131,7 @@ async def analyze_protected(resume, jobs, *, privacy_context, model_factory, out
     Async startup observes the processing deadline; close/commit gets a separate
     30-second cleanup window so a cancelled partial run may still be saved.
     """
-    control = control or RunControl()
+    control = control or RunControl(timeout_seconds=1800 if len(jobs) > 3 else 300)
     preflight_output(out)
     stack = AsyncExitStack()
     try:
@@ -147,5 +147,5 @@ async def analyze_protected(resume, jobs, *, privacy_context, model_factory, out
     else:
         await asyncio.wait_for(stack.__aexit__(None, None, None), timeout=30)
     control.emit('export')
-    result.path = write_report(result.report, out, manifest=manifest)
+    result.path = write_report(result.report, out, manifest=manifest, display_aliases=result.display_aliases)
     return result

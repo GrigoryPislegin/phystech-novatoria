@@ -17,7 +17,8 @@ async def execute(args):
         text = read_document(args.file)
         print(json.dumps({'status':'extracted_locally', 'characters':len(text)}, ensure_ascii=False))
         return 0
-    control = RunControl(timeout_seconds=getattr(args, 'deadline', 300))
+    deadline = getattr(args, 'deadline', None)
+    control = RunControl(timeout_seconds=deadline if deadline is not None else (1800 if args.command == 'run' else 300))
     preflight_output(args.out)
     async def process(resume, jobs, privacy, replay=False, manifest=None):
         result = await analyze(resume, jobs, privacy=privacy,
@@ -54,7 +55,7 @@ def main():
         p.add_argument('--model', choices=list(RATES), default='gpt-6-luna')
         p.add_argument('--budget', type=float, default=1.0, help='Консервативный резерв USD на процесс, максимум 5')
         p.add_argument('--out', type=Path, default=Path('data/private/prototype-runs'))
-        p.add_argument('--deadline', type=float, default=300, help='Предел асинхронных стадий в секундах, максимум 1800; синхронный парсер не прерывается')
+        p.add_argument('--deadline', type=float, default=None, help='Предел асинхронных стадий: demo 300 с, run 1800 с; максимум 1800. Синхронный парсер не прерывается')
         if command == 'demo':
             p.add_argument('--live', action='store_true', help='Платный вызов на встроенном синтетическом примере')
             p.add_argument('--scenario', choices=['success', 'disputed'], default='success')

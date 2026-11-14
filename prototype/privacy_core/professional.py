@@ -12,27 +12,39 @@ import re
 _TERMS = ('Vue.js', 'Vue', 'NoSQL', 'SQL', 'Git', 'TypeScript', 'JavaScript',
           'REST API', 'REST', 'GraphQL', 'Figma', 'Python', 'Java', 'HTML', 'CSS',
           'React', 'Node.js', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Docker',
-          'Kubernetes', 'Excel', 'Power BI', 'CI/CD')
+          'Kubernetes', 'Excel', 'Power BI', 'CI/CD', 'Kafka', 'Tableau',
+          'ClickHouse', 'Amplitude', 'Airflow', 'Spark', 'DAX', 'МСФО', '1С:Бухгалтерия',
+          'VueJS', 'Nuxt', 'Vue Router', 'Composition API', 'VueUse', 'vue-i18n',
+          'Sass', 'CSS Modules', 'Tailwind CSS', 'PUG', 'Adaptive Design', 'npm',
+          'Vite', 'Jest', 'Agile', 'Scrum', 'Code Review', 'Pixel Perfect', 'Service Desk')
 _TECH = re.compile(r'(?:' + '|'.join(re.escape(t) for t in sorted(_TERMS, key=len, reverse=True))
                    + r')(?!(?:[\w+-]|\.[\w]))', re.IGNORECASE)
-_START = r'(?:^|(?<=[.!?]))[ \t]*(?:[-•*][ \t]+)?'
+_START = r'(?:^|(?<=[.!?;]))[ \t]*(?:[-•*—–][ \t]+)?'
 _SLOT = re.compile(
-    _START + r'(?:не[ \t]+)?(?:опыт[ \t]+(?:коммерческой[ \t]+)?'
-    r'(?:разработки[ \t]+на|работы[ \t]+с)|знани[ея]|'
+    # Only an explicit tool-use predicate may start after a comma. Employer
+    # text to its left stays subject to NER, independently of the skill span.
+    r'(?:' + _START + r'|(?<=,)[ \t]+(?=(?:работал[аи]?[ \t]+с|знаю)[ \t]+))'
+    r'(?:(?:обязателен|требуется)[ \t]+)?(?:не[ \t]+)?(?:опыт[а]?[ \t]+(?:коммерческой[ \t]+)?'
+    r'(?:разработки[ \t]+на|работы[ \t]+со?|построения[ \t]+дашбордов[ \t]+в|'
+    r'разработки[ \t]+пайплайнов[ \t]+в)|знани[ея]|знаю|уверенное[ \t]+владение|'
     r'навыки[ \t]+(?:работы[ \t]+с|использования)|'
     r'работал[аи]?[ \t]+с|использовал[аи]?|разрабатывал[аи]?[ \t]+на|'
+    r'(?:строил[аи]?|построил[аи]?)[ \t]+дашборды(?:[ \t]+удержания[ \t]+и[ \t]+воронки)?[ \t]+в|'
+    r'готовил[аи]?[ \t]+(?:еженедельные[ \t]+)?отч[её]ты(?:[ \t]+для[ \t]+отдела[ \t]+продаж)?[ \t]+в|'
+    r'настроил[аи]?[ \t]+(?:сквозную[ \t]+)?аналитику(?:[ \t]+событий)?[ \t]+в|'
+    r'в[её]л[аи]?[ \t]+уч[её]т[ \t]+в|'
     r'понимание[ \t]+разницы[ \t]+между|(?:технологии|стек)[ \t]*:)'
     r'[ \t]+', re.IGNORECASE | re.MULTILINE)
-_JOIN = re.compile(r'[ \t]*(?:,|/|\bи\b|\band\b)[ \t]*', re.IGNORECASE)
+_JOIN = re.compile(r'[ \t]*(?:,(?:[ \t]+знаю)?|/|\bи\b|\band\b)[ \t]*', re.IGNORECASE)
 _END_CLAUSE = re.compile(r'[;\n]|[.!?](?=\s|$)')
 _NEUTRAL_TAIL = re.compile(
-    r'[ \t]*(?:\d{1,3}[ \t]+(?:год[а]?|лет|месяц(?:а|ев)?)[ \t]*)?'
+    r'[ \t]*(?:(?:от[ \t]+)?\d{1,3}[ \t]+(?:год[а]?|лет|месяц(?:а|ев)?)[ \t]*)?'
     r'(?::[ \t]*компонентный подход(?:,[ \t]*(?:передача пропсов|работа с emit|v-model))*|'
-    r'\(работа с макетом(?:,[ \t]*экспорт ресурсов)?\))?[ \t]*', re.IGNORECASE)
+    r'\(работа с макетом(?:,[ \t]*экспорт ресурсов)?\)|нет|или[ \t]+аналогах)?[ \t]*', re.IGNORECASE)
 _RELATION = re.compile(
     r'\b(?:компани\w*|организаци\w*|работодател\w*|подрядчик\w*|'
-    r'сотрудник\w*|поставщик\w*|клиент\w*|ооо|зао|пао|ип|'
-    r'company|employer|contractor|employee|ltd|inc)\b|'
+    r'сотрудник\w*|поставщик\w*|клиент\w*|заказчик\w*|руководител\w*|ооо|зао|пао|ип|'
+    r'company|employer|contractor|employee|client|customer|ltd|inc)\b|'
     r'\bгде[ \t]+работ|\bв[ \t]+котор\w*[ \t]+работ', re.IGNORECASE)
 _EXPERIENCE = re.compile(
     _START + r'опыт[ \t]+работы(?:[ \t]*[:—–-]?[ \t]*'
@@ -51,6 +63,24 @@ _USAGE = re.compile(
     r'\b(?:макет(?:а|ам|ами|ов|ы|е|ах)?[ \t]+(?:в[ \t]+)?(?P<design>Figma)|'
     r'интеграци(?:я|и|ю|ей|ями)[ \t]+(?:с[ \t]+)?(?P<api>REST API))'
     r'(?!(?:[\w+-]|\.[\w]))', re.IGNORECASE)
+_REVERSE_USAGE = re.compile(
+    _START + r'(?P<tool>' + _TECH.pattern + r')[ \t]+использовал[аи]?[ \t]+'
+    r'только[ \t]+как[ \t]+пользователь[ \t]+готовых[ \t]+пайплайнов,'
+    r'[ \t]+сам[а]?[ \t]+пайплайны[ \t]+не[ \t]+писал[аи]?[ \t]*(?=[.!?\n]|$)',
+    re.IGNORECASE | re.MULTILINE)
+_SKILL_LIST = re.compile(
+    r'^[ \t]*(?:ключевые[ \t]+)?навыки[ \t]*:[ \t]*\n'
+    r'(?P<items>(?:[ \t]*[-•*—–][ \t]+[^\n]+(?:\n|$))+)', re.IGNORECASE | re.MULTILINE)
+_SKILL_ROW = re.compile(r'^[ \t]*(?:ключевые[ \t]+)?навыки[ \t]*\|[ \t]*(?P<items>[^\n]+)',
+                        re.IGNORECASE | re.MULTILINE)
+_PROFESSIONAL_CONCEPT = re.compile(
+    r'\b(?:адаптивная[ \t]+)?в[её]рстка[ \t]+(?P<pixel>Pixel Perfect)(?!\w)|'
+    r'\bтехподдержки[ \t]+\((?P<support>Service Desk)\)', re.IGNORECASE)
+_ACHIEVEMENT = re.compile(
+    _START + r'(?P<verb>сократил[аи]?)[ \t]+(?:время|длительность)[ \t]+'
+    r'(?:загрузки[ \t]+страницы|выполнения[ \t]+запроса|обработки[ \t]+данных)[ \t]+'
+    r'с[ \t]+\d+(?:[.,]\d+)?[ \t]+до[ \t]+\d+(?:[.,]\d+)?[ \t]+'
+    r'(?:секунд[ауы]?|минут[ауы]?|час(?:а|ов)?)[ \t]*(?=[.!?\n]|$)', re.IGNORECASE | re.MULTILINE)
 
 
 def _clause(text, start):
@@ -64,6 +94,47 @@ def _clause_start(text, pos):
     for boundary in _END_CLAUSE.finditer(text, line, pos):
         line = boundary.end()
     return line
+
+
+def _relationship_context(text, pos):
+    """A comma/bullet cannot turn a client or employer list into a skill list."""
+    line_start = text.rfind('\n', 0, pos)+1
+    previous = text[:line_start].splitlines()
+    for line in reversed(previous):
+        value = line.strip()
+        if not value or re.match(r'^[-•*—–][ \t]+', value):
+            continue
+        if value.endswith(':') and _RELATION.search(value):
+            return True
+        break
+    prefix = text[_clause_start(text, pos):pos]
+    # A quoted legal employer followed by a separate tool-use predicate is
+    # allowed; the organization itself still has no professional exemption.
+    prefix = re.sub(r'\b(?:ООО|АО|ЗАО|ПАО|ИП)[ \t]+[«"][^»"\n]+[»"]', '', prefix, flags=re.IGNORECASE)
+    return bool(_RELATION.search(prefix))
+
+
+def _table_terms(value):
+    """A skills table cell must be a complete flat vocabulary list, not fields."""
+    terms, pos = [], 0
+    while pos < len(value):
+        gap = re.match(r'[ \t,;/]+', value[pos:])
+        if gap:
+            pos += gap.end()
+            continue
+        term = _TECH.match(value, pos)
+        if term:
+            terms.append(term.span())
+            pos = term.end()
+            continue
+        # A masked technology prefix can leave a literal extension behind.
+        # It creates no exempt span; NER findings on it are still checked.
+        suffix = re.match(r'\.(?:js|ts)(?!\w)', value[pos:], re.IGNORECASE)
+        if suffix:
+            pos += suffix.end()
+            continue
+        return []
+    return terms
 
 
 def source_spans(text):
@@ -87,7 +158,7 @@ def source_spans(text):
     for slot in _SLOT.finditer(text):
         # Do not reinterpret an explicitly identified employer as a skill.
         clause = _clause(text, slot.start())
-        if _RELATION.search(clause):
+        if _RELATION.search(clause) or _relationship_context(text, slot.start()):
             continue
         terms, pos = [], slot.end()
         while term := _TECH.match(text, pos):
@@ -121,12 +192,35 @@ def source_spans(text):
             if term:
                 start = stack.end()+item.start()+len(item.group())-len(item.group().lstrip())
                 spans.append((start, start+len(value)))
+    for listing in _SKILL_LIST.finditer(text):
+        for item in re.finditer(r'^[ \t]*[-•*—–][ \t]+(?P<value>[^\n]+)', listing['items'], re.MULTILINE):
+            value = item['value'].strip().removesuffix('.')
+            if _TECH.fullmatch(value):
+                start = listing.start('items') + item.start('value')
+                spans.append((start, start+len(value)))
+    for row in _SKILL_ROW.finditer(text):
+        if not _RELATION.search(row['items']):
+            spans.extend((row.start('items')+start, row.start('items')+end)
+                         for start, end in _table_terms(row['items']))
+    for concept in _PROFESSIONAL_CONCEPT.finditer(text):
+        if not _RELATION.search(_clause(text, _clause_start(text, concept.start()))):
+            name = 'pixel' if concept['pixel'] else 'support'
+            spans.append(concept.span(name))
+    for usage in _REVERSE_USAGE.finditer(text):
+        spans.append(usage.span('tool'))
+    for achievement in _ACHIEVEMENT.finditer(text):
+        # A news-NER ORG hit on a verb is grammatical noise only in this
+        # measurable achievement form. No PERSON or structural exemption.
+        spans.append(achievement.span('verb'))
     for usage in _USAGE.finditer(text):
         start = _clause_start(text, usage.start())
         if (not _RELATION.search(_clause(text, start))
                 and _NEUTRAL_TAIL.fullmatch(_clause(text, usage.end()))):
             group = 'design' if usage.group('design') else 'api'
             spans.append(usage.span(group))
+    spans = [(start, end) for start, end in spans if not _relationship_context(text, start)]
+    roles = [(start, end) for start, end in roles if not _relationship_context(text, start)]
+    headings = [(start, end) for start, end in headings if not _relationship_context(text, start)]
     return spans, roles, headings
 
 
@@ -135,6 +229,6 @@ def source_findings(text, findings):
     return [item for item in findings if not (
         item.method in {'ner', 'name_header'} and any(
             start <= item.start < item.end <= end
-            for start, end in (roles if item.method == 'name_header' else
+            for start, end in (spans if item.method == 'name_header' else
                                spans if item.kind == 'ORG' else
                                headings if item.kind == 'PERSON' else [])))]

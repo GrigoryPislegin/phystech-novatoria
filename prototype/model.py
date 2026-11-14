@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from decimal import Decimal
 from .documents import MAX_JOBS
 from .privacy import check_data, protect_dependency_logs
@@ -14,8 +15,11 @@ SYSTEM = '''Ты сопоставляешь профессиональные т�
 Метки [[PRIV:...]] — скрытые значения. Сохраняй метки дословно, не угадывай и не восстанавливай их содержимое.
 Не придумывай опыт. Цитаты копируй дословно из текста, сохраняй регистр и пробелы.
 requirements: извлеки отдельные проверяемые профессиональные требования, ids r1,r2...
+В том же ответе factors.items отнеси каждое требование к одной группе: stack (инструменты и технологии), relevant_experience (профильный опыт и стаж), domain (сфера), education (образование), management (руководство и взаимодействие), language (языки), conditions (условия работы), other (остальное).
+В factors используй только существующие requirement_id, без повторов. Группы описывают требования вакансии, а не качества кандидата; не выдумывай отсутствующие компетенции ради диаграммы. Группировка не меняет веса и итоговый скоринг.
 mandatory_quote только для явно обязательного требования (нужна дословная цитата обязательности), иначе null.
 mandatory_quote должна включать целиком quote этого требования и не быть короче 8 символов.
+Не склеивай заголовок раздела с отдельным пунктом в mandatory_quote: это должен быть один непрерывный фрагмент исходника. Если такую цитату дать нельзя, верни null.
 Если обязательность задана заголовком, цитируй непрерывный фрагмент от заголовка до требования включительно.
 Не дублируй одно и то же требование разными ids. Наличие цитаты не доказывает её смысловую релевантность.
 facts: извлеки профессиональные факты резюме с дословной цитатой, ids f1,f2...
@@ -90,6 +94,60 @@ def _evidence_only_response(value, payload):
     return value
 
 
+def _restore_source_quote_whitespace(value, payload):
+    """Restore a unique exact source span, changing whitespace only.
+
+    Used after response privacy validation. No words, punctuation, identifiers
+    or references are repaired. Ambiguous matches keep their original value
+    and remain subject to the unchanged source/evidence validation.
+    """
+    from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
+    from .contracts import Facts, Requirements
+    result, count = value.model_copy(deep=True), 0
+
+    def restore(quote, source):
+        nonlocal count
+        if quote is None or not quote.strip() or quote in source:
+            return quote
+        # Lookahead includes overlapping matches in the ambiguity check.
+        pattern = re.compile('(?=(' + r'\s+'.join(re.escape(part) for part in quote.strip().split()) + '))')
+        matches = pattern.finditer(source)
+        first = next(matches, None)
+        if first is None or next(matches, None) is not None:
+            return quote
+        count += 1
+        return first.group(1)
+
+    def citation(item, facts):
+        if item is not None and item.fact_id in facts:
+            item.quote = restore(item.quote, facts[item.fact_id])
+
+    if isinstance(result, (Facts, Requirements)):
+        source = payload['text']
+        for item in result.items:
+            item.quote = restore(item.quote, source)
+            if isinstance(result, Requirements):
+                item.mandatory_quote = restore(item.mandatory_quote, source)
+    if isinstance(result, ResumeAnalysis):
+        facts = {item.id:item.quote for item in result.items}
+        profile = result.profile
+        claims = [*profile.summary, *profile.stack]
+        if profile.last_position:
+            claims += [profile.last_position.role, profile.last_position.domain, profile.last_position.period]
+        for achievement in profile.achievements:
+            claims += [achievement.action, achievement.result]
+        for claim in claims:
+            if claim is not None:
+                for item in claim.sources:
+                    citation(item, facts)
+    elif isinstance(result, VacancyAnalysis):
+        facts = {item['id']:item['quote'] for item in payload['facts']['items']}
+        for condition in result.conditions.items:
+            citation(condition.cv, facts)
+            condition.vacancy_quote = restore(condition.vacancy_quote, payload['vacancy_text'])
+    return result, count
+
+
 class Budget:
     # One facts request and two per vacancy, each with at most one repair.
     def __init__(self, model, limit=1.0, max_calls=2 * (1 + 2 * MAX_JOBS)):
@@ -126,12 +184,16 @@ class Model:
 
     async def ask(self, schema, task, payload):
         from .contracts import Facts, Requirements, Evaluation, validate_pair
+        from .analysis_contracts import RequirementsAnalysis
         # Retry only output-contract failures, once, from the same checked
         # source. Never send a rejected answer back or retry a privacy failure.
         for attempt in range(2):
             try:
                 result = await self._ask_once(schema, task, payload, repair=bool(attempt))
+                result, restored = _restore_source_quote_whitespace(result, payload)
                 try:
+                    if isinstance(result, RequirementsAnalysis):
+                        result = result.without_unverified_mandatory(payload['text'])
                     if isinstance(result, (Facts, Requirements)):
                         result.validate_source(payload['text'])
                     elif isinstance(result, Evaluation):
@@ -139,6 +201,18 @@ class Model:
                                       Facts.model_validate(payload['facts']), result)
                 except ValueError:
                     raise ModelOutputError('model_invalid') from None
+                warnings = isinstance(result, RequirementsAnalysis) and result._contract_warnings
+                if restored or warnings:
+                    await check_data(self.privacy, result.model_dump(mode='json'),
+                                     prepared=True, stage=task, direction='response')
+                    if not hasattr(self, 'response_normalizations'):
+                        self.response_normalizations = []
+                if restored:
+                    self.response_normalizations.append({'stage':task, 'action':'source_quote_whitespace_restored',
+                                                         'count':restored})
+                if warnings:
+                    self.response_normalizations.append({'stage':task, 'action':'unverified_mandatory_removed',
+                                                         'count':len(result._contract_warnings)})
                 return result
             except ModelOutputError as exc:
                 if attempt or str(exc) != 'model_invalid':
@@ -179,6 +253,11 @@ class Model:
             # complete cost estimate after a successful retry.
             self.usage_complete = False
             raise ModelOutputError('model_invalid') from None
+        except BaseException:
+            # A dispatched request can be billed even if its transport fails
+            # or a peer failure cancels it before usage becomes available.
+            self.usage_complete = False
+            raise
         if response.usage:
             self.usage.append({'input_tokens':response.usage.input_tokens,
                                'output_tokens':response.usage.output_tokens})
@@ -187,6 +266,14 @@ class Model:
         if response.status != 'completed' or response.output_parsed is None:
             raise ModelOutputError('model_refusal_or_incomplete')
         result = response.output_parsed
+        from .analysis_contracts import RequirementsAnalysis
+        if isinstance(result, RequirementsAnalysis) and result.factors is not None:
+            # Validate optional references before any local degradation. A
+            # forged/unknown ID must not disappear with the display labels.
+            try:
+                result.factors.validate_requirements(result)
+            except ValueError:
+                raise ModelOutputError('model_invalid') from None
         try:
             await check_data(self.privacy, result.model_dump(mode='json'),
                              prepared=True, stage=task, direction='response')
@@ -200,8 +287,23 @@ class Model:
             grounded = _evidence_only_response(result, payload)
             if grounded is None:
                 raise
-            await check_data(self.privacy, grounded.model_dump(mode='json'),
-                             prepared=True, stage=task, direction='response')
+            try:
+                await check_data(self.privacy, grounded.model_dump(mode='json'),
+                                 prepared=True, stage=task, direction='response')
+            except PrivacyError as grounded_error:
+                if (grounded_error.code != 'privacy_residual_findings'
+                        or not isinstance(grounded, RequirementsAnalysis) or grounded.factors is None):
+                    raise
+                # A fixed grouping enum may collide with a hidden company
+                # name (e.g. Stack). Drop optional chart labels locally, then
+                # recheck the complete remaining DTO, including every core ID.
+                # Never exempt a hidden value from the privacy boundary.
+                grounded = grounded.model_copy(update={'factors':None})
+                await check_data(self.privacy, grounded.model_dump(mode='json'),
+                                 prepared=True, stage=task, direction='response')
+                if not hasattr(self, 'response_normalizations'):
+                    self.response_normalizations = []
+                self.response_normalizations.append({'stage':task, 'action':'optional_competency_labels_removed'})
             result = grounded
             if not hasattr(self, 'response_normalizations'):
                 self.response_normalizations = []

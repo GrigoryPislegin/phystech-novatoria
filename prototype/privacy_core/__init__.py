@@ -14,7 +14,7 @@ from collections import Counter
 from ..errors import PrivacyError
 from .professional import source_findings, source_spans
 
-POLICY_VERSION = 'local-privacy-0.6'
+POLICY_VERSION = 'local-privacy-0.8'
 REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
 RESERVED = '[[PRIV:'
 
@@ -30,8 +30,19 @@ class Finding:
 # Capture only values after identifying labels; retain useful headings.
 _LABELS = re.compile(
     r'(?im)(?:^|(?<=[;.!?]))[ \t]*(?:фио|ф\.?\s*и\.?\s*о\.?|имя|фамилия|full name|name|'
-    r'адрес(?: проживания)?|address|дата рождения|год рождения|день рождения|родился|родилась|date of birth|dob|'
+    r'дата рождения|год рождения|день рождения|родился|родилась|date of birth|dob|'
     r'паспорт|снилс|инн|passport)(?:[ \t]*[:=—–-][ \t]*|[ \t]*\n[ \t]*|[ \t]+)([^\s;:=—–-][^\n;]*)')
+# Address fields may wrap across lines in an uploaded document. Continue only
+# over explicit street/house fields; never swallow the next professional line.
+# "Зарегистрирован патент" is an achievement, not an address declaration.
+_RESIDENCE = re.compile(
+    r'(?im)(?:^|(?<=[;.!?]))[ \t]*(?:[-•*—–][ \t]+)?'
+    r'(?:(?:адрес(?: проживания)?|address|проживаю|проживает|место жительства|регистрация)'
+    r'(?:[ \t]*[:=—–-][ \t]*|[ \t]*\n[ \t]*|[ \t]+)|'
+    r'зарегистрирован(?:а)?(?:[ \t]*[:=—–-][ \t]*|[ \t]+по[ \t]+адресу[ \t]*:?[ \t]*))'
+    r'(?:\r?\n[ \t]*)?([^\s;:=—–-][^\n;]*'
+    r'(?:(?:\r?\n|;)[ \t]*(?:ул(?:ица)?|проспект|пр-т|переулок|пер|д(?:ом)?|'
+    r'кв(?:артира)?|корпус|корп|строение|стр)[ .:]+[^\n;]*){0,3})')
 _CONTACT_LABELS = re.compile(
     r'(?im)(?:^|(?<=[;.!?]))[ \t]*(?:telegram|телеграм|whatsapp|skype|linkedin|email|e-mail|сайт|website)'
     r'(?:[ \t]*[:=—–-][ \t]*|[ \t]*\n[ \t]*|[ \t]+)([^\s;:=—–-][^\s;]*)')
@@ -40,6 +51,7 @@ _PATTERNS = [
     ('EMAIL', re.compile(r'(?i)\b[\w.+-]+\s*(?:\[at\]|\(at\))\s*[\w.-]+\s*(?:\[dot\]|\(dot\)|\.)\s*\w+')),
     ('LINK', re.compile(r'(?i)(?:https?://|www\.|(?:t|vk)\.me/|vk\.com/|github\.com/|linkedin\.com/|hh\.ru/)[^\s<>]+')),
     ('LINK', re.compile(r'(?i)\b(?:[a-z0-9][a-z0-9-]*\.)+[a-z]{2,24}/[^\s<>]+')),
+    ('LINK', re.compile(r'(?i)(?<![\w.-])(?:[^\W_][\w-]*\.)+(?:com|ru|org|net|io|dev|app|рф)(?![\w-]|\.[\w])')),
     ('HANDLE', re.compile(r'(?<!\w)@[\w.-]{2,}')),
     ('PHONE', re.compile(r'(?<!\w)(?:\+?\d[\s().-]*){10,15}(?!\w)')),
     ('DATE', re.compile(r'(?<!\d)\d{1,2}[./]\d{1,2}[./](?:19|20)\d{2}(?!\d)')),
@@ -83,6 +95,14 @@ class Detector:
         for kind, pattern in _PATTERNS:
             found.extend(Finding(m.start(), m.end(), kind) for m in pattern.finditer(text))
         found.extend(Finding(m.start(1), m.end(1), 'IDENTITY') for m in _LABELS.finditer(text))
+        for match in _RESIDENCE.finditer(text):
+            # Hide the field label together with its value. Otherwise a later
+            # pass sees the blanked reference as whitespace after the label
+            # and mistakes the next professional line for a wrapped address.
+            # A new sentence after a numbered house ends the address field.
+            ending = re.search(r'(?<=\d)\.[ \t]+(?=[А-ЯЁA-Z])', match[1])
+            end = match.start(1)+ending.start() if ending else match.end(1)
+            found.append(Finding(match.start(), end, 'LOCATION', 'residence'))
         found.extend(Finding(m.start(1), m.end(1), 'CONTACT') for m in _CONTACT_LABELS.finditer(text))
         found.extend(Finding(m.start(1), m.end(1), 'PERSON', 'name_header') for m in _NAME_LINE.finditer(text))
         found.extend(Finding(m.start(1), m.end(1), 'PERSON') for m in _RU_NAME_LINE.finditer(text)
@@ -141,6 +161,7 @@ class LocalPrivacy:
         self._hidden_values = set()
         self._safe_sources = []
         self._safe_roles = set()
+        self._safe_professional_headers = set()
         self._contextual = Counter()
 
     def _ready(self):
@@ -160,6 +181,15 @@ class LocalPrivacy:
     def _remember_hidden(self, text, finding):
         value = _canonical(text[finding.start:finding.end])
         values = {value}
+        if finding.method == 'residence':
+            field = _RESIDENCE.match(text[finding.start:finding.end])
+            if field:
+                address = field[1]
+                values.add(_canonical(address))
+                values.update(_canonical(part) for part in re.split(r'[,;\n]', address) if part.strip())
+                for street in re.finditer(r'(?:^|[,;\n])[ \t]*(?:ул(?:ица)?|проспект|пр-т|переулок|пер)'
+                                          r'[ .:]+([^,;\n]+)', address, re.IGNORECASE):
+                    values.add(_canonical(street[1]))
         if finding.kind in {'PERSON','IDENTITY'}:
             # Labeled fields may swallow the rest of a sentence. Index the
             # identity before its first punctuation separately, not every word
@@ -224,6 +254,7 @@ class LocalPrivacy:
     def _remember_source(self, text):
         self._safe_sources.append(text.casefold())
         self._safe_roles.update(_canonical(text[start:end]) for start, end in source_spans(text)[1])
+        self._safe_professional_headers.update(_canonical(text[start:end]) for start, end in source_spans(text)[0])
 
     async def finalize_sources(self, sources):
         """Reconcile all protected sources against the final run-local index.
@@ -234,6 +265,7 @@ class LocalPrivacy:
         self._ready()
         self._safe_sources.clear()
         self._safe_roles.clear()
+        self._safe_professional_headers.clear()
         sources = list(sources)
         for _ in range(4):
             changed = False
@@ -273,7 +305,7 @@ class LocalPrivacy:
             value = text[item.start:item.end].casefold()
             pattern = re.compile(r'(?<!\w)' + re.escape(value) + r'(?!\w)')
             can_inherit = (item.method == 'ner' or
-                           (item.method == 'name_header' and _canonical(value) in self._safe_roles))
+                           (item.method == 'name_header' and _canonical(value) in self._safe_professional_headers))
             if can_inherit and any(pattern.search(source) for source in self._safe_sources):
                 contextual[item.kind] += 1
             else:
@@ -348,5 +380,6 @@ class LocalPrivacy:
         self._hidden_values.clear()
         self._safe_sources.clear()
         self._safe_roles.clear()
+        self._safe_professional_headers.clear()
         self._key = b''
         self.closed = True

@@ -49,10 +49,63 @@ def _stem(word: str) -> str:
 _GENERIC_STEMS = frozenset(map(_stem, _GENERIC_WORDS))
 
 
+# A privacy reference stands for one hidden value, the same in the resume and the vacancy of a run.
+_REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
+
+# Words after which the rest of a sentence, or a list heading, may reverse or limit what a short quote
+# says: negation, a stated intent, learning, a low level. The forms are exact on purpose: «готовила
+# отчётность», «пользовательские интерфейсы», «машинное обучение», «собирал витрины» are ordinary work
+# and must not send a real match to review, while a miss here would let «Python» be quoted out of
+# «не работал с Python».
+_REVERSING = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
+    не|нет|нету|ни|без|кроме|никогда|никак|отсутству(?:ет|ют)|отсутствие|
+    not|no|never|without|except|none|lacks?|lacking|\w+n't|
+    планирую|планирует|хочу|хотел|хотела|хочется|желаю|собираюсь|мечтаю|намерен\w*|
+    готов|готова|готовы|готовлюсь|буду|смогу|ready\s+to|willing\s+to|
+    изуча(?:ю|л|ла|ет)|осваива(?:ю|л|ла|ет)|учусь|учился|училась|стажир\w*|
+    (?:прош[её]л|прошла|прохожу|проходил\w*|проходит|окончил\w*|закончил\w*|слушал\w*)\s+(?:[\w-]+\s+){0,2}курс\w*|
+    на\s+курс(?:е|ах)|
+    learning|learned|studying|studied|courses?|plan\s+to|want\s+to|would\s+like|
+    только|лишь|немного|чуть|поверхностн\w*|начинающ\w*|слаб(?:о|ый|ая|ое|ые)|теоретически|
+    (?:базов|начальн|теоретическ)\w+\s+(?:уров\w+|знани\w+|навык\w+|понимани\w+)|
+    (?:как|уровне|уровень|уровня)\s+пользовател\w*|знаком(?:а|ы)?|
+    basic|beginner|only|just|familiar
+    )(?![0-9a-zа-яё])""")
+# Plain negation: inside a quote it contradicts even a partial match (a limitation does not).
+_NEGATION = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
+    не|нет|нету|ни|без|кроме|никогда|никак|отсутству(?:ет|ют)|отсутствие|
+    not|no|never|without|except|none|lacks?|lacking|\w+n't)(?![0-9a-zа-яё])""")
+# A stated intent or a future: readiness is not experience, even a partial one (learning and a low
+# level are: that is what partial means).
+_INTENT = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
+    планирую|планирует|хочу|хотел|хотела|хочется|желаю|собираюсь|мечтаю|намерен\w*|
+    готов|готова|готовы|готовлюсь|буду|смогу|
+    plan\s+to|want\s+to|would\s+like|ready\s+to|willing\s+to)(?![0-9a-zа-яё])""")
+# Somebody else as the subject of the action: «коллеги писали на Python» says nothing about the candidate.
+_OTHERS = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
+    (?:коллеги|коллега|сотрудники|подчин[её]нные|подрядчики|подрядчик|заказчики|заказчик|клиенты|партн[её]ры|
+       разработчики|аналитики|команда|руководитель|тимлид|напарник|они|он|она|
+       (?:другие|другой|другая|соседн\w+|смежн\w+)\s+[а-яё-]+)
+    \s+(?:[а-яё-]+\s+){0,2}?[а-яё]+(?:ли|ла|ло|ал|ял|ил|ел|ет|ёт|ют|ут|ит|ят|ат)(?:сь|ся)?
+    |(?:colleagues?|teammates?|coworkers?|contractors?|they|(?:the|another|other)\s+teams?)
+     \s+(?:\w+\s+)?(?:used|use|wrote|write|worked|work|built|build|developed|develop|did|do))(?![0-9a-zа-яё])""")
+_CLAUSE_START = re.compile(r'[,;:—–(]')
+# A list heading that is not about what the person did: its bullets are not evidence of experience.
+_HEADING_ONLY = re.compile(r'(?i)(?<![а-яё])(?:интерес\w*|хобби|планы|цели|желаем\w*)(?![а-яё])')
+
+
+def reverses(text: str, heading: bool = False) -> bool:
+    """The text holds a word that may reverse or limit a neighbouring claim."""
+    text = text.replace('ё', 'е').replace('Ё', 'Е')
+    return bool(_REVERSING.search(text) or (heading and _HEADING_ONLY.search(text)))
+
+
 def _terms(text: str) -> set[str]:
-    """Content stems; numbers, single non-Latin characters and generic words are dropped."""
-    stems = set()
-    for word in _WORD.findall(text):
+    """Content stems; numbers, single non-Latin characters and generic words are dropped.
+    A privacy reference is one term as a whole: the same hidden value links two texts, and the
+    pieces of its marker («PRIV», «ORG», the run id) never do."""
+    stems = set(_REFERENCE.findall(text))
+    for word in _WORD.findall(_REFERENCE.sub(' ', text)):
         if word.isdigit() or (len(word) == 1 and not (word.isascii() and word.isalpha())):
             continue
         stem = _stem(word)
@@ -207,7 +260,11 @@ class MandatoryCheck(_Strict):
     context: str | None = None
 
 
+RULES_VERSION = 'evidence-0.2'
+
+
 class PairCheck(_Strict):
+    rules_version: str | None = None  # None: a check stored before evidence-0.2 (stricter fragment and list rules)
     cv_sha256: str
     vacancy_id: str
     vacancy_sha256: str
@@ -283,20 +340,59 @@ def _row_shape(row: Row, requirement: Requirement) -> list[Reason]:
     return reasons
 
 
-def _evidence_reasons(span: Span, quote: str, requirement_terms: set[str], fact_id: str, lay: Layout) -> list[Reason]:
-    if span.sentence is None:
-        return [_review('quote_spans_sentences', 'Цитата захватывает несколько предложений.',
-                        fact_id=fact_id, context=context(lay, span.start, span.end))]
+def _evidence_reasons(span: Span, quote: str, requirement_terms: set[str], fact_id: str, lay: Layout,
+                      text: str, status: str = 'full') -> list[Reason]:
+    """Why a located quote cannot be counted yet (rules evidence-0.2).
+
+    A quote is sent to review only when its structure leaves room for another meaning: the part of
+    the sentence(s) it leaves out, or the list heading above it, holds a reversing or limiting word;
+    a quote offered as support holds such a word itself (any for full, a negation for partial); or the quote
+    shares no term with the requirement. The neighbouring text is read only to find reservations:
+    what ties the evidence to the requirement must be inside the quote. A fragment of a neutral
+    sentence, a bullet under a neutral heading («Навыки:») and a neutral quote of whole sentences are
+    ordinary ways to cite and are counted."""
+    touched = [s for s in lay.sentences if s.start < span.end and span.start < s.end]
+    around = context(lay, span.start, span.end)
+    if touched:
+        left_out = text[touched[0].start:span.start] + ' ' + text[span.end:touched[-1].end]
+    else:
+        left_out = ''
     reasons = []
-    if core(quote) != span.sentence:
-        reasons.append(_review('quote_is_fragment', 'Цитата — часть предложения; проверьте предложение целиком.',
-                               fact_id=fact_id, context=span.sentence))
-    if not requirement_terms & _terms(span.sentence):
-        reasons.append(_review('evidence_not_linked', 'В доказательстве нет ни одного термина требования.',
-                               fact_id=fact_id, context=span.sentence))
-    if span.heading:
-        reasons.append(_review('heading_context', 'Пункт списка: смысл задаёт заголовок, проверьте его.',
-                               fact_id=fact_id, context=f'{span.heading} → {span.sentence}'))
+    if reverses(left_out):
+        if span.sentence is None:
+            reasons.append(_review('quote_spans_sentences',
+                                   'Цитата захватывает несколько предложений, а за её пределами есть оговорка.',
+                                   fact_id=fact_id, context=around))
+        else:
+            reasons.append(_review('quote_is_fragment',
+                                   'Цитата — часть предложения, в остальной части есть оговорка; проверьте целиком.',
+                                   fact_id=fact_id, context=span.sentence))
+    cited = text[span.start:span.end]
+    # full: any reservation inside the quote contradicts it. partial is a limited match by definition, so
+    # learning or a low level fit it; a plain negation or a mere intent do not.
+    plain = cited.replace('ё', 'е')
+    inside = reverses(cited) if status == 'full' else bool(_NEGATION.search(plain) or _INTENT.search(plain))
+    if status in ('full', 'partial') and inside:
+        reasons.append(_review('reservation_in_quote',
+                               'В самой цитате есть отрицание или оговорка, а вывод положительный; проверьте смысл.',
+                               fact_id=fact_id, context=around))
+    # The clause the quote stands in, from its own start: a subject left just outside the quote counts.
+    before = text[touched[0].start:span.start] if touched else ''
+    cut = max((m.end() for m in _CLAUSE_START.finditer(before)), default=0)
+    if status in ('full', 'partial') and _OTHERS.search(before[cut:] + cited):
+        reasons.append(_review('attributed_to_others',
+                               'Действие в цитате приписано другим людям, а не кандидату; проверьте, чей это опыт.',
+                               fact_id=fact_id, context=around))
+    if not requirement_terms & _terms(cited):
+        hidden = _REFERENCE.search(cited) or any(_REFERENCE.fullmatch(t) for t in requirement_terms)
+        reasons.append(_review('link_hidden_by_mask', 'Связь с требованием нельзя проверить: термин скрыт защитой '
+                               'данных. Сверьте с исходным документом.', fact_id=fact_id, context=around)
+                       if hidden else
+                       _review('evidence_not_linked', 'В доказательстве нет ни одного термина требования.',
+                               fact_id=fact_id, context=around))
+    if span.heading and reverses(span.heading, heading=True):
+        reasons.append(_review('heading_context', 'Пункт списка под заголовком с оговоркой; проверьте заголовок.',
+                               fact_id=fact_id, context=f'{span.heading} → {around}'))
     return reasons
 
 
@@ -315,7 +411,8 @@ def check_row(row: Row, requirement: Requirement, facts: Facts, cv: Source) -> R
             reasons.append(located.reason.model_copy(update={'fact_id': fact_id}))
             continue
         evidence.append(located.span)
-        reasons += _evidence_reasons(located.span, fact.quote, requirement_terms, fact_id, lay)
+        reasons += _evidence_reasons(located.span, fact.quote, requirement_terms, fact_id, lay, cv.text,
+                                     status=row.status)
     if any(r.severity == 'invalid' for r in reasons):
         state = 'invalid'
     elif reasons:
@@ -382,5 +479,5 @@ def check_pair(requirements: Requirements, facts: Facts, evaluation: Evaluation,
             for row in evaluation.rows]
     mandatory = [check_mandatory(r, vacancy) for r in requirements.items]
     states = {r.state for r in rows} | {m.state for m in mandatory}
-    return PairCheck(cv_sha256=cv.sha256, vacancy_id=vacancy.source_id, vacancy_sha256=vacancy.sha256, rows=rows,
+    return PairCheck(rules_version=RULES_VERSION, cv_sha256=cv.sha256, vacancy_id=vacancy.source_id, vacancy_sha256=vacancy.sha256, rows=rows,
                      mandatory=mandatory, needs_review='needs_review' in states, has_invalid='invalid' in states)

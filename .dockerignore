@@ -19,6 +19,8 @@ prototype/**
 !prototype/tests/
 prototype/tests/**
 !prototype/tests/test_core.py
+!prototype/tests/test_model.py
+!prototype/tests/test_runtime_safety.py
 !prototype/evidence.py
 !prototype/requirements_review.py
 !prototype/analysis_contracts.py
@@ -43,8 +45,12 @@ prototype/static/**
 !prototype/tests/test_e13_case_acceptance.py
 !prototype/tests/test_e13_support.py
 !prototype/tests/test_e13_failures.py
+!prototype/tests/test_e14_evidence_fidelity.py
+!prototype/tests/test_e14_competency_axes.py
+!prototype/tests/test_e14_professional_fidelity.py
 !evaluation/
 evaluation/**
+!evaluation/policy_compare.py
 !evaluation/fixtures/
 evaluation/fixtures/**
 !evaluation/fixtures/integration/
