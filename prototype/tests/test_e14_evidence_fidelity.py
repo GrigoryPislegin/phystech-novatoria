@@ -180,8 +180,50 @@ class ReviewOf7901bfaTests(unittest.TestCase):
         cv = f'Использовал {REF(1)}, коллеги писали на {REF(2)}.'
         s, check, _ = one_of_eight(cv, f'Опыт разработки на {REF(2)}.', f'Использовал {REF(1)}', text='Язык')
         self.assertEqual((check.state, codes(check), s['coverage']), ('needs_review', {'link_hidden_by_mask'}, 0))
-        s, check, _ = one_of_eight(cv, f'Опыт разработки на {REF(2)}.', f'коллеги писали на {REF(2)}', text='Язык')
+        own = f'Использовал {REF(1)}, сам писал на {REF(2)}.'
+        s, check, _ = one_of_eight(own, f'Опыт разработки на {REF(2)}.', f'сам писал на {REF(2)}', text='Язык')
         self.assertEqual(check.state, 'structure_ok')  # the exact reference inside the quote links
+
+    def test_what_others_did_is_not_the_candidate_s_experience(self):
+        cv = 'Использовал SQL, коллеги писали на Python.'
+        for quote in ('коллеги писали на Python', 'писали на Python', cv):
+            for status in ('full', 'partial'):
+                with self.subTest(quote=quote, status=status):
+                    s, check, _ = one_of_eight(cv, 'Опыт разработки на Python обязателен.', quote, text='Python',
+                                               status=status, mandatory=True)
+                    self.assertEqual(check.state, 'needs_review')
+                    self.assertIn('attributed_to_others', codes(check))
+                    self.assertEqual((s['lower'], s['mandatory']), (0, 'clarify'))  # to review, never a fail
+        for cv in ('Подрядчики настраивали Kubernetes, я писал манифесты.', 'Соседняя команда использовала Kubernetes.',
+                   'Тимлид писал на Kubernetes.', 'They used Kubernetes in production.',
+                   f'Коллеги писали на {REF(2)}.'):
+            quote = cv.split(',')[0].rstrip('.')
+            _, check, _ = one_of_eight(cv, 'Опыт работы с Kubernetes.' if 'PRIV' not in cv else f'Опыт с {REF(2)}.',
+                                       quote, text='Kubernetes')
+            self.assertIn('attributed_to_others', codes(check), cv)
+        # The candidate's own part of the same sentence, and work with or for other people, are counted.
+        for cv, quote, requirement in (
+                ('Использовал SQL, коллеги писали на Python.', 'Использовал SQL', 'Опыт работы с SQL.'),
+                ('Обучал коллег работе с SQL.', 'Обучал коллег работе с SQL.', 'Опыт работы с SQL.'),
+                ('Согласовывал требования с заказчиками по SQL-отчётам.', 'Согласовывал требования с заказчиками по SQL-отчётам.',
+                 'Опыт работы с SQL.'),
+                ('Работал в команде из 5 человек над SQL-витринами.', 'Работал в команде из 5 человек над SQL-витринами.',
+                 'Опыт работы с SQL.'),
+                ('Руководил командой, которая внедрила SQL-хранилище.', 'Руководил командой', 'Опыт руководства командой.')):
+            _, check, _ = one_of_eight(cv, requirement, quote, text=requirement)
+            self.assertEqual((check.state, codes(check)), ('structure_ok', set()), cv)
+
+    def test_readiness_is_not_even_a_partial_experience(self):
+        for cv in ('Готов работать с Python.', 'Буду рад писать на Python.', 'Хочу развиваться в Python.',
+                   'Планирую перейти на Python.'):
+            for quote in (cv, 'Python'):
+                s, check, _ = one_of_eight(cv, 'Опыт разработки на Python обязателен.', quote, text='Python',
+                                           status='partial', mandatory=True)
+                self.assertEqual((check.state, s['lower']), ('needs_review', 0), (cv, quote))
+        # Limited real experience and learning remain what partial is for.
+        for cv in ('Python изучаю самостоятельно.', 'Python — базовый уровень.', 'Прошёл курс по Python.'):
+            s, check, _ = one_of_eight(cv, 'Знание Python.', cv, text='Python', status='partial')
+            self.assertEqual((check.state, s['lower']), ('structure_ok', 6.25), cv)
 
     def test_a_v3_report_saved_before_the_new_fields_is_reopened(self):
         real = one_of_eight('Навыки: Vue.js, TypeScript, Git.', 'Опыт работы с Vue.js.', 'Vue.js')
