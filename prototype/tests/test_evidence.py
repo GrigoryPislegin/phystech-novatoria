@@ -123,10 +123,10 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual((check.state, codes(check)), ('invalid', {'quote_not_found'}))
 
     def test_5b_three_kinds_are_distinguishable(self):
-        cv = Source.of('cv', 'Разрабатывал на Python 3 года.')
+        cv = Source.of('cv', 'С Python не работал, 3 года писал на Java.')
         facts = Facts(items=[Fact(id='f1', text='Python', quote='Python')])
         missing = check_row(row('unknown', []), req(), facts, cv).state
-        disputed = check_row(row('full', ['f1']), req(), facts, cv).state
+        disputed = check_row(row('full', ['f1']), req(), facts, cv).state  # the rest of the sentence negates it
         broken = check_row(row('full', ['f7']), req(), facts, cv).state
         self.assertEqual((missing, disputed, broken), ('no_evidence', 'needs_review', 'invalid'))
 
@@ -185,7 +185,9 @@ class ReviewRegressionTests(unittest.TestCase):
         check = check_row(row('full', ['f1']), python, Facts(items=[Fact(id='f1', text='x', quote='Python 3 года')]),
                           neutral)
         self.assertEqual(check.evidence[0].heading, 'Навыки:')
-        self.assertEqual(codes(check), {'heading_context'})  # code cannot read the heading: a human does
+        # evidence-0.2: a bullet under a neutral heading is an ordinary citation and is counted;
+        # only a heading with a reversing word («Не работал с:») sends it to review.
+        self.assertEqual((check.state, codes(check)), ('structure_ok', set()))
 
     def test_repeated_requirement_quote_in_vacancy_is_not_chosen_silently(self):
         vacancy = Source.of('job-1', 'Обязательно:\n- Python и SQL\nЖелательно:\n- SQL')

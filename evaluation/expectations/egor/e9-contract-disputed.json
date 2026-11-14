@@ -48,6 +48,7 @@
       ]
      },
      "evidence_check": {
+      "rules_version": "evidence-0.2",
       "cv_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
       "vacancy_id": "job-a",
       "vacancy_sha256": "e9dbb779b9babdcd7f94bfe12acec3beef74bd1a96ff8152bda81eab2fc9b0f9",
@@ -214,6 +215,23 @@
        }
       },
       "repeated_ids": [],
+      "shares": {
+       "confirmed": 25.0,
+       "disputed": 75.0,
+       "unknown": 0.0
+      },
+      "breakdown": {
+       "full": [
+        "r2"
+       ],
+       "partial": [],
+       "fail": [],
+       "unknown": [],
+       "disputed": [
+        "r1"
+       ],
+       "stop_factors": []
+      },
       "marker_scenarios": []
      },
      "conditions": {
@@ -311,6 +329,7 @@
       ]
      },
      "evidence_check": {
+      "rules_version": "evidence-0.2",
       "cv_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
       "vacancy_id": "job-b",
       "vacancy_sha256": "d298f2487f9b2e5b7f5b5e1fb7c15b4a815fb79cc0aa8d43e9ad10b2e6361653",
@@ -440,6 +459,21 @@
        }
       },
       "repeated_ids": [],
+      "shares": {
+       "confirmed": 0.0,
+       "disputed": 100.0,
+       "unknown": 0.0
+      },
+      "breakdown": {
+       "full": [],
+       "partial": [],
+       "fail": [],
+       "unknown": [],
+       "disputed": [
+        "r1"
+       ],
+       "stop_factors": []
+      },
       "marker_scenarios": [
        {
         "applied": [
@@ -525,7 +559,8 @@
      }
     ],
     "decisive_total": 2,
-    "answers_limit": 2
+    "answers_limit": 2,
+    "comparable": true
    }
   },
   "errors": [],
@@ -681,6 +716,102 @@
     "close": true
    }
   ],
+  "leader": {
+   "policy_version": "draft-2026-11-14-v3",
+   "job_ids": [
+    "job-a"
+   ],
+   "state": "open",
+   "reasons": [
+    "own_mandatory_unresolved",
+    "own_disputed",
+    "challenger_doubted",
+    "close_margin"
+   ],
+   "factors": [
+    {
+     "job_id": "job-a",
+     "requirement_id": "r2",
+     "requirement_quote": "SQL желателен.",
+     "status": "full",
+     "counterpart_status": null,
+     "mandatory_applied": false,
+     "disputed": false,
+     "cv_quotes": [
+      "SQL 2 года."
+     ],
+     "effect": 25.0
+    }
+   ],
+   "limits": [
+    {
+     "job_id": "job-a",
+     "requirement_id": "r1",
+     "requirement_quote": "Обязателен опыт Python.",
+     "status": "full",
+     "counterpart_status": null,
+     "mandatory_applied": true,
+     "disputed": true,
+     "cv_quotes": [
+      "Python"
+     ],
+     "effect": 75.0
+    }
+   ],
+   "condition_conflicts": [
+    "work_mode"
+   ],
+   "can_change": [
+    {
+     "row": {
+      "job_id": "job-a",
+      "requirement_id": "r1",
+      "requirement_quote": "Обязателен опыт Python.",
+      "status": "full",
+      "counterpart_status": null,
+      "mandatory_applied": true,
+      "disputed": true,
+      "cv_quotes": [
+       "Python"
+      ],
+      "effect": 75.0
+     },
+     "kind": "disputed",
+     "role": "leader",
+     "requirement_ids": [
+      "r1"
+     ]
+    },
+    {
+     "row": {
+      "job_id": "job-b",
+      "requirement_id": "r1",
+      "requirement_quote": "Python",
+      "status": "fail",
+      "counterpart_status": null,
+      "mandatory_applied": false,
+      "disputed": true,
+      "cv_quotes": [
+       "SQL 2 года."
+      ],
+      "effect": 100.0
+     },
+     "kind": "disputed",
+     "role": "challenger",
+     "requirement_ids": [
+      "r1"
+     ]
+    }
+   ],
+   "challengers": [
+    "job-b"
+   ],
+   "close_to": [
+    "job-b"
+   ],
+   "unassessed": [],
+   "summary": "job-a: Первое место предварительное: его могут изменить перечисленные уточнения. Решающие основания: «SQL желателен.» — full, 25.0 п. Ограничения: «Обязателен опыт Python.» — спорно. Условия работы расходятся (work_mode): в оценку не входят, решает HR. Может изменить выбор: job-a «Обязателен опыт Python.»; job-b «Python». Близкие вакансии: job-b."
+  },
   "review_queue": {
    "schema_version": "review-queue-0.1",
    "policy_version": "draft-2026-11-14-v3",
@@ -1029,6 +1160,23 @@
        }
       },
       "repeated_ids": [],
+      "shares": {
+       "confirmed": 25.0,
+       "disputed": 75.0,
+       "unknown": 0.0
+      },
+      "breakdown": {
+       "full": [
+        "r2"
+       ],
+       "partial": [],
+       "fail": [],
+       "unknown": [],
+       "disputed": [
+        "r1"
+       ],
+       "stop_factors": []
+      },
       "marker_scenarios": []
      },
      "rows": [
@@ -1066,6 +1214,7 @@
        "resume_quotes": [
         "Python"
        ],
+       "score_conflict": false,
        "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
        "question": null
       },
@@ -1105,6 +1254,7 @@
        "resume_quotes": [
         "SQL 2 года."
        ],
+       "score_conflict": false,
        "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
        "question": null
       }
@@ -1190,6 +1340,7 @@
         "resume_quotes": [
          "SQL 2 года."
         ],
+        "score_conflict": false,
         "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
         "question": null
        }
@@ -1229,6 +1380,7 @@
         "resume_quotes": [
          "Python"
         ],
+        "score_conflict": false,
         "explanation": "Модель предложила полное соответствие; проверьте смысл приведённых цитат.",
         "question": null
        }
@@ -1279,6 +1431,21 @@
        }
       },
       "repeated_ids": [],
+      "shares": {
+       "confirmed": 0.0,
+       "disputed": 100.0,
+       "unknown": 0.0
+      },
+      "breakdown": {
+       "full": [],
+       "partial": [],
+       "fail": [],
+       "unknown": [],
+       "disputed": [
+        "r1"
+       ],
+       "stop_factors": []
+      },
       "marker_scenarios": [
        {
         "applied": [
@@ -1350,6 +1517,7 @@
        "resume_quotes": [
         "SQL 2 года."
        ],
+       "score_conflict": false,
        "explanation": "Модель предложила несоответствие; проверьте противоречие до решения о кандидате.",
        "question": "Уточните опыт по требованию «Python»: какие задачи выполняли, когда и с каким результатом?"
       }
@@ -1445,6 +1613,7 @@
         "resume_quotes": [
          "SQL 2 года."
         ],
+        "score_conflict": false,
         "explanation": "Модель предложила несоответствие; проверьте противоречие до решения о кандидате.",
         "question": "Уточните опыт по требованию «Python»: какие задачи выполняли, когда и с каким результатом?"
        }

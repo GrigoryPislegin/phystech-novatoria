@@ -180,6 +180,18 @@ def score(requirements: Requirements, evaluation: Evaluation, evidence: PairChec
         'conflict_ids': sorted(rid for u in units if u['state'] == 'conflict' for rid in u['ids']),
         'groups': {'core': part('core'), 'extra': part('extra')},
         'repeated_ids': [u['ids'] for u in units if len(u['ids']) > 1],
+        # Three shares of the 100-point scale, apart: counted evidence (the same number as `coverage`),
+        # model claims waiting for a check of their quote, and requirements the resume says nothing about.
+        'shares': {'confirmed': _points(known),
+                   'disputed': _points(sum(w for u, w in zip(units, ex['weights']) if u['state'] in ('disputed', 'conflict'))),
+                   'unknown': _points(sum(w for u, w in zip(units, ex['weights']) if u['state'] == 'unknown'))},
+        # What a recruiter can check per vacancy: every requirement row under exactly one heading.
+        # `stop_factors` are confirmed fails of applied mandatory requirements, the only hard limit.
+        'breakdown': {**{name: [rid for u in units if u['state'] == name for rid in u['ids']]
+                         for name in ('full', 'partial', 'fail', 'unknown')},
+                      'disputed': [rid for u in units if u['state'] in ('disputed', 'conflict') for rid in u['ids']],
+                      'stop_factors': [rid for u in units if u['group'] == 'core' and u['state'] == 'fail'
+                                       for rid in u['ids']]},
         # None: too many unapplied markers to enumerate; such a job is treated as able to reach the top.
         'marker_scenarios': None if len(excluded) > MAX_MARKERS else scenarios})
     return result
@@ -219,7 +231,10 @@ def _leader(jobs: list[dict]) -> dict:
     first = top[0]['score']
     out = {'job_ids': [j['job_id'] for j in top], 'state': 'stable', 'reasons': [], 'margin': None,
            'resolution': None, 'close_to': [], 'challengers': [], 'unassessed': [], 'decisive': [],
-           'decisive_total': 0, 'answers_limit': ANSWERS}
+           'decisive_total': 0, 'answers_limit': ANSWERS,
+           # False: no vacancy has any counted evidence, so there is nothing to compare and no leader to
+           # present. The state stays 'open' (reason no_confirmed_fit); the places are a listing order only.
+           'comparable': True}
     if first['mandatory'] == 'violated':
         return {**out, 'state': 'none_fit'}
     reasons, decisive = set(), {}
@@ -267,6 +282,7 @@ def _leader(jobs: list[dict]) -> dict:
                 add(job, [rid], 'marker', 'leader', Fraction(s['weights'][rid]))
         if best == 0:
             reasons.add('no_confirmed_fit')
+            out['comparable'] = False
         if len(top) > 1 and open_units(job, {'unknown'}):  # one answer would break the tie
             reasons.add('tie_unresolved')
             for u, w in open_units(job, {'unknown'}):

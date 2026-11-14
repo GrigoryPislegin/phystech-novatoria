@@ -92,13 +92,11 @@ class CompareTests(unittest.TestCase):
                         self.assertLessEqual(set(ref.cv_quotes), facts)
 
     def test_disputed_row_is_open_under_policy_v2(self):
-        class Fragment(ReplayModel):
+        class Fragment(ReplayModel):  # «Python» is "proved" by the SQL fact: nothing ties them
             async def ask(self, schema, task, payload):
                 result = await super().ask(schema, task, payload)
-                if task == 'facts':
-                    result.items[0].quote = 'Python'
-                    result.profile.summary[0].text = 'Python'
-                    result.profile.summary[0].sources[0].quote = 'Python'
+                if task == 'evaluation' and len(result.rows) == 2:
+                    result.rows[0].fact_ids = ['f2']
                 return result
         report = with_evidence(demo_report(model=Fragment()))
         c = compare(report, 'job-001', 'job-002')
@@ -205,13 +203,11 @@ class ReasonTests(unittest.TestCase):
         self.assertIn('у обеих несоответствие обязательному требованию', compare(report, 'a', 'b').summary)
 
     def test_v1_report_marks_disputed_rows(self):
-        class Fragment(ReplayModel):
+        class Fragment(ReplayModel):  # «Python» is "proved" by the SQL fact: nothing ties them
             async def ask(self, schema, task, payload):
                 result = await super().ask(schema, task, payload)
-                if task == 'facts':
-                    result.items[0].quote = 'Python'
-                    result.profile.summary[0].text = 'Python'
-                    result.profile.summary[0].sources[0].quote = 'Python'
+                if task == 'evaluation' and len(result.rows) == 2:
+                    result.rows[0].fact_ids = ['f2']
                 return result
         report = as_v1(demo_report(model=Fragment()))
         self.assertFalse(report['ranking']['jobs'][0]['score']['evidence_applied'])
