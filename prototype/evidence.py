@@ -312,7 +312,8 @@ class MandatoryCheck(_Strict):
     context: str | None = None
 
 
-RULES_VERSION = 'evidence-0.3'  # 0.3: list layouts under requirement headings, obligation denied by heading or item
+RULES_VERSION = 'evidence-0.4'  # 0.4: a full claim must cite the named terms of its requirement
+_RULES_03 = 'evidence-0.3'  # 0.3: list layouts under requirement headings, obligation denied by heading or item
 
 
 class PairCheck(_Strict):
@@ -377,6 +378,46 @@ def verify_span(span: Span, sources: dict[str, Source]) -> list[Reason]:
     if current is None or (current.sentence, current.heading) != (span.sentence, span.heading):
         return [_invalid('context_mismatch', 'Контекст не совпадает с источником.')]
     return []
+
+
+# A named term of a requirement: a technology, a product or a level written in Latin letters
+# («React», «Vue.js», «C++», «B2», «SOC»).
+_NAMED = re.compile(r'[A-Za-z][A-Za-z0-9#+]*')
+_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+_LEVEL = re.compile(r'(?i)(?<![A-Za-z0-9])[ABC][12](?![A-Za-z0-9])')
+_JOINER = re.compile(r'^\s*(?:,|и|&|\+|,\s*и|а\s+также|and|,\s*and)\s*$', re.IGNORECASE)
+_ALTERNATIVE = re.compile(r'(?i)(?<![а-яёa-z])(?:или|либо|or)(?![а-яёa-z])|/')
+
+
+def _uncited_parts(requirement_quote: str, cited: str) -> list[str]:
+    """Named terms a `full` claim must cite and does not.
+
+    One named term in the requirement: it must be in the cited text («React» is not shown by «Vue»,
+    «B2» is not shown by «B1»). Named terms joined as a list («Python и Go», «Docker, Kubernetes»):
+    every one of them, unless the requirement offers a choice («или», «/»). Otherwise one is enough.
+    Only what is written is compared: «k8s» for «Kubernetes» goes to the recruiter, it is not a fail."""
+    text = _REFERENCE.sub(' ', requirement_quote)
+    # The same tokens the link check uses, so «Vue.js» is «Vue» + «js» on both sides.
+    found = [m for m in _WORD.finditer(text) if _NAMED.fullmatch(m.group()) and len(m.group()) > 1
+             and _stem(m.group()) not in _GENERIC_STEMS]
+    names = [_stem(m.group()) for m in found]
+    have = _terms(cited)
+    # A language level is met by the same or a higher one: «B2» in the resume covers «не ниже B1».
+    levels = [x.upper() for x in _LEVEL.findall(cited)]
+    def shown(name):
+        if _LEVEL.fullmatch(name):
+            return any(_LEVELS.index(x) >= _LEVELS.index(name.upper()) for x in levels)
+        return _stem(name) in have
+    missing = [m.group() for m in found if not shown(m.group())]
+    if not names or len(missing) < len(names) and _ALTERNATIVE.search(text):
+        return []
+    if len(set(names)) == 1 or len(missing) == len(names):
+        return missing
+    listed = set()
+    for a, b in zip(found, found[1:]):
+        if _JOINER.match(text[a.end():b.start()]):
+            listed |= {a.group(), b.group()}
+    return [name for name in missing if name in listed]
 
 
 def _row_shape(row: Row, requirement: Requirement) -> list[Reason]:
@@ -465,6 +506,14 @@ def check_row(row: Row, requirement: Requirement, facts: Facts, cv: Source) -> R
         evidence.append(located.span)
         reasons += _evidence_reasons(located.span, fact.quote, requirement_terms, fact_id, lay, cv.text,
                                      status=row.status)
+    if row.status == 'full' and evidence and not any(
+            r.code in ('evidence_not_linked', 'link_hidden_by_mask') for r in reasons):
+        cited = ' '.join(cv.text[span.start:span.end] for span in evidence)
+        uncited = _uncited_parts(requirement.quote, cited)
+        if uncited:
+            reasons.append(_review('requirement_part_not_cited',
+                                   'Полное соответствие заявлено, но в цитатах нет названного в требовании: '
+                                   + ', '.join(dict.fromkeys(uncited)) + '. Проверьте, подтверждена ли эта часть.'))
     if any(r.severity == 'invalid' for r in reasons):
         state = 'invalid'
     elif reasons:

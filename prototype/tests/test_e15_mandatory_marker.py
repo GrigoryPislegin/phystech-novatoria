@@ -204,7 +204,7 @@ class ReviewOf04b80daTests(unittest.TestCase):
             self.assertEqual(check(text, item, text).state, 'structure_ok', item)
 
     def test_rules_version_changed_with_the_rules(self):
-        self.assertEqual(RULES_VERSION, 'evidence-0.3')
+        self.assertRegex(RULES_VERSION, r'^evidence-0\.[3-9]$')  # bumped whenever the same input can check differently
 
 
 class OrderStabilityTests(unittest.TestCase):

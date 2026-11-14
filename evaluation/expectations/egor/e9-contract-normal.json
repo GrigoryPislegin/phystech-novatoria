@@ -40,7 +40,7 @@
      "contract_warnings": [],
      "requirement_factors": null,
      "evidence_check": {
-      "rules_version": "evidence-0.3",
+      "rules_version": "evidence-0.4",
       "cv_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
       "vacancy_id": "job-001",
       "vacancy_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
@@ -262,7 +262,7 @@
      "contract_warnings": [],
      "requirement_factors": null,
      "evidence_check": {
-      "rules_version": "evidence-0.3",
+      "rules_version": "evidence-0.4",
       "cv_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
       "vacancy_id": "job-002",
       "vacancy_sha256": "1c45ff0cbf14039070863347ed0cc5021f8576d9380ff9518db9248b1a897870",
@@ -421,7 +421,7 @@
      "contract_warnings": [],
      "requirement_factors": null,
      "evidence_check": {
-      "rules_version": "evidence-0.3",
+      "rules_version": "evidence-0.4",
       "cv_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
       "vacancy_id": "job-003",
       "vacancy_sha256": "964af580232a4916af6cad3eebfdf885565f75b5fc16ad63a2b813f68761a383",
