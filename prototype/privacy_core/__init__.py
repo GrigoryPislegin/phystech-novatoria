@@ -13,7 +13,7 @@ import unicodedata
 from collections import Counter
 from ..errors import PrivacyError
 
-POLICY_VERSION = 'local-privacy-0.4'
+POLICY_VERSION = 'local-privacy-0.5'
 REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
 RESERVED = '[[PRIV:'
 
@@ -48,6 +48,23 @@ _PATTERNS = [
 # Russian news NER does not reliably recognize English name headers. This
 # conservative structural rule may also hide title-case headings; no allowlist.
 _NAME_LINE = re.compile(r'(?m)^\s*([A-Z][a-z]+(?:[-\x27][A-Z]?[a-z]+)?(?:[ \t]+[A-Z][a-z]+){1,3})[ \t]*$')
+# News NER can miss an entire Russian CV name heading. Three capitalized
+# name tokens including a patronymic give a bounded structural signal. Do not
+# treat every capitalized professional heading as a personal name.
+_RU_NAME_PART = r'(?:[А-ЯЁ][а-яё]{1,63}|[А-ЯЁ]{2,64})'
+_NAME_DASHES = '-‐‑‒–—'
+_RU_NAME_TOKEN = rf'{_RU_NAME_PART}(?:[{_NAME_DASHES}]{_RU_NAME_PART})?'
+_RU_HEADER_PREFIX = r'[ \t]*(?:(?:[•*#–—-]|\d{1,2}[.)])[ \t]*)?'
+_RU_HEADER_END = r'[ \t]*[.,;:]?[ \t]*\r?$'
+_RU_NAME_LINE = re.compile(rf'(?m)^{_RU_HEADER_PREFIX}({_RU_NAME_TOKEN}(?:[ \t]+{_RU_NAME_TOKEN}){{2}}){_RU_HEADER_END}')
+# Wrapped names are recognized only in the first heading, across at most two
+# line breaks. Do not join arbitrary body paragraphs into a supposed identity.
+_RU_NAME_HEADER = re.compile(rf'(?m)\A(?:[ \t]*\r?\n){{0,2}}{_RU_HEADER_PREFIX}'
+                            rf'({_RU_NAME_TOKEN}(?:(?:[ \t]+|[ \t]*\r?\n[ \t]*){_RU_NAME_TOKEN}){{2}}){_RU_HEADER_END}')
+# Bare "-ич" also matches professional words (кирпич, сэндвич). Short forms
+# here are grammatical patronymics, not exceptions for professional entities.
+_RU_PATRONYMIC = re.compile(r'(?:[а-яё]+(?:ович|евич|овна|евна|ична)|'
+                           r'ильич|кузьмич|лукич|саввич|фомич|никитич)\Z', re.IGNORECASE)
 # Explicit English self-identification, bounded to the name before punctuation.
 # Do not consume the following professional sentence or treat arbitrary prose as a name.
 _EN_NAME_TOKEN = r"(?:[A-Z][a-z]+(?:[-'][A-Z]?[a-z]+)*|[A-Z](?:[-'][A-Z][a-z]+)+|[A-Z]\.)"
@@ -67,6 +84,11 @@ class Detector:
         found.extend(Finding(m.start(1), m.end(1), 'IDENTITY') for m in _LABELS.finditer(text))
         found.extend(Finding(m.start(1), m.end(1), 'CONTACT') for m in _CONTACT_LABELS.finditer(text))
         found.extend(Finding(m.start(1), m.end(1), 'PERSON') for m in _NAME_LINE.finditer(text))
+        found.extend(Finding(m.start(1), m.end(1), 'PERSON') for m in _RU_NAME_LINE.finditer(text)
+                     if any(_RU_PATRONYMIC.fullmatch(token) for token in m.group(1).split()))
+        header = _RU_NAME_HEADER.match(text)
+        if header and '\n' in header.group(1) and any(_RU_PATRONYMIC.fullmatch(token) for token in header.group(1).split()):
+            found.append(Finding(header.start(1), header.end(1), 'PERSON'))
         found.extend(Finding(m.start(1), m.end(1), 'PERSON') for m in _INTRODUCED_NAME.finditer(text))
         if not text.strip():
             return found
@@ -141,8 +163,10 @@ class LocalPrivacy:
             # of the swallowed professional prose. Unmerged NER findings below
             # additionally preserve shorter entities nested within that field.
             head = re.split(r'[,;.!?\n]', value, maxsplit=1)[0] if finding.kind == 'IDENTITY' else value
-            values.update(token for token in re.findall(r"[^\W\d_]+(?:[-'’][^\W\d_]+)*", head)[:4]
-                          if len(token) >= 2)
+            tokens = re.findall(rf"[^\W\d_]+(?:[{_NAME_DASHES}'’][^\W\d_]+)*", head)[:4]
+            values.update(token for token in tokens if len(token) >= 2)
+            values.update(part for token in tokens for part in re.split(rf"[{_NAME_DASHES}'’]", token)
+                          if len(part) >= 2)
             values.add(head)
         for hidden in values - {''}:
             self._hidden_lengths.add(len(hidden))

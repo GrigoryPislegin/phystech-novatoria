@@ -291,3 +291,41 @@ class C14BoundaryTests(unittest.TestCase):
                 await check_data(privacy, {'text':source}, prepared=True)
             privacy.close()
         asyncio.run(run())
+
+    def test_russian_name_header_is_hidden_when_news_ner_misses_it(self):
+        from types import SimpleNamespace
+        from prototype.privacy_core import normalized
+        async def run():
+            # No NER span: the independent structural rule must cover this CV
+            # heading without treating ordinary job-title headings as names.
+            detector = Detector(lambda text:SimpleNamespace(spans=[]))
+            for header in ('Орлова Ксения Павловна', 'КСЕНИЯ ПАВЛОВНА ОРЛОВА',
+                           'Ксения Павловна Орлова', 'Орлова-Петрова Ксения Павловна'):
+                privacy = LocalPrivacy(detector)
+                try:
+                    source = header + '\nСтарший Аналитик Данных\nИспользовал SQL 4 года.'
+                    safe = await privacy.redact(source)
+                    self.assertNotIn('ксения', safe.casefold())
+                    self.assertIn('Старший Аналитик Данных', safe)
+                    self.assertIn('Использовал SQL 4 года.', safe)
+                    with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+                        await privacy.check_prepared('Опыт: ' + normalized(header).casefold())
+                    if 'Петрова' in header:
+                        for component in ('орлова','петрова'):
+                            with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+                                await privacy.check_prepared('Опыт: ' + component)
+                finally:
+                    privacy.close()
+        asyncio.run(run())
+
+    def test_professional_headers_are_not_patronymics(self):
+        async def run():
+            for heading in ('Кирпич Лицевой Керамический', 'Производство Сэндвич Панелей',
+                            'Ремонт Сэндвич Панелей'):
+                privacy = LocalPrivacy(self.detector)
+                try:
+                    safe = await privacy.redact(heading + '\nУправлял поставками и разрабатывал отчеты.')
+                    self.assertIn(heading, safe)
+                finally:
+                    privacy.close()
+        asyncio.run(run())

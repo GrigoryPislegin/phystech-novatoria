@@ -4,11 +4,11 @@ Two layers:
 - `passthrough` always runs: contracts, exact quotes, references, failure variants and the draft
   expectations on the original synthetic text;
 - `local` runs only where the public NER weights and libraries are installed (the Docker image):
-  the same fixtures behind the real privacy_core. A result that is still blocked is compared with
-  the blocker recorded in e13-cases.json and reported as a skip with its reason, so the blocker
-  stays reproducible without disabling any check. Any other result fails.
+  the same fixtures behind the real privacy_core. Historical known blockers and leaks in the
+  expectation file are not exemptions: the integrated runtime must satisfy the expected result.
 The answers are handwritten: nothing here measures an LLM, and no request leaves the process.
 """
+import copy
 import json
 import unittest
 
@@ -102,20 +102,14 @@ class RealPrivacyMixin:
         cls.fixture = load_fixture(cls.case['fixture'])
         cls.report, cls.replay = run(cls.fixture, privacy='local')
 
-    def test_run_reaches_the_expected_result_or_the_recorded_blocker(self):
+    def test_run_reaches_the_expected_result(self):
         real, got = self.case['real_privacy'], outcome(self.report)
-        if got == real['expected']:
-            return
-        self.assertEqual(got, real['known_blocker'], 'neither the expected result nor the recorded blocker')
-        self.skipTest(f"KNOWN BLOCKER {self.case_id}: {got}; expected {real['expected']}")
+        self.assertEqual(got, real['expected'])
 
     def test_personal_data_never_reaches_the_model(self):
         sent = '\n'.join(self.replay.outbound)
-        leaked = [value for value in self.case['personal'] if value in sent]
-        if not leaked:
-            return
-        self.assertEqual(leaked, self.case['real_privacy']['known_leak'], 'a leak that is not recorded')
-        self.skipTest(f'KNOWN P0 {self.case_id}: personal data in the outbound payload: {len(leaked)} value(s)')
+        leaked = [value for value in self.case['personal'] if value.casefold() in sent.casefold()]
+        self.assertEqual(leaked, [], 'synthetic personal values reached the SDK payload')
 
     def test_no_external_request_and_a_declared_synthetic_mode(self):
         self.assertEqual(self.report['mode'], 'synthetic_sdk_mock_NOT_model_output')
@@ -129,6 +123,19 @@ class MinimalTests(CaseMixin, unittest.TestCase):
 
 class MinimalRealPrivacyTests(RealPrivacyMixin, unittest.TestCase):
     case_id = 'E13-minimal'
+
+    def test_name_header_layouts_never_reach_any_sdk_request(self):
+        for header in ('• Орлова Ксения Павловна', 'ОРЛОВА КСЕНИЯ ПАВЛОВНА.',
+                       'Орлова\nКсения Павловна', 'Орлова Ксения\nПавловна',
+                       'Орлова–Петрова Ксения Павловна'):
+            with self.subTest(header=header):
+                fixture = copy.deepcopy(self.fixture)
+                fixture['cv_text'] = header + '\n' + fixture['cv_text'].split('\n', 1)[1]
+                report, replay = run(fixture, privacy='local')
+                self.assertEqual(outcome(report), self.case['real_privacy']['expected'])
+                sent = '\n'.join(replay.outbound).casefold()
+                self.assertFalse([x for x in self.case['personal'] if x.casefold() in sent])
+                self.assertNotIn('петрова', sent)
 
 
 if __name__ == '__main__':

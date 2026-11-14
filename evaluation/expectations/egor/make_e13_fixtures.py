@@ -184,8 +184,9 @@ def main():
     ]
     data = {'schema_version': 'e13-cases-0.1', 'decision_status': 'draft',
             'note': 'Ожидания — гипотезы команды: допустимые отношения порядка и статусы, не единственный рейтинг. '
-                    'known_blocker и known_leak фиксируют текущее поведение настоящего privacy_core на этих '
-                    'вымышленных документах; expected — что должно получаться.',
+                    'known_blocker и known_leak сохраняют исторические дефекты исходной поставки E13 на базе '
+                    '6b06d69, а не разрешённые исключения. Интегрированный C14 обязан достичь expected без '
+                    'утечек; иначе тест завершается ошибкой.',
             'cases': cases}
     EXPECT.write_text(json.dumps(data, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
     print('e13-cases.json', [c['case_id'] for c in cases])
