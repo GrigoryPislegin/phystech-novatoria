@@ -15,7 +15,8 @@
 | Часть нейтрального предложения, пункт под нейтральным заголовком, целые предложения | спорно | считается |
 | В опущенной части предложения есть отрицание, намерение, учёба или низкий уровень («не работал», «планирую», «курс», «только», «базовый») | спорно | спорно |
 | Заголовок списка с такой оговоркой («Не работал с:») | спорно | спорно |
-| Посторонний факт без общего термина | спорно | спорно |
+| В самой цитате при положительном выводе есть оговорка (для full — любая, для partial — отрицание); намерение «готов работать» | считалось | спорно, `reservation_in_quote` |
+| Посторонний факт без общего термина; общий термин только рядом с цитатой, не в ней | спорно / считалось | спорно |
 | Одинаковая маска в резюме и вакансии | считалось связью через служебные слова маски | связь по самому значению |
 | Разные маски | считалось связью (ошибка) | спорно, код `link_hidden_by_mask` |
 | Термин скрыт только с одной стороны | спорно без объяснения | спорно, «сверьте с исходным документом» |
@@ -30,6 +31,8 @@
 - `score.breakdown` — id строк по рубрикам: `full`, `partial`, `fail`, `unknown`, `disputed` и отдельно `stop_factors` (подтверждённый fail применённого обязательного).
 - `ranking.leader.comparable` — `false`, когда ни по одной вакансии нет засчитанных совпадений: лидера нет, `leader.summary` начинается с «Недостаточно данных для сравнения». Состояние остаётся `open` с причиной `no_confirmed_fit`.
 - `evidence_check.rules_version`, код причины `link_hidden_by_mask`.
+
+Сохранённый v3-отчёт без `comparable` открывается как прежде: допускается отсутствие только этого поля.
 
 Для Вани: показывать `shares.disputed` как «предложено моделью, требует сверки», а не как отсутствие данных; при `comparable = false` не рисовать лидера.
 
@@ -58,11 +61,11 @@
 ## Проверки
 
 ```
-python -m unittest prototype.tests.test_e14_evidence_fidelity      # 16 тестов, OK — exit 0
-python -m unittest discover -s prototype/tests                     # 516 тестов, OK (54 пропущено: нет NER)
+python -m unittest prototype.tests.test_e14_evidence_fidelity      # 21 тест, OK — exit 0
+python -m unittest discover -s prototype/tests                     # 521 тест, OK (54 пропущено: нет NER)
 docker run --rm --network none -v "$PWD":/work -w /work -e PYTHONDONTWRITEBYTECODE=1 \
   -e PRIVACY_MODELS_DIR=/opt/privacy-models --entrypoint python recruiter-prototype:bffa94a-arm64 \
-  -m unittest discover -s prototype/tests                          # с NER: 516 тестов, 6 FAIL потери смысла — exit 1
+  -m unittest discover -s prototype/tests                          # с NER: 521 тест, 6 FAIL потери смысла — exit 1
 node --test prototype/tests/test_web_*.cjs                         # 41/41
 python scripts/check_cli_replays.py                                # exit 0
 python -m evaluation.policy_compare                                # v2 10, v3 16 из 16, регрессий нет
