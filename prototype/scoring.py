@@ -47,6 +47,7 @@ VALUE = {'full': 1, 'partial': 0.5, 'fail': 0}
 CORE_SHARE = 75  # points of the scale for applied mandatory requirements when both groups exist
 ANSWERS = 2  # how many candidate answers a challenger may need and still keep the first place open
 MAX_DECISIVE = 3
+LEADER_RULES = 'leader-0.2'  # stamped on new scores; a stored score without it keeps the leader rules it was ranked by
 MAX_MARKERS = 4  # unapplied markers whose every combination is re-scored; above that the job is 'unbounded'
 
 
@@ -180,6 +181,7 @@ def score(requirements: Requirements, evaluation: Evaluation, evidence: PairChec
         'conflict_ids': sorted(rid for u in units if u['state'] == 'conflict' for rid in u['ids']),
         'groups': {'core': part('core'), 'extra': part('extra')},
         'repeated_ids': [u['ids'] for u in units if len(u['ids']) > 1],
+        'leader_rules': LEADER_RULES,
         # Three shares of the 100-point scale, apart: counted evidence (the same number as `coverage`),
         # model claims waiting for a check of their quote, and requirements the resume says nothing about.
         'shares': {'confirmed': _points(known),
@@ -239,6 +241,10 @@ def _leader(jobs: list[dict]) -> dict:
         return {**out, 'state': 'none_fit'}
     reasons, decisive = set(), {}
     best = exact(first)['lower']
+    thin_rule = all(j['score'].get('leader_rules') == LEADER_RULES for j in jobs)
+
+    def exact_known(s):
+        return sum(w for u, w in zip(s['units'], exact(s)['weights']) if u['state'] in VALUE)
 
     def add(job, ids, kind, role, effect):
         decisive.setdefault((job['job_id'], ids[0]), {
@@ -283,6 +289,12 @@ def _leader(jobs: list[dict]) -> dict:
         if best == 0:
             reasons.add('no_confirmed_fit')
             out['comparable'] = False
+        elif thin_rule and exact_known(s) * 2 < 100:
+            # leader-0.2: counted evidence covers less than what is still open, so «first» is the best of
+            # what little is known, not an established choice. The heaviest open requirements are the questions.
+            reasons.add('own_mostly_unknown')
+            for u, w in open_units(job, {'unknown'})[:MAX_DECISIVE]:
+                add(job, u['ids'], 'unknown', 'leader', w)
         if len(top) > 1 and open_units(job, {'unknown'}):  # one answer would break the tie
             reasons.add('tie_unresolved')
             for u, w in open_units(job, {'unknown'}):
@@ -343,7 +355,7 @@ def _leader(jobs: list[dict]) -> dict:
     if out['close_to']:
         reasons.add('close_margin')
 
-    order = ['own_mandatory_unresolved', 'own_disputed', 'own_marker_unapplied', 'no_confirmed_fit',
+    order = ['own_mandatory_unresolved', 'own_disputed', 'own_marker_unapplied', 'no_confirmed_fit', 'own_mostly_unknown',
              'tie_unresolved', 'challenger_doubted', 'challenger_answers', 'close_margin']
     out['reasons'] = [r for r in order if r in reasons]
     if reasons - {'close_margin'}:

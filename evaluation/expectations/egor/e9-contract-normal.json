@@ -204,6 +204,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 100.0,
        "disputed": 0.0,
@@ -363,6 +364,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 0.0,
@@ -531,6 +533,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 100.0,
        "disputed": 0.0,
@@ -1086,6 +1089,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 100.0,
        "disputed": 0.0,
@@ -1356,6 +1360,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 0.0,
@@ -1515,6 +1520,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 100.0,
        "disputed": 0.0,
