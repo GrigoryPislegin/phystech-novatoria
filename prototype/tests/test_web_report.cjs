@@ -3,7 +3,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
 
-const { parseReport, filterRows, statusCounts } = require('../static/report.js');
+const { parseReport, filterRows, statusCounts, createDisplay, assessmentLabel, summarizeJob, scoreRange } = require('../static/report.js');
 const { describeFailure, describeRun } = require('../static/report.js');
 
 test('zero results and privacy failures have static actionable feedback', () => {
@@ -13,6 +13,66 @@ test('zero results and privacy failures have static actionable feedback', () => 
     privacy:{direction:'response'}}), /Извлечение фактов.*Ответ модели.*защит/);
   assert.doesNotMatch(describeFailure({code:'private@example.org', stage:'/private/source',
     privacy:{direction:'model-secret'}}), /private|model-secret/);
+});
+
+test('exact revision-bound aliases are literal, one-pass and separate from the report', () => {
+  const a = '[[PRIV:0123456789abcdef:1:PERSON]]';
+  const b = '[[PRIV:0123456789abcdef:2:ORG]]';
+  const report = { runId: 'a'.repeat(32), revision: 3, references: [a, b] };
+  const response = { run_id: report.runId, revision: 3, aliases: { [a]: '<b>Учебный текст</b>' } };
+  const display = createDisplay(report, response);
+  assert.equal(display.text(b + '.js ' + a), 'Фрагмент 2.js <b>Учебный текст</b>');
+  assert.equal(display.unresolved(a), false);
+  assert.equal(display.unresolved(b), true);
+  assert.equal(display.text('Описание [[PRIV:stub'), 'Описание Фрагмент 3');
+  assert.equal(createDisplay(report, { ...response, revision: 4 }).text(a), 'Фрагмент 1');
+  assert.equal(createDisplay(report, { ...response, run_id: 'b'.repeat(32) }).text(a), 'Фрагмент 1');
+  assert.equal(createDisplay(report, { ...response, aliases: { [a]: b } }).text(a), 'Фрагмент 1');
+  assert.deepEqual(report.references, [a, b]);
+});
+
+test('one disputed full plus seven unknowns leaves the vacancy without usable evidence', () => {
+  const full = { status: 'full', disputed: true, evidence: { state: 'needs_review' }, resumeQuotes: [] };
+  const unknown = { status: 'unknown', resumeQuotes: [] };
+  const job = { score: { coverage: 0, lower: 0, upper: 100 }, rows: [full, ...Array(7).fill(unknown)] };
+  const result = summarizeJob(job);
+  assert.equal(result.insufficient, true);
+  assert.equal(result.matches.length, 0);
+  assert.equal(result.clarify.length, 8);
+  assert.equal(assessmentLabel(full)[1], 'warning');
+  assert.equal(scoreRange({ lower: 50, upper: 50.01 }), '≈ 50%');
+});
+
+test('thirty vacancies can all be opened, compared and reviewed', () => {
+  const raw = example('success');
+  const seed = raw.ranking.jobs[0];
+  const prepared = raw.presentation.jobs[0];
+  raw.ranking.jobs = Array.from({length:30}, (_, i) => ({
+    ...structuredClone(seed), job_id: 'job-' + String(i + 1).padStart(3,'0'), rank: i + 1
+  }));
+  raw.presentation.jobs = raw.ranking.jobs.map(job => ({ ...structuredClone(prepared), job_id:job.job_id, rank:job.rank }));
+  raw.handoff = raw.ranking.jobs.map(job => ({job_id:job.job_id,state:'draft'}));
+  raw.comparisons = raw.ranking.jobs.slice(1).map(job => ({
+    job_a:seed.job_id,job_b:job.job_id,outcome:'a_higher',reason:'lower_bound'
+  }));
+  const report = parseReport(JSON.stringify(raw));
+  assert.equal(report.jobs[29].title, 'job-030');
+  assert.equal(report.handoff[29].job_id, 'job-030');
+  assert.equal(report.comparisons[28].b.id, 'job-030');
+});
+
+test('competency axes preserve unknown values and require the server readiness flag', () => {
+  const raw = example('success');
+  const job = raw.ranking.jobs[0];
+  job.competency_axes = {
+    job_id: job.job_id, policy_version: raw.policy_version, radar_ready:true,
+    axes:[{axis:'stack',score:100,coverage:75},{axis:'domain',score:null,coverage:0},
+      {axis:'management',score:60,coverage:30},{axis:'language',score:0,coverage:100}]
+  };
+  const profile = () => parseReport(JSON.stringify(raw)).jobs[0].competencies;
+  assert.deepEqual(profile().map(axis => axis.score), [100,null,60,0]);
+  job.competency_axes.radar_ready = false;
+  assert.equal(profile(), null);
 });
 
 function example(name = 'disputed') {
@@ -148,7 +208,7 @@ test('malformed recommendations and oversized job sets cannot replace an open re
   assert.throws(() => parseReport(JSON.stringify(report)), /структур/);
 
   const incomplete = example('incomplete');
-  incomplete.unprocessed_job_ids = Array.from({ length: 20 }, (_, index) => 'skipped-' + index);
+  incomplete.unprocessed_job_ids = Array.from({ length: 30 }, (_, index) => 'skipped-' + index);
   delete incomplete.unprocessed;
   assert.throws(() => parseReport(JSON.stringify(incomplete)), /структур/);
 });

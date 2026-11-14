@@ -2,6 +2,7 @@
   'use strict';
 
   const MAX_REPORT_BYTES = 25_000_000;
+  const MAX_VACANCIES = 30;
   const MAX_REQUIREMENTS = 80;
   const statuses = ['full', 'partial', 'unknown', 'fail'];
   const modes = {
@@ -47,7 +48,7 @@
     relocation: 'Переезд', salary: 'Зарплата'
   };
   const profilePath = /^(?:summary\[[0-2]\]|stack\[(?:[0-9]|[12][0-9])\]|last_position\.(?:role|domain|period)|achievements\[[0-4]\]\.(?:action|result))$/;
-  const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 4 });
+  const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 1 });
   const verdictLabels = {
     mismatch: 'Есть несоответствие требованиям',
     partial: 'Соответствие частичное',
@@ -55,11 +56,58 @@
     review: 'Нужна проверка',
     match: 'По оценённым требованиям соответствует'
   };
+  const markerPattern = () => /\[\[PRIV:(?:[^\[\]\r\n]*\]\]|[a-z0-9:_-]+\]?|)/gi;
+  const exactReference = /^\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]$/;
+  const competencyTitles = {
+    stack: 'Инструменты и технологии', relevant_experience: 'Профильный опыт и стаж',
+    domain: 'Сфера и предметная область', education: 'Образование и квалификация',
+    management: 'Руководство и взаимодействие', language: 'Языки'
+  };
+
+  function createDisplay(report, payload = null) {
+    const aliases = report.runId && report.revision && payload?.run_id === report.runId &&
+      payload.revision === report.revision && isRecord(payload.aliases) ? payload.aliases : {};
+    const labels = new Map((report.references ?? []).map((ref, index) => [ref, 'Фрагмент ' + (index + 1)]));
+    const original = ref => exactReference.test(ref) && Object.hasOwn(aliases, ref) &&
+      isText(aliases[ref]) && !aliases[ref].toUpperCase().includes('[[PRIV:') ? aliases[ref] : null;
+    function text(value) {
+      return String(value).replace(markerPattern(), ref => {
+        const replacement = original(ref);
+        if (replacement !== null) return replacement;
+        if (!labels.has(ref)) labels.set(ref, 'Фрагмент ' + (labels.size + 1));
+        return labels.get(ref);
+      });
+    }
+    function unresolved(value) {
+      return typeof value === 'string' && (value.match(markerPattern()) ?? []).some(ref => original(ref) === null);
+    }
+    return { text, unresolved };
+  }
+
+  function rowSourceHidden(row, display) {
+    return [row.requirementQuote, row.mandatoryQuote, ...row.resumeQuotes].some(display.unresolved);
+  }
+
+  function readCompetencies(value, jobId, policy) {
+    if (value?.job_id !== jobId || value.policy_version !== policy || value.radar_ready !== true ||
+        !Array.isArray(value.axes) || value.axes.length < 4 || value.axes.length > 6) return null;
+    const ids = new Set();
+    const range = score => Number.isFinite(score) && score >= 0 && score <= 100;
+    const axes = [];
+    for (const item of value.axes) {
+      if (!item || !Object.hasOwn(competencyTitles, item.axis) || ids.has(item.axis) ||
+          !(item.score === null || range(item.score)) || !range(item.coverage) ||
+          (item.coverage === 0) !== (item.score === null)) return null;
+      ids.add(item.axis);
+      axes.push({ title: competencyTitles[item.axis], score: item.score, coverage: item.coverage });
+    }
+    return axes.filter(item => item.score !== null).length >= 3 ? axes : null;
+  }
 
   function scoreRange(score) {
     const low = numberFormat.format(score.lower);
     const high = numberFormat.format(score.upper);
-    return (score.lower === score.upper ? low : low + '–' + high) + '%';
+    return (score.lower === score.upper ? low : low === high ? '≈ ' + low : low + '–' + high) + '%';
   }
 
   function describeRun(report) {
@@ -117,20 +165,54 @@
   }
 
   function evidenceNeedsReview(row) {
-    if (row.scoreConflict) return true;
+    if (row.scoreConflict || row.disputed) return true;
     if (row.status === 'unknown') {
       return ['needs_review', 'invalid'].includes(row.evidence?.state);
     }
     return row.evidence?.state !== 'structure_ok';
   }
 
-  function describeFit(report, job) {
+  function assessmentLabel(row, display) {
+    if (display && rowSourceHidden(row, display) && row.status !== 'unknown') {
+      return ['Источник нужно сверить', 'warning'];
+    }
+    return row.status !== 'unknown' && (row.disputed || evidenceNeedsReview(row))
+      ? ['Оценка модели требует сверки', 'warning'] : assessments[row.status];
+  }
+
+  function summarizeJob(job, display) {
+    const groups = { matches: [], gaps: [], clarify: [], stops: [] };
+    for (const row of job.rows) {
+      const disputed = row.disputed || evidenceNeedsReview(row) || (display && rowSourceHidden(row, display));
+      if (!disputed && row.status === 'full') groups.matches.push(row);
+      if (!disputed && row.status === 'fail') {
+        groups.gaps.push(row);
+        if (row.mandatoryQuote && !mandatoryNeedsReview(row)) groups.stops.push(row);
+      }
+      if (disputed || row.status === 'unknown' || row.status === 'partial' || mandatoryNeedsReview(row)) {
+        groups.clarify.push(row);
+      }
+    }
+    const usable = job.rows.some(row => row.status !== 'unknown' && !evidenceNeedsReview(row) &&
+      (!display || !rowSourceHidden(row, display)));
+    return { ...groups, insufficient: job.score.coverage === 0 || !usable };
+  }
+
+  function trustedRequirements(report, job, context) {
+    return report.runId && report.revision && context?.runId === report.runId &&
+      context.revision === report.revision ? job.requirementsReview : 'unconfirmed';
+  }
+
+  function describeFit(report, job, display, context) {
     const rows = job.rows.map((row, index) => ({ row, number: index + 1 }));
     const groups = { mismatch: [], partial: [], unknown: [], review: [] };
     const grounds = [];
     for (const item of rows) {
       const { row } = item;
-      if (row.scoreConflict) { groups.review.push(item); continue; }
+      if (row.scoreConflict || (row.disputed && row.status !== 'unknown') || (display && rowSourceHidden(row, display))) {
+        groups.review.push(item);
+        continue;
+      }
       const evidenceChecked = row.evidence?.state === 'structure_ok';
       if (row.status === 'full' && evidenceChecked) grounds.push(item);
 
@@ -141,19 +223,21 @@
     }
 
     const gap = ['mismatch', 'partial', 'unknown', 'review'].find(state => groups[state].length);
-    const listConfirmed = job.requirementsReview === 'confirmed';
+    const requirements = trustedRequirements(report, job, context);
+    const listConfirmed = requirements === 'confirmed';
     const state = gap ?? (report.complete && listConfirmed ? 'match' : 'review');
     const notes = [];
     if (state === 'review' && !report.complete) notes.push('Обработана часть вакансий.');
     if (state === 'review' && !gap && grounds.length === rows.length) {
       notes.push('По всем оценённым требованиям есть признаки соответствия.');
     }
-    if (!gap && !listConfirmed) notes.push(requirementReviewLabel(job.requirementsReview) + '.');
+    if (!gap && !listConfirmed) notes.push(requirementReviewLabel(requirements) + '.');
 
     const risks = Object.values(groups).flat();
     risks.sort((left, right) => Number(Boolean(right.row.mandatoryQuote)) - Number(Boolean(left.row.mandatoryQuote)));
     const priority = groups[gap]?.find(({ row }) => row.mandatoryQuote) ?? groups[gap]?.[0];
-    return { rows, grounds, risks, label: verdictLabels[state], notes, priority };
+    return { rows, grounds, risks, label: summarizeJob(job, display).insufficient
+      ? 'Недостаточно данных для оценки' : verdictLabels[state], notes, priority };
   }
 
   function requireShape(condition) {
@@ -199,14 +283,21 @@
   function profileFrom(profile, factQuotes, resumeHash) {
     if (profile == null) return { state: 'missing' };
     if (!isRecord(profile) || profile.schema_version !== 'candidate-profile-0.1' ||
-        !checkStates.includes(profile.state) || profile.state === 'invalid' ||
+        !checkStates.includes(profile.state) ||
         !isRecord(profile.spans) || !isRecord(profile.display) || !resumeHash) {
       return { state: 'invalid' };
     }
     const claims = new Map();
-    let state = profile.state;
+    const findings = Array.isArray(profile.findings) ? profile.findings : [];
+    if (profile.state === 'invalid' && !findings.some(finding => finding?.severity === 'invalid')) {
+      return { state: 'invalid' };
+    }
+    let state = profile.state === 'invalid' ? 'needs_review' : profile.state;
     for (const [path, spans] of Object.entries(profile.spans)) {
       if (!profilePath.test(path)) continue;
+      if (findings.some(finding => finding?.severity === 'invalid' && typeof finding.where === 'string' &&
+          (finding.where === path || finding.where.startsWith(path + '.') ||
+            path.startsWith(finding.where + '.') || path.startsWith(finding.where + '[')))) continue;
       if (!Array.isArray(spans) || !spans.length || spans.length > 5) {
         state = 'needs_review';
         continue;
@@ -405,7 +496,7 @@
 
   function readHandoff(input, jobs) {
     if (!Array.isArray(input)) return [];
-    return input.slice(0, 20).filter(item => isRecord(item) && jobs.has(item.job_id)).map(item => ({
+    return input.filter(item => isRecord(item) && jobs.has(item.job_id)).map(item => ({
       job_id: item.job_id, state: isText(item.state) ? item.state : null, requirements_confirmed: item.requirements_confirmed === true,
       blockers: Array.isArray(item.blockers) ? item.blockers.filter(isText) : [],
       acknowledged: Array.isArray(item.acknowledged) ? item.acknowledged.filter(isText) : [],
@@ -432,12 +523,15 @@
     if (!Array.isArray(input)) return [];
     const [leader] = jobs;
     const byId = new Map(jobs.map(job => [job.id, job]));
+    const seen = new Set();
 
-    return input.slice(0, 19).flatMap(item => {
+    return input.flatMap(item => {
       if (!isRecord(item)) return [];
       const a = byId.get(item.job_a);
       const b = byId.get(item.job_b);
       if (!a || !b || a === b || (a !== leader && b !== leader)) return [];
+      const other = a === leader ? b : a;
+      if (seen.has(other)) return [];
       const outcome = a.rank === b.rank ? 'tie' : a.rank < b.rank ? 'a_higher' : 'b_higher';
       if (item.outcome !== outcome || !(outcome === 'tie' ? item.reason === 'tie' :
         ['mandatory_violation', 'lower_bound'].includes(item.reason))) return [];
@@ -459,6 +553,7 @@
       const caveats = Array.isArray(item.caveats) ? item.caveats.filter(value =>
         ['different_requirement_lists', 'incomplete_run', 'evidence_not_applied'].includes(value) ||
         (value === 'close_margin' && close)) : [];
+      seen.add(other);
       return [{ a, b, outcome, reason: item.reason, deciding, swings, caveats: Array.from(new Set(caveats)) }];
     });
   }
@@ -504,7 +599,8 @@
           (job.score.lower <= 0 && !job.excluded.length && !job.disputed.length && !job.conflicts.length)) ||
         factors.some(ref => ['unknown', 'fail'].includes(ref.row.status) || (ref.row.evidence?.state === 'needs_review' || ref.row.scoreConflict)) ||
         (input.state === 'stable' && (canChange.length || closeTo.length || challengers.length))) return null;
-    return {state:input.state, jobs:top, factors, limits, canChange, closeTo, challengers, unassessed};
+    return {state:input.state, jobs:top, factors, limits, canChange, closeTo, challengers, unassessed,
+      comparable: input.comparable !== false && ranking.leader?.comparable !== false};
   }
 
   function parseReport(source) {
@@ -526,7 +622,7 @@
     const unprocessed = unprocessedFrom(report, rankedJobs);
     const total = rankedJobs.size + unprocessed.length;
     requireShape(report.ranking.complete === (unprocessed.length === 0) &&
-      total > 0 && total <= 20);
+      total > 0 && total <= MAX_VACANCIES);
 
     let presentation;
     requireShape(isRecord(report.facts));
@@ -583,12 +679,16 @@
           }
         }
       }
-      for (const row of rows) row.scoreConflict = conflicts.includes(row.id);
+      for (const row of rows) {
+        row.scoreConflict = conflicts.includes(row.id);
+        row.disputed = disputed.includes(row.id);
+      }
       const sourceDigest = digest(job.safe_source_sha256);
       return {
         id: job.job_id, title: vacancyTitle(job.job_id, index), rank: job.rank,
         score: scoreFrom(job.score), rows, excluded, disputed, conflicts, units, unitMetadataValid,
         requirementsReview: requirementReviewFrom(job),
+        competencies: readCompetencies(job.competency_axes, job.job_id, report.policy_version),
         sourceDigest, policyDigest: digest(job.score.policy_sha256),
         conditions: conditionsFrom(job.conditions, job.job_id, resumeDigest, sourceDigest, factQuotes)
       };
@@ -597,6 +697,7 @@
     const leader = readLeader(report.leader, jobs, report.policy_version, report.ranking);
     return {
       jobs, comparisons: readComparisons(report.comparisons, jobs, report.policy_version), unprocessed, processed: jobs.length, total,
+      references: [...new Set(source.match(markerPattern()) ?? [])],
       leader,
       complete: report.ranking.complete, recommendation: report.ranking.recommendation,
       requirementsConfirmed: report.ranking.complete && jobs.every(job => job.requirementsReview === 'confirmed'),
@@ -611,11 +712,13 @@
     };
   }
 
-  function filterRows(rows, filter, query) {
+  function filterRows(rows, filter, query, display) {
     const search = query.trim().toLocaleLowerCase('ru');
     return rows.filter(row => {
-      const matchesFilter = filter === 'all' || row.status === filter || (filter === 'review' && !row.verified);
-      return matchesFilter && row.label.toLocaleLowerCase('ru').includes(search);
+      const matchesFilter = filter === 'all' || row.status === filter || (filter === 'review' &&
+        (!row.verified || evidenceNeedsReview(row) || (display && rowSourceHidden(row, display))));
+      const label = display ? display.text(row.label) : row.label;
+      return matchesFilter && label.toLocaleLowerCase('ru').includes(search);
     });
   }
 
@@ -639,7 +742,8 @@
 
   const api = {
     MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeDashboard, describeRun, describeFailure, describeFit, scoreRange, assessments,
-    mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
+    mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel,
+    assessmentLabel, summarizeJob, MAX_VACANCIES, createDisplay, rowSourceHidden, trustedRequirements
   };
   if (typeof module === 'object' && module.exports) {
     module.exports = api;

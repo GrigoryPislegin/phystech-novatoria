@@ -174,6 +174,9 @@
               <h3>Предварительный вывод</h3>
               <p id="job-fit"></p>
               <p id="job-fit-notes" class="support" hidden></p>
+              <div id="job-findings" class="job-findings"></div>
+              <div id="job-competencies" class="job-competencies"></div>
+              <p id="job-range" class="support"></p>
             </div>
             <p id="job-score-review" class="run-note" data-tone="warning" hidden></p>
             <p id="job-conditions" class="run-note" data-tone="warning" hidden></p>
@@ -191,9 +194,9 @@
             <div id="comparison-detail" class="source-list"></div>
           </div>
 
-          <div class="requirements" aria-labelledby="requirements-title">
+          <details class="requirements" id="job-evidence" aria-labelledby="requirements-title">
+            <summary id="requirements-title" class="source-heading">Требования и доказательства</summary>
             <div class="requirements-heading">
-              <h3 id="requirements-title">Критерии соответствия</h3>
               <label class="search">
                 <span class="sr-only">Поиск по требованиям</span>
                 <input id="requirement-search" type="search" placeholder="Поиск по требованиям">
@@ -208,12 +211,12 @@
             <p id="result-count" class="sr-only" role="status" aria-live="polite"></p>
             <table id="requirements-table">
               <thead>
-                <tr><th scope="col">Требование</th><th scope="col">Соответствие</th><th scope="col">Фрагмент резюме</th></tr>
+                <tr><th scope="col">Требование</th><th scope="col" colspan="2">Оценка и проверка</th></tr>
               </thead>
               <tbody id="requirement-rows"></tbody>
             </table>
             <p id="empty-rows" class="empty-panel" hidden>По этому фильтру нет требований.</p>
-          </div>
+          </details>
           <div id="review-panel" class="conditions-section" hidden>
             <div class="requirements-heading">
               <h3>Проверка рекрутером</h3>

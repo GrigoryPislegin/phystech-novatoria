@@ -71,8 +71,9 @@
     node.textContent = text;
   }
 
-  function reportContext(next) {
-    const context = { id: next.runId, revision: next.revision };
+  async function reportContext(next) {
+    const displayData = await api.displayData(next.runId).catch(() => null);
+    const context = { id: next.runId, revision: next.revision, displayData };
     if (operations.has('review')) {
       context.decide = (jobId, action, itemId) => saveDecision(context, jobId, action, itemId);
     }
@@ -91,7 +92,9 @@
       const next = parseReport(source);
       if (next.runId !== id || !next.revision) throw new Error('Версия отчёта запуска недоступна.');
       if (deletedRuns.has(id) || !viewer.isLatest(sequence)) return;
-      viewer.openServerReport(next, reportContext(next));
+      const context = await reportContext(next);
+      if (deletedRuns.has(id) || !viewer.isLatest(sequence)) return;
+      viewer.openServerReport(next, context);
       message('Открыт отчёт запуска.');
       if (revealReport) {
         setRunCenterOpen(false);
@@ -105,13 +108,18 @@
 
   async function saveDecision(context, jobId, action, itemId) {
     if (viewer.getContext() !== context || context.pending || !Object.hasOwn(confirmation, action)) return;
+    const sequence = viewer.loadVersion();
+    const isCurrent = () => viewer.getContext() === context && viewer.isLatest(sequence) && !deletedRuns.has(context.id);
     const text = confirmation[action];
     context.pending = true;
     if (text && !await confirmReview(text)) {
       context.pending = false;
       return;
     }
-    if (viewer.getContext() !== context) return;
+    if (!isCurrent()) {
+      context.pending = false;
+      return;
+    }
     message('Сохраняем решение…', false, 'review-message');
     try {
       const decision = { expected_revision: context.revision, job_id: jobId, action, item_id: itemId };
@@ -120,13 +128,14 @@
       const { report } = await api.review(context.id, { ...decision, idempotency_key: context.retry.id });
       const next = parseReport(JSON.stringify(report));
       if (next.runId !== context.id || !next.revision) throw new Error('Версия отчёта запуска недоступна.');
-      if (viewer.getContext() === context) {
-        viewer.openServerReport(next, reportContext(next));
+      const nextContext = await reportContext(next);
+      if (isCurrent()) {
+        viewer.openServerReport(next, nextContext);
         message('Решение сохранено.', false, 'review-message');
       }
       refreshRuns();
     } catch (error) {
-      if (viewer.getContext() !== context) return;
+      if (!isCurrent()) return;
       if (error.status === 409 && error.code === 'stale_revision') {
         await openRun(context.id, false);
         if (viewer.getContext()?.id === context.id) {
@@ -461,8 +470,9 @@
         const file = capabilities.max_file_bytes;
         const total = capabilities.max_total_bytes;
         if ([count, file, total].every(Number.isSafeInteger) && count >= 2 && file > 0 && total >= file) {
-          inputLimits = { count, file, total };
-          byId('input-limits').textContent = 'Одно резюме и до ' + (count - 1) + ' вакансий. До ' +
+          const maxCount = Math.min(count, window.NanimaiReport.MAX_VACANCIES + 1);
+          inputLimits = { count: maxCount, file, total };
+          byId('input-limits').textContent = 'Одно резюме и до ' + (maxCount - 1) + ' вакансий. До ' +
             file / 1e6 + ' МБ на файл и ' + total / 1e6 + ' МБ суммарно.';
           showInputs.hidden = false;
           liveAvailable = operations.has('create') && capabilities.live === true &&

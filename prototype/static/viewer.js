@@ -3,7 +3,8 @@
 
   const {
     MAX_REPORT_BYTES, parseReport, filterRows, describeDashboard, describeRun, describeFit, scoreRange,
-    assessments, mandatoryStates, evidenceLabel, mandatoryLabel, requirementReviewLabel
+    assessments, mandatoryStates, evidenceLabel, mandatoryLabel, requirementReviewLabel, assessmentLabel, summarizeJob,
+    createDisplay, rowSourceHidden, trustedRequirements
   } = window.NanimaiReport;
   const { renderManagerReport } = window.NanimaiManagerReport;
   const byId = id => document.getElementById(id);
@@ -12,7 +13,7 @@
   const managerButton = byId('manager-report');
   const views = Array.from(byId('report-views').querySelectorAll('button'));
   const filterButtons = Array.from(byId('row-filters').querySelectorAll('button'));
-  const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 4 });
+  const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 1 });
 
   const indicators = { ok: '✓', warning: '◐', neutral: '–', danger: '×' };
   const conditionStates = {
@@ -32,15 +33,19 @@
   let filter = 'all';
   let loadSequence = 0;
   let runContext = null;
+  let display = createDisplay({});
+  let rowButtons = new Map();
+  const reviewContext = () => runContext ? { runId: runContext.id, revision: runContext.revision } : null;
+  const isInsufficient = job => summarizeJob(job, display).insufficient;
 
   function setText(id, value) {
-    byId(id).textContent = value;
+    byId(id).textContent = display.text(value);
   }
 
   function element(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
-    if (text != null) node.textContent = text;
+    if (text != null) node.textContent = display.text(text);
     return node;
   }
 
@@ -66,11 +71,12 @@
     setText('run-count', report.processed + ' из ' + report.total);
     setText('run-progress', report.processed === 0 ? 'Анализ не выполнен' :
       report.complete ? 'Все вакансии оценены' : 'Часть вакансий не оценена');
-    setText('run-review', report.requirementsConfirmed ? 'Состав подтверждён' : 'Состав не подтверждён');
+    setText('run-review', runContext && report.requirementsConfirmed ? 'Состав подтверждён' : 'Состав не подтверждён');
     setText('run-review-detail', report.finalAllowed ? 'Подтверждение записано в отчёте' : 'Оценки и цитаты требуют проверки');
     byId('privacy-note').hidden = !report.privacyWarning;
 
-    const note = recommendation;
+    const note = report.complete && report.jobs.every(isInsufficient)
+      ? ['Недостаточно данных для оценки', 'Откройте вакансию и проверьте спорные основания.'] : recommendation;
     byId('run-note').hidden = !note;
     byId('run-note').dataset.tone = report.complete ? 'info' : 'warning';
     setText('run-note-title', note?.[0] || '');
@@ -99,13 +105,16 @@
       : 'В этой версии вес применённого обязательного требования — 3, прочего — 1. Это выбранные командой правила, не вероятность найма.');
     const list = byId('job-list');
     list.replaceChildren();
+    list.toggleAttribute('data-many', report.jobs.length > 8);
+    if (report.jobs.length > 8) list.tabIndex = 0;
+    else list.removeAttribute('tabindex');
     report.jobs.forEach(job => {
       const item = element('li', 'job-card');
       const rank = element('p', 'eyeline numeric', (report.complete ? 'Место ' : 'Предварительное место ') + job.rank);
       const heading = element('h2', 'job-option-name', job.title);
-      const score = element('p', 'job-option-score numeric');
-      score.append(element('strong', null, scoreRange(job.score)), element('span', null, 'Диапазон L–H'));
-      const coverage = element('p', 'support', 'Известные данные · ' + numberFormat.format(job.score.coverage) + '%');
+      const { matches, gaps, clarify, insufficient } = summarizeJob(job, display);
+      const score = element('p', 'job-option-summary', insufficient ? 'Недостаточно данных для оценки' :
+        matches.length + ' совпадений · ' + gaps.length + ' пробелов · ' + clarify.length + ' на уточнение');
       const button = element('button', 'job-option button button-secondary', 'Открыть');
       button.type = 'button';
       button.setAttribute('aria-label', 'Открыть вакансию ' + job.title);
@@ -114,7 +123,7 @@
         selectJob(job);
         byId('job-title').focus();
       });
-      item.append(rank, heading, tag(...mandatoryStates[job.score.mandatory]), score, coverage, button);
+      item.append(rank, heading, score, tag(...mandatoryStates[job.score.mandatory]), button);
       list.append(item);
     });
   }
@@ -148,16 +157,18 @@
     const mandatoryNode = byId('job-mandatory');
     mandatoryNode.className = mandatory.className;
     mandatoryNode.replaceChildren(...mandatory.childNodes);
-    setText('job-coverage', 'Доля известных данных ' + numberFormat.format(job.score.coverage) + '%');
-    setText('job-requirements-review', requirementReviewLabel(job.requirementsReview));
+    setText('job-coverage', 'Покрытие засчитанными доказательствами ' + numberFormat.format(job.score.coverage) + '%');
+    setText('job-requirements-review', requirementReviewLabel(trustedRequirements(report, job, reviewContext())));
     const scoreReview = byId('job-score-review');
     scoreReview.hidden = job.excluded.length === 0;
     scoreReview.textContent = 'Для ' + job.excluded.length +
       ' требований привязка обязательности требует проверки. Балл приведён по отчёту.';
-    const fit = describeFit(report, job);
+    const fit = describeFit(report, job, display, reviewContext());
     setText('job-fit', fit.label);
     setText('job-fit-notes', fit.notes.join(' '));
     byId('job-fit-notes').hidden = !fit.notes.length;
+    setText('job-range', 'Диагностический диапазон L–H · ' + scoreRange(job.score));
+    byId('job-range').hidden = isInsufficient(job);
     const conditions = byId('job-conditions');
     const conflicts = job.conditions.items.filter(item => item.state === 'conflict');
     conditions.hidden = !conflicts.length;
@@ -166,8 +177,105 @@
       : '';
     renderConditions(job.conditions);
     renderRows();
+    renderFindings(job);
+    renderCompetencies(job);
     renderReview(job);
     renderComparison(job);
+  }
+
+  function renderCompetencies(job) {
+    const panel = byId('job-competencies');
+    panel.replaceChildren(element('h4', null, 'Профиль компетенций'));
+    if (!job.competencies || isInsufficient(job)) {
+      panel.append(element('p', 'support', 'Недостаточно данных для диаграммы компетенций.'));
+      return;
+    }
+    const axes = job.competencies;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 232 232');
+    svg.setAttribute('aria-hidden', 'true');
+    const point = (index, length) => {
+      const angle = index * 2 * Math.PI / axes.length - Math.PI / 2;
+      return [116 + 93 * length * Math.cos(angle), 116 + 93 * length * Math.sin(angle)];
+    };
+    const shape = (tag, className, attributes) => {
+      const node = document.createElementNS(ns, tag);
+      node.setAttribute('class', className);
+      for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
+      svg.append(node);
+      return node;
+    };
+    for (const scale of [.25, .5, .75, 1]) {
+      shape('polygon', 'radar-grid', { points: axes.map((_, i) => point(i, scale).join(',')).join(' ') });
+    }
+    for (const [index, item] of axes.entries()) {
+      const [x2, y2] = point(index, 1);
+      shape('line', 'radar-grid', { x1: 116, y1: 116, x2, y2 });
+      const [x, y] = point(index, 1.13);
+      shape('text', 'radar-label', { x, y }).textContent = index + 1;
+      const next = (index + 1) % axes.length;
+      if (item.score === null) continue;
+      const [cx, cy] = point(index, item.score / 100);
+      if (axes[next].score !== null) {
+        const [x2, y2] = point(next, axes[next].score / 100);
+        shape('line', 'radar-value', { x1: cx, y1: cy, x2, y2 });
+      }
+      shape('circle', 'radar-point', { cx, cy, r: 4 });
+    }
+    const list = element('ol', 'radar-legend');
+    for (const item of axes) {
+      const value = item.score === null ? 'Недостаточно данных' :
+        numberFormat.format(item.score) + '% · покрытие ' + numberFormat.format(item.coverage) + '%';
+      list.append(element('li', null, item.title + ' · ' + value));
+    }
+    const figure = element('figure', 'competency-figure');
+    figure.append(svg, list);
+    panel.append(figure);
+  }
+
+  function openEvidence(row) {
+    byId('job-evidence').open = true;
+    if (!rowButtons.has(row.id)) {
+      filter = 'all';
+      search.value = '';
+      updateFilters();
+      renderRows();
+    }
+    const button = rowButtons.get(row.id);
+    if (button.getAttribute('aria-expanded') === 'false') button.click();
+    button.focus();
+  }
+
+  function renderFindings(job) {
+    const { matches, gaps, clarify, stops } = summarizeJob(job, display);
+    const decisive = (report.leader?.canChange ?? []).filter(ref => ref.jobId === job.id).map(ref => ref.row);
+    const questions = [...new Set([...decisive, ...clarify])];
+    const groups = [
+      ['Что подходит', matches, 'Засчитанных совпадений пока нет.'],
+      ['Подтверждённые пробелы', gaps, 'По пригодным цитатам пробелы не выявлены.'],
+      ['Что уточнить', questions, 'Открытых вопросов по требованиям нет.'],
+      ['Обязательные ограничения', stops, 'Подтверждённых обязательных несоответствий нет.']
+    ];
+    byId('job-findings').replaceChildren(...groups.map(([title, rows, empty]) => {
+      const section = element('section');
+      section.append(element('h4', null, title));
+      if (!rows.length) section.append(element('p', 'support', empty));
+      else {
+        const list = element('ul');
+        for (const row of rows.slice(0, 3)) {
+          const item = element('li');
+          const defaultText = title === 'Что уточнить' ? 'Что можно уточнить по требованию «' + row.label + '»?' : row.label;
+          const button = element('button', 'text-action', defaultText);
+          button.type = 'button';
+          button.addEventListener('click', () => openEvidence(row));
+          item.append(button);
+          list.append(item);
+        }
+        section.append(list);
+      }
+      return section;
+    }));
   }
 
   function quoteCard(title, quotes, emptyText) {
@@ -202,7 +310,7 @@
 
   function renderReview(job) {
     const jobItems = report.reviewItems.filter(item => item.job_id == null || item.job_id === job.id);
-    const handoff = report.handoff.find(item => item.job_id === job.id);
+    const handoff = runContext ? report.handoff.find(item => item.job_id === job.id) : null;
     const panel = byId('review-panel');
     panel.hidden = !jobItems.length && !handoff;
     const list = byId('review-list');
@@ -291,6 +399,10 @@
       setText('comparison-summary', 'В отчёте нет сравнения для этой вакансии.');
       return;
     }
+    if ((isInsufficient(item.a) || isInsufficient(item.b)) && item.reason !== 'mandatory_violation') {
+      setText('comparison-summary', 'Недостаточно данных для сравнения. По одной или обеим вакансиям нет засчитанных доказательств.');
+      return;
+    }
     const { a, b, outcome, reason } = item;
     const [higher, lower] = outcome === 'b_higher' ? [b, a] : [a, b];
     const low = job => numberFormat.format(job.score.lower) + '%';
@@ -299,7 +411,8 @@
       summary = higher.title + ' выше ' + lower.title + ' по правилу обязательных требований. ' +
         'У ' + lower.title + ' отмечено обязательное несоответствие.';
     } else if (reason === 'lower_bound') {
-      summary = higher.title + ' выше ' + lower.title + ' по нижней границе L · ' + low(higher) + ' и ' + low(lower) + '.';
+      summary = higher.title + ' выше ' + lower.title + ' по нижней границе L. ' +
+        (low(higher) === low(lower) ? 'Разница меньше точности отображения.' : low(higher) + ' и ' + low(lower) + '.');
     }
     setText('comparison-summary', summary);
 
@@ -327,7 +440,7 @@
     const job = report.jobs.find(candidate => candidate.id === ref.jobId);
     const details = element('details', 'source-disclosure');
     const title = element('summary', 'source-heading');
-    title.append(element('span', null, job.title + ' · ' + ref.row.label), tag(...assessments[ref.row.status]));
+    title.append(element('span', null, job.title + ' · ' + ref.row.label), tag(...assessmentLabel(ref.row, display)));
     details.append(title);
     const quotes = element('div', 'evidence-grid source-body');
     quotes.append(quoteCard('Фрагмент вакансии', [ref.row.requirementQuote]),
@@ -349,7 +462,10 @@
     byId('condition-list').replaceChildren(...conditions.items.map(item => {
       const details = element('details', 'source-disclosure');
       const summary = element('summary', 'source-heading');
-      summary.append(element('span', null, item.label), tag(...conditionStates[item.state]));
+      const hidden = [item.cv, item.vacancy].some(source => source && display.unresolved(sourceText(source)));
+      const status = hidden && item.state === 'compatible'
+        ? ['Источник нужно сверить', 'warning'] : conditionStates[item.state];
+      summary.append(element('span', null, item.label), tag(...status));
       details.append(summary);
       const quotes = element('div', 'evidence-grid source-body');
       for (const [label, source, unresolved] of [
@@ -360,6 +476,7 @@
         quotes.append(quoteCard(label, source ? [sourceText(source)] : [], missing));
       }
       details.append(quotes);
+      if (hidden) details.append(element('p', 'source-note support', 'Часть условия скрыта. Сверьте с оригиналами.'));
       if (item.needsReview) details.append(element('p', 'source-note support', 'Нужна ручная сверка.'));
       return details;
     }));
@@ -392,9 +509,12 @@
       const details = element('details', 'source-disclosure');
       details.append(element('summary', 'source-heading', title),
         quoteCard('Фрагменты резюме', Array.from(quotes)));
+      if (Array.from(quotes).some(display.unresolved)) {
+        details.append(element('p', 'source-note support', 'Часть цитаты скрыта. Сверьте с оригиналом резюме.'));
+      }
       list.append(details);
     }
-    list.firstElementChild.open = true;
+    if (list.firstElementChild) list.firstElementChild.open = true;
   }
 
   function renderLeader() {
@@ -412,7 +532,9 @@
     };
     const names = jobs => jobs.map(job => job.title).join(', ');
     setText('leader-title', report.complete ? 'Что определяет первое место' : 'Предварительный выбор среди обработанных');
-    setText('leader-summary', names(leader.jobs) + ' · ' + (report.complete ? states[leader.state] :
+    const insufficient = !leader.comparable || leader.jobs.every(isInsufficient);
+    setText('leader-summary', insufficient ? 'Недостаточно данных для сравнения вакансий.' :
+      names(leader.jobs) + ' · ' + (report.complete ? states[leader.state] :
       'Предварительный выбор среди обработанных вакансий. Сравнение со всем набором не завершено.'));
     setText('leader-scope', (report.complete ? '' : 'Обработаны не все вакансии. ') +
       'Проверка по правилам отчёта охватывает спорные основания и не более двух ответов кандидата. Смысл цитат проверяет рекрутер.');
@@ -458,29 +580,27 @@
       const place = report.complete ? 'Место ' : 'Предварительное место ';
       heading.append(element('h3', null, job.title), element('span', 'support', place + job.rank), button);
 
+      const grouped = summarizeJob(report.jobs[index], display);
       const bounds = element('div', 'overview-metric');
-      bounds.append(element('p', null, 'Диапазон L–H'),
-        element('strong', 'numeric', scoreRange(job)));
+      bounds.append(element('p', null, 'Диагностический диапазон L–H'),
+        element('strong', 'numeric', !grouped.insufficient ? scoreRange(job) : 'Недостаточно данных'));
       // Native meters take numeric values under the offline page's strict CSP.
       // The two meters share a baseline and the upper bound has the lighter fill.
       const interval = element('div', 'interval');
       interval.setAttribute('aria-hidden', 'true');
       interval.append(meter(job.upper, 'high'), meter(job.lower, 'low'));
-      bounds.append(interval);
+      if (!grouped.insufficient) bounds.append(interval);
 
       const coverage = element('div', 'overview-metric');
-      coverage.append(element('p', null, 'Доля известных данных'),
+      coverage.append(element('p', null, 'Покрытие засчитанными доказательствами'),
         element('strong', 'numeric', percent(job.coverage)));
       const coverageTrack = meter(job.coverage, 'coverage');
       coverageTrack.setAttribute('aria-hidden', 'true');
       coverage.append(coverageTrack);
 
       const counts = element('ul', 'status-counts');
-      for (const [status, count] of Object.entries(job.counts)) {
-        const item = element('li');
-        item.append(tag(...assessments[status]), element('strong', 'numeric', count));
-        counts.append(item);
-      }
+      for (const [label, count] of [['Совпадения', grouped.matches.length], ['Пробелы', grouped.gaps.length],
+        ['К уточнению', grouped.clarify.length]]) counts.append(element('li', null, label + ' · ' + count));
       row.append(heading, bounds, coverage, counts);
       list.append(row);
     });
@@ -522,11 +642,14 @@
     heading.append(toggle, element('span', 'row-subtitle', mandatoryLabel(row)));
 
     const assessment = element('td');
-    assessment.append(tag(...assessments[row.status]),
+    assessment.colSpan = 2;
+    assessment.append(tag(...assessmentLabel(row, display)),
       element('span', 'row-subtitle', evidenceLabel(row)));
-    const resume = element('td');
-    resume.append(element('span', 'quote-preview', row.resumeQuotes[0] || 'Цитата не приведена'));
-    main.append(heading, assessment, resume);
+    if (rowSourceHidden(row, display)) {
+      assessment.append(element('span', 'row-subtitle', 'Фрагмент скрыт · откройте доказательства для сверки'));
+    }
+    main.append(heading, assessment);
+    rowButtons.set(row.id, toggle);
 
     const detail = element('tr', 'evidence-row');
     detail.id = 'evidence-' + index;
@@ -538,6 +661,9 @@
     quotes.append(quoteCard('Фрагмент вакансии', [row.requirementQuote]),
       quoteCard('Фрагменты резюме', row.resumeQuotes, 'Подтверждающий фрагмент в отчёте отсутствует.'));
     const notes = element('dl', 'row-notes');
+    if (rowSourceHidden(row, display)) {
+      addNote(notes, 'Часть источника скрыта', 'Сверьте требование и цитату с локальными оригиналами перед решением.');
+    }
     if (row.mandatoryQuote && row.mandatoryQuote !== row.requirementQuote) {
       addNote(notes, 'Основание обязательности · требует проверки', row.mandatoryQuote);
     }
@@ -563,8 +689,9 @@
   }
 
   function renderRows() {
+    rowButtons = new Map();
     if (!activeJob) return;
-    const rows = filterRows(activeJob.rows, filter, search.value);
+    const rows = filterRows(activeJob.rows, filter, search.value, display);
     byId('requirement-rows').replaceChildren(...rows.flatMap(makeRow));
     byId('empty-rows').hidden = rows.length > 0;
     setText('result-count', 'Показано требований: ' + rows.length + ' из ' + activeJob.rows.length);
@@ -578,8 +705,7 @@
 
   function downloadManagerReport() {
     if (!activeJob) return;
-    const trustedContext = runContext ? { runId: runContext.id, revision: runContext.revision } : null;
-    const html = renderManagerReport(report, activeJob.id, trustedContext);
+    const html = renderManagerReport(report, activeJob.id, reviewContext(), display);
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
     const link = element('a');
     link.href = url;
@@ -617,6 +743,7 @@
 
   function openReport(next, label, context = null, selectedJob = null, view = 'ranking') {
     runContext = context;
+    display = createDisplay(next, context?.displayData);
     report = next;
     renderSummary();
     renderRanking();
@@ -631,10 +758,12 @@
 
   window.RecruiterViewer = {
     beginLoad: () => ++loadSequence,
+    loadVersion: () => loadSequence,
     isLatest: sequence => sequence === loadSequence,
     getContext: () => runContext,
     openServerReport(next, context) {
       const staysOpen = runContext?.id === context.id;
+      if (staysOpen && context.revision < runContext.revision) return;
       const view = staysOpen ? views.find(button => button.getAttribute('aria-pressed') === 'true').dataset.view : 'ranking';
       openReport(next, 'Открыт отчёт локального запуска', context, staysOpen ? activeJob?.id : null, view);
     },
@@ -642,12 +771,15 @@
       if (runContext?.id !== id) return;
       ++loadSequence;
       runContext = null;
+      display = createDisplay({});
       report = null;
       activeJob = null;
       byId('report-workspace').hidden = true;
       byId('welcome').hidden = false;
       for (const container of ['job-list', 'requirement-rows', 'profile-list', 'overview-list',
-        'condition-list', 'comparison-detail', 'comparison-job', 'review-list', 'review-controls', 'skipped-jobs']) byId(container).replaceChildren();
+        'condition-list', 'comparison-detail', 'comparison-job', 'leader-evidence', 'job-findings', 'job-competencies',
+        'review-list', 'review-controls', 'skipped-jobs']) byId(container).replaceChildren();
+      for (const name of ['comparison-summary', 'leader-summary', 'leader-scope', 'job-fit-notes']) setText(name, '');
       setFileStatus('Локальный запуск удалён.');
     }
   };

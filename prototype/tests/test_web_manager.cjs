@@ -48,7 +48,7 @@ test('incomplete, unknown and review states stay visible in print', () => {
   assert.match(html, /Неполный результат[\s\S]+1 из 3/);
   assert.match(html, /Места предварительные/);
   assert.match(html, /Синтетический replay/);
-  assert.match(html, /Состав подтверждён в отчёте/);
+  assert.match(html, /Состав не подтверждён/);
   assert.match(html, /Черновик для проверки/);
   assert.match(html, /Обязательность требует проверки/);
   assert.match(html, /защита могла скрыть/i);
@@ -171,7 +171,7 @@ test('the jury example shows a sourced profile, fit reasons and a conflict only 
 
   const second = render(raw, 1);
   assert.equal(section(second, 'candidate-profile'), profile);
-  assert.match(section(second, 'vacancy-fit'), /Недостаточно сведений[\s\S]*Java/);
+  assert.match(section(second, 'vacancy-fit'), /Недостаточно данных для оценки[\s\S]*Java/);
   assert.match(section(second, 'conditions'), /Условия совпадают по отчёту/);
   assert.doesNotMatch(second, /только офис|Возможный конфликт/);
 });
@@ -190,7 +190,12 @@ test('a selected vacancy gets its own provisional verdict independent of ranking
   const raw = example('success');
   assert.match(section(render(raw), 'vacancy-fit'), /Нужна проверка[\s\S]*Состав не подтверждён/);
   raw.ranking.jobs[0].requirements_review = { vacancy_id: 'job-001', state: 'confirmed', reasons: [] };
-  assert.match(section(render(raw), 'vacancy-fit'), /По оценённым требованиям соответствует/);
+  assert.match(section(render(raw), 'vacancy-fit'), /Нужна проверка/);
+  raw.run_id = '1'.repeat(32);
+  raw.revision = 2;
+  const report = parseReport(JSON.stringify(raw));
+  const registered = renderManagerReport(report, 'job-001', { runId: raw.run_id, revision: 2 });
+  assert.match(section(registered, 'vacancy-fit'), /По оценённым требованиям соответствует/);
   assert.match(section(render(raw, 2), 'vacancy-fit'), /Есть несоответствие[\s\S]*SQL/);
   const changed = example('success');
   changed.ranking.jobs[0].score_review.excluded_mandatory_ids = ['r1'];
@@ -330,4 +335,23 @@ test('handoff review state in print requires current trusted server context', ()
   assert.match(reviewed, /Возможный конфликт/);
   assert.match(renderManagerReport(report, jobId, { ...context, revision: 11 }), /Черновик для проверки/);
   assert.match(renderManagerReport(report, raw.ranking.jobs[1].job_id, context), /Черновик для проверки/);
+});
+
+test('manager export escapes restored text and uses stable placeholders in offline copies', () => {
+  const raw = example('success');
+  delete raw.presentation;
+  const ref = '[[PRIV:0123456789abcdef:3:ORG]]';
+  raw.ranking.jobs[0].requirements.items[0].quote = ref + '.js';
+  raw.run_id = 'a'.repeat(32);
+  raw.revision = 1;
+  const report = parseReport(JSON.stringify(raw));
+  const { createDisplay } = require('../static/report.js');
+  const display = createDisplay(report, {run_id:raw.run_id, revision:1, aliases:{[ref]:'<b>Синтетика</b>'}});
+  const restored = renderManagerReport(report, 'job-001', {runId:raw.run_id,revision:1}, display);
+  assert.match(restored, /&lt;b&gt;Синтетика&lt;\/b&gt;\.js/);
+  assert.doesNotMatch(restored, /<b>Синтетика|\[\[PRIV:/);
+  const offline = renderManagerReport(report, 'job-001');
+  assert.match(offline, /Фрагмент 1\.js/);
+  assert.doesNotMatch(offline, /Синтетика|\[\[PRIV:/);
+  assert.match(offline, /Часть источника скрыта/);
 });

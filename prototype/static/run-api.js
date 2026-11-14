@@ -19,9 +19,10 @@
 
   function createRunApi(request) {
     let csrfToken;
-    async function response(path, { method = 'GET', data, allowMissing = false } = {}) {
+    async function response(path, { method = 'GET', data, allowMissing = false, signal } = {}) {
       const headers = { Accept: 'application/json' };
       const options = { method, headers, credentials: 'same-origin', cache: 'no-store', redirect: 'error' };
+      if (signal) options.signal = signal;
       if (method !== 'GET') {
         if (!csrfToken) throw new Error('Локальная сессия недоступна.');
         headers['X-CSRF-Token'] = csrfToken;
@@ -73,6 +74,9 @@
       start: data => json('/api/runs', { method: 'POST', data }),
       async get(id) { return json(pathFor(id)); },
       async report(id) { return response(pathFor(id) + '/report'); },
+      async displayData(id) {
+        return json(pathFor(id) + '/display-data', { allowMissing: true, signal: AbortSignal.timeout(4000) });
+      },
       async cancel(id) { return json(pathFor(id) + '/cancel', { method: 'POST' }); },
       async review(id, data) { return json(pathFor(id) + '/review', { method: 'POST', data }); },
       async remove(id) { await response(pathFor(id), { method: 'DELETE' }); }

@@ -3,8 +3,9 @@
 
   const commonJS = typeof module === 'object' && module.exports;
   const {
-    describeRun, describeFit, scoreRange, assessments, mandatoryStates, evidenceLabel, evidenceNeedsReview,
-    mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
+    describeRun, describeFit, scoreRange, mandatoryStates, evidenceLabel, evidenceNeedsReview,
+    mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel, createDisplay, rowSourceHidden, assessmentLabel,
+    summarizeJob, trustedRequirements
   } = commonJS ? require('./report.js') : root.NanimaiReport;
 
   const htmlEntities = {
@@ -13,9 +14,9 @@
   const briefTextLimit = 110;
   const escape = value => String(value).replace(/[&<>"']/g, character => htmlEntities[character]);
 
-  function reference({ row, number }, includeStatus = false) {
-    const status = includeStatus ? ' — ' + (row.scoreConflict ? 'Требует сверки' : assessments[row.status][0]) : '';
-    return '<a href="#evidence-' + number + '">[' + number + '] ' + escape(shortText(row.label)) + '</a>' + status;
+  function reference({ row, number }, display, includeStatus = false) {
+    const status = includeStatus ? ' — ' + assessmentLabel(row, display)[0] : '';
+    return '<a href="#evidence-' + number + '">[' + number + '] ' + escape(shortText(display.text(row.label))) + '</a>' + status;
   }
 
   function shortText(text) {
@@ -29,21 +30,21 @@
       : '<p>' + empty + '</p>';
   }
 
-  function riskText(item, showQuotes) {
+  function riskText(item, showQuotes, display) {
     const { row } = item;
     const review = [
       mandatoryNeedsReview(row) ? mandatoryLabel(row) : null,
       evidenceNeedsReview(row) ? evidenceLabel(row) : null
     ].filter(Boolean).join('. ');
-    const text = reference(item, true) + (review ? '. ' + review + '.' : '');
+    const text = reference(item, display, true) + (review ? '. ' + review + '.' : '');
     if (!showQuotes || !row.resumeQuotes.length) return text;
-    const quotes = row.resumeQuotes.map(quote => quote.replace(/\s+/g, ' ').trim());
+    const quotes = row.resumeQuotes.map(quote => display.text(quote).replace(/\s+/g, ' ').trim());
     if (quotes.join(' ').length > 160) return text;
     return text + '<span class="fit-citation">Резюме ' +
       quotes.map(quote => '«' + escape(quote) + '»').join(' · ') + '</span>';
   }
 
-  function profileSections(profile) {
+  function profileSections(profile, display) {
     if (!profile.claims) {
       const message = profile.state === 'invalid' ? 'Не удалось проверить профиль.' : 'Профиль не извлечён.';
       return { brief: '<section id="candidate-profile" class="unavailable"><p><strong>Краткий профиль.</strong> ' +
@@ -53,7 +54,7 @@
     const claimPaths = Array.from(profile.claims.keys());
     const references = new Map();
     function cite(spans) {
-      const snippets = spans.map(({ sentence, heading }) => heading ? heading + '\n' + sentence : sentence);
+      const snippets = spans.map(({ sentence, heading }) => display.text(heading ? heading + '\n' + sentence : sentence));
       const key = JSON.stringify(snippets);
       if (!references.has(key)) references.set(key, { number: references.size + 1, snippets });
       const number = references.get(key).number;
@@ -85,7 +86,9 @@
       ['Последняя роль, сфера и период', lastRole],
       ['Достижения и результаты', achievements.join('<br>') || 'Не извлечены']
     ];
-    const note = profile.state === 'needs_review'
+    const incomplete = Array.from(profile.claims.values()).flat().some(source =>
+      [source.heading, source.sentence].some(display.unresolved));
+    const note = profile.state === 'needs_review' || incomplete
       ? '<p class="state">Часть сведений профиля требует сверки с резюме.</p>' : '';
     const details = fields.map(([title, value]) => '<div><dt>' + title + '</dt><dd>' + value + '</dd></div>').join('');
     const sources = Array.from(references.values(), ({ number, snippets }) =>
@@ -103,7 +106,7 @@
     unknown: 'Нужно уточнить', invalid: 'Не удалось проверить'
   };
 
-  function conditionsSection(conditions) {
+  function conditionsSection(conditions, display) {
     if (conditions.state === 'missing') return '<section id="conditions" class="unavailable">' +
       '<p><strong>Условия для HR.</strong> Условия не сравнивались.</p></section>';
     const heading = '<section id="conditions"><h2>Условия для HR</h2>';
@@ -114,7 +117,7 @@
     }
 
     function quote(source, unresolved) {
-      if (source) return '«' + escape(source.heading ? source.heading + ' · ' + source.sentence : source.sentence) + '»';
+      if (source) return '«' + escape(display.text(source.heading ? source.heading + ' · ' + source.sentence : source.sentence)) + '»';
       return unresolved ? 'Не удалось привязать цитату' : 'Сведения не указаны';
     }
     const ordered = [...conditions.items.filter(item => item.state === 'conflict'),
@@ -123,7 +126,9 @@
       const flag = state === 'conflict' ? ' class="condition-conflict"' : '';
       const sources = state === 'invalid' ? '' : '<p><span>Резюме</span> ' + quote(cv, cvUnresolved) +
         '</p><p><span>Вакансия</span> ' + quote(vacancy, vacancyUnresolved) + '</p>';
-      const status = conditionStatus[state] + (state === 'conflict' && needsReview ? ' · Нужна ручная сверка' : '');
+      const hidden = [cv, vacancy].some(source => source && [source.heading, source.sentence].some(display.unresolved));
+      const status = hidden && state === 'compatible' ? 'Часть условия скрыта. Сверьте с оригиналами.' :
+        conditionStatus[state] + (state === 'conflict' && (needsReview || hidden) ? ' · Нужна ручная сверка' : '');
       return '<div' + flag + '><h3>' + label + ' <span>· ' + status + '</span></h3>' + sources + '</div>';
     }).join('');
     const note = conditions.state === 'invalid'
@@ -132,21 +137,22 @@
       '<div class="condition-list">' + items + '</div></section>';
   }
 
-  function quoteGroup(title, quotes, empty = '') {
+  function quoteGroup(title, quotes, display, empty = '') {
     return '<h4>' + title + '</h4>' + (quotes.length
-      ? quotes.map(quote => '<blockquote>' + escape(quote) + '</blockquote>').join('')
+      ? quotes.map(quote => '<blockquote>' + escape(display.text(quote)) + '</blockquote>').join('')
       : '<p>' + empty + '</p>');
   }
 
-  function evidenceItem({ row, number }) {
+  function evidenceItem({ row, number }, display) {
     const mandatoryQuote = row.mandatoryQuote && row.mandatoryQuote !== row.requirementQuote
-      ? quoteGroup('Фрагмент об обязательности', [row.mandatoryQuote]) : '';
-    const title = row.label === row.requirementQuote ? 'Требование' : shortText(row.label);
+      ? quoteGroup('Фрагмент об обязательности', [row.mandatoryQuote], display) : '';
+    const title = row.label === row.requirementQuote ? 'Требование' : shortText(display.text(row.label));
+    const hidden = rowSourceHidden(row, display) ? '<p class="state">Часть источника скрыта. Сверьте с оригиналами.</p>' : '';
     return '<article id="evidence-' + number + '"><h3>[' + number + '] ' + escape(title) + '</h3>' +
-      '<p class="state"><strong>' + assessments[row.status][0] + '</strong> · ' + mandatoryLabel(row) +
+      '<p class="state"><strong>' + assessmentLabel(row, display)[0] + '</strong> · ' + mandatoryLabel(row) +
       ' · ' + evidenceLabel(row) + '</p>' +
-      quoteGroup('Фрагмент вакансии', [row.requirementQuote]) + mandatoryQuote +
-      quoteGroup('Фрагменты резюме', row.resumeQuotes, 'В отчёте нет подтверждающей цитаты.') +
+      hidden + quoteGroup('Фрагмент вакансии', [row.requirementQuote], display) + mandatoryQuote +
+      quoteGroup('Фрагменты резюме', row.resumeQuotes, display, 'В отчёте нет подтверждающей цитаты.') +
       '</article>';
   }
 
@@ -249,7 +255,7 @@
   const printScript = "document.getElementById('print-report').addEventListener('click', () => window.print());";
   const printScriptDigest = 'Ly5N7hfg2ILqQD8qjfrNRGdeV9zTxlJEU/jhMitXdoU=';
 
-  function renderManagerReport(report, jobId, trustedContext = null) {
+  function renderManagerReport(report, jobId, trustedContext = null, display = createDisplay(report)) {
     const job = report.jobs.find(item => item.id === jobId);
     if (!job) throw new Error('Выберите оценённую вакансию.');
 
@@ -261,14 +267,14 @@
     const reviewStatus = reviewed ? 'Проверено рекрутером для передачи' : 'Черновик для проверки';
     const reviewRevision = trustedRevision ? ' · Ревизия ' + trustedRevision : '';
     const exceptions = reviewed?.accepted_exceptions.length ?? 0;
-    const fit = describeFit(report, job);
-    const profile = profileSections(report.profile);
+    const fit = describeFit(report, job, display, trustedContext);
+    const profile = profileSections(report.profile, display);
     const risks = fit.risks.slice(0, 3);
     if (fit.priority && !risks.includes(fit.priority)) risks.splice(2, 1, fit.priority);
     const questions = fit.risks.filter(({ row }) => row.status !== 'full' && !row.scoreConflict).slice(0, 5);
     const showQuestions = questions.length
       ? '<section><h2>Вопросы кандидату</h2><ol>' + questions.map(item =>
-        '<li class="manager-question">' + reference(item) +
+        '<li class="manager-question">' + reference(item, display) +
         ' — что вы можете уточнить по этому требованию?</li>').join('') + '</ol></section>' : '';
     const recommendation = run.recommendation?.[1] ?? 'Рекомендация в отчёте не указана.';
     const count = 'Обработано ' + report.processed + ' из ' + report.total + ' вакансий.';
@@ -297,8 +303,8 @@
     <p class="eyebrow">AI-рекрутер · ${run.mode} · ${reviewStatus}${reviewRevision} · Версия отчёта ${escape(report.schemaVersion)}</p>
     <h1>Отчёт для менеджера</h1>
     <p class="vacancy">Вакансия ${escape(job.title)}</p>
-    <p>${place} · Диапазон L–H ${scoreRange(job.score)}</p>
-    <p class="state">${requirementReviewLabel(job.requirementsReview)} · ${mandatoryStates[job.score.mandatory][0]}</p>
+    <p>${place}${summarizeJob(job, display).insufficient ? '' : ' · Диагностический диапазон L–H ' + scoreRange(job.score)}</p>
+    <p class="state">${requirementReviewLabel(trustedRequirements(report, job, trustedContext))} · ${mandatoryStates[job.score.mandatory][0]}</p>
     ${exceptions ? '<p class="state">Принятые исключения по условиям · ' + exceptions + '</p>' : ''}
   </header>
   <section id="vacancy-fit" class="recommendation">
@@ -306,22 +312,22 @@
     <p class="fit-verdict">${fit.label}</p>
     ${fit.notes.length ? '<p class="fit-notes state">' + fit.notes.join(' ') + '</p>' : ''}
     <h3>Основания по вакансии</h3>
-    ${summaryList(fit.grounds.slice(0, 3).map(item => reference(item)),
+    ${summaryList(fit.grounds.slice(0, 3).map(item => reference(item, display)),
       'Нет оценок полного соответствия со структурно сверенными цитатами.')}
     <h3>Риски и пробелы</h3>
-    ${summaryList(risks.map(item => riskText(item, item === fit.priority)),
+    ${summaryList(risks.map(item => riskText(item, item === fit.priority, display)),
       'По оценённым требованиям пробелы не отмечены.')}
     ${fit.risks.length > risks.length ? '<p>Остальные пробелы перечислены в <a href="#evidence">цитатах и оценках</a>.</p>' : ''}
   </section>
   ${profile.brief}
-  ${conditionsSection(job.conditions)}
+  ${conditionsSection(job.conditions, display)}
   ${report.privacyWarning ? '<p>Защита могла скрыть часть профессиональных сведений. Сверьте их с локальным оригиналом.</p>' : ''}
   ${showQuestions}
   <p class="state">Предварительная рекомендация по запуску. ${recommendation}</p>
   <section class="evidence" id="evidence">
     <h2>Цитаты и оценки по требованиям</h2>
     <p class="state">Смысл цитат и оценки соответствия проверяет рекрутер.</p>
-    ${fit.rows.map(evidenceItem).join('\n    ')}
+    ${fit.rows.map(item => evidenceItem(item, display)).join('\n    ')}
   </section>
   ${profile.sources}
   ${provenance(report, job, run)}

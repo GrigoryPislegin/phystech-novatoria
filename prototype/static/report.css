@@ -163,6 +163,7 @@ p { line-height: 1.5; }
   min-width: 0;
 }
 .job-card[data-current] { border-color: #a6b1fc; }
+.job-list[data-many] { max-height: 430px; overflow-y: auto; padding: 4px; }
 .job-card .job-option-name { width: 100%; padding-bottom: 12px; margin-bottom: 3px; border-bottom: 1px solid var(--line); font-size: 18px; overflow-wrap: anywhere; }
 .job-option-score { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 7px; margin-top: auto; color: var(--muted); font-size: 12px; }
 .job-option-score strong { color: var(--accent-text); font-size: 19px; }
@@ -177,6 +178,22 @@ p { line-height: 1.5; }
 .fit-block h3 { font-size: 14px; }
 .fit-block p { margin-top: 4px; font-size: 14px; }
 .fit-block p.support { font-size: 13px; }
+.job-option-summary { font-size: 13px; line-height: 1.4; }
+.job-findings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 13px 0; }
+.job-findings section { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 11px; }
+.job-findings h4 { margin-bottom: 4px; font-size: 13px; }
+.job-findings ul { margin: 0; padding-left: 16px; }
+.text-action { display: inline; padding: 2px 0; border: 0; background: transparent; text-align: left;
+  color: var(--accent-text); text-decoration: underline; overflow-wrap: anywhere; }
+#job-evidence > summary { margin-bottom: 10px; }
+.job-competencies h4 { font-size: 13px; }
+.competency-figure { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin: 6px 0; }
+.competency-figure svg { width: 220px; max-width: 100%; }
+.radar-grid { fill: none; stroke: var(--line); stroke-width: 1.3; }
+.radar-value { stroke: var(--accent); stroke-width: 2; }
+.radar-point { fill: var(--accent); }
+.radar-label { fill: var(--muted); font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
+.radar-legend { flex: 1 1 230px; padding-left: 20px; margin: 0; font-size: 13px; }
 .detail-header .run-note { margin: 12px 0 0; }
 
 .tag { display: inline-flex; align-items: flex-start; gap: 6px; padding: 4px 8px; border-radius: 13px; font-size: 12px; font-weight: 650; line-height: 1.4; }
@@ -278,6 +295,7 @@ thead th:nth-child(2) { width: 27%; }
   .detail, .view-panel { padding: 17px; }
 }
 @media (max-width: 540px) {
+  .job-findings { grid-template-columns: 1fr; }
   .shell { width: calc(100% - 28px); }
   .brand { font-size: 20px; }
   .intro { flex-direction: column; align-items: flex-start; gap: 13px; }
