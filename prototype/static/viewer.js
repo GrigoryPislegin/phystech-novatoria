@@ -2,7 +2,7 @@
   'use strict';
 
   const {
-    MAX_REPORT_BYTES, interviewPlan, parseReport, createDisplayText, radarGeometry, filterRows, describeDashboard, describeRun, describeFit, scoreRange,
+    MAX_REPORT_BYTES, interviewPlan, parseReport, createDisplayText, radarGeometry, filterRows, describeDashboard, describeRun, describeFit, scoreLabel,
     assessments, mandatoryStates, evidenceLabel, mandatoryLabel, requirementReviewLabel
   } = window.NanimaiReport;
   const { renderManagerReport } = window.NanimaiManagerReport;
@@ -107,8 +107,8 @@
       const rank = element('p', 'eyeline numeric', (report.complete ? 'Место ' : 'Предварительное место ') + job.rank);
       const heading = element('h2', 'job-option-name', job.title);
       const score = element('p', 'job-option-score numeric');
-      score.append(element('strong', null, scoreRange(job.score)), element('span', null, 'Диапазон L–H'));
-      const coverage = element('p', 'support', 'Известные данные · ' + numberFormat.format(job.score.coverage) + '%');
+      score.append(element('strong', null, scoreLabel(job.score)), element('span', null, 'Подтверждённый балл'));
+      const coverage = element('p', 'support', 'Покрытие требований · ' + numberFormat.format(job.score.coverage) + '%');
       const button = element('button', 'job-option button button-secondary', 'Открыть');
       button.type = 'button';
       button.setAttribute('aria-label', 'Открыть вакансию ' + job.title);
@@ -151,7 +151,7 @@
     const mandatoryNode = byId('job-mandatory');
     mandatoryNode.className = mandatory.className;
     mandatoryNode.replaceChildren(...mandatory.childNodes);
-    setText('job-coverage', 'Доля известных данных ' + numberFormat.format(job.score.coverage) + '%');
+    setText('job-coverage', 'Покрытие требований ' + numberFormat.format(job.score.coverage) + '%');
     setText('job-requirements-review', requirementReviewLabel(job.requirementsReview));
     const scoreReview = byId('job-score-review');
     scoreReview.hidden = job.excluded.length === 0;
@@ -296,13 +296,13 @@
     }
     const { a, b, outcome, reason } = item;
     const [higher, lower] = outcome === 'b_higher' ? [b, a] : [a, b];
-    const low = job => numberFormat.format(job.score.lower) + '%';
+    const low = job => scoreLabel(job.score);
     let summary = a.title + ' и ' + b.title + ' делят место ' + a.rank + ' · L ' + low(a) + ' и ' + low(b) + '.';
     if (reason === 'mandatory_violation') {
       summary = higher.title + ' выше ' + lower.title + ' по правилу обязательных требований. ' +
         'У ' + lower.title + ' отмечено обязательное несоответствие.';
     } else if (reason === 'lower_bound') {
-      summary = higher.title + ' выше ' + lower.title + ' по нижней границе L · ' + low(higher) + ' и ' + low(lower) + '.';
+      summary = higher.title + ' выше ' + lower.title + ' по подтверждённому баллу · ' + low(higher) + ' и ' + low(lower) + '.';
     }
     setText('comparison-summary', summary);
 
@@ -482,10 +482,10 @@
       heading.append(tag(...mandatoryStates[report.jobs[index].score.mandatory]));
 
       const bounds = element('div', 'overview-metric');
-      bounds.append(element('p', null, 'Баллы соответствия'),
+      bounds.append(element('p', null, 'Подтверждённый балл'),
         element('strong', 'numeric', numberFormat.format(job.lower) + ' / 100'));
       // Native meters take numeric values under the offline page's strict CSP.
-      // The two meters share a baseline and the upper bound has the lighter fill.
+      // Show only confirmed credit; unknown requirements are not assumed matches.
       const interval = element('div', 'interval');
       interval.setAttribute('aria-hidden', 'true');
       interval.append(meter(job.lower, 'low'));
@@ -506,7 +506,7 @@
       }
       const statusDetails = element('details', 'overview-statuses');
       statusDetails.append(element('summary', null, 'Все статусы · ' + job.total), counts,
-        element('p', 'support', 'Диапазон возможного соответствия: ' + scoreRange(job)));
+        element('p', 'support', 'Подтверждённый балл: ' + scoreLabel(job)));
       row.append(heading, bounds, coverage, statusDetails);
       if (job.brief?.shares) {
         const brief = element('div', 'compact-brief');

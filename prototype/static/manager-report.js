@@ -3,7 +3,7 @@
 
   const commonJS = typeof module === 'object' && module.exports;
   const {
-    describeRun, describeFit, scoreRange, assessments, mandatoryStates, evidenceLabel, evidenceNeedsReview,
+    describeRun, describeFit, scoreLabel, assessments, mandatoryStates, evidenceLabel, evidenceNeedsReview,
     mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel, createDisplayText, displayCopy
   } = commonJS ? require('./report.js') : root.NanimaiReport;
 
@@ -298,7 +298,7 @@
     <p class="eyebrow">AI-рекрутер · ${run.mode} · ${reviewStatus}${reviewRevision} · Версия отчёта ${escape(report.schemaVersion)}</p>
     <h1>Отчёт для менеджера</h1>
     <p class="vacancy">Вакансия ${escape(job.title)}</p>
-    <p>${place} · Диапазон L–H ${scoreRange(job.score)}</p>
+    <p>${place} · Подтверждённый балл ${scoreLabel(job.score)}</p>
     <p class="state">${requirementReviewLabel(job.requirementsReview)} · ${mandatoryStates[job.score.mandatory][0]}</p>
     ${exceptions ? '<p class="state">Принятые исключения по условиям · ' + exceptions + '</p>' : ''}
   </header>

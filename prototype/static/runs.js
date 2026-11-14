@@ -82,7 +82,7 @@
       return run;
     } catch (error) {
       // These explicit rejections prove this key did not create a run.
-      if (['busy','input_not_found','invalid_budget','invalid_request','live_disabled'].includes(error.code)) rememberPending(null);
+      if (['busy','input_not_found','invalid_budget','invalid_request','live_disabled','demo_budget_exhausted'].includes(error.code)) rememberPending(null);
       if (error.code === 'input_not_found') inspected = null;
       throw error;
     }
@@ -519,6 +519,7 @@
       const capabilities = await api.session();
       if (!capabilities || !Array.isArray(capabilities.operations)) return;
       operations = new Set(capabilities.operations);
+      if (capabilities.private_browser_history) byId('runs-title').textContent = 'История этого браузера';
       reload.hidden = !operations.has('list');
       show.hidden = reload.hidden;
       if (operations.has('inspect')) {
