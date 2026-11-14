@@ -284,7 +284,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-${printScriptDigest}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-  <title>AI-рекрутер — Отчёт для менеджера</title>
+  <title>Новатория — Отчёт для менеджера</title>
   <style>${styles}</style>
 </head>
 <body>
@@ -295,7 +295,7 @@
   </div>
   <header>
     <p class="run-state${report.complete ? '' : ' incomplete'}">${progress}</p>
-    <p class="eyebrow">AI-рекрутер · ${run.mode} · ${reviewStatus}${reviewRevision} · Версия отчёта ${escape(report.schemaVersion)}</p>
+    <p class="eyebrow">Новатория · ${run.mode} · ${reviewStatus}${reviewRevision} · Версия отчёта ${escape(report.schemaVersion)}</p>
     <h1>Отчёт для менеджера</h1>
     <p class="vacancy">Вакансия ${escape(job.title)}</p>
     <p>${place} · Подтверждённый балл ${scoreLabel(job.score)}</p>
