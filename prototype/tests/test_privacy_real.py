@@ -61,3 +61,8 @@ class RealPrivacyTests(unittest.TestCase):
     def test_inline_email_label_does_not_remove_next_professional_sentence(self):
         from scripts.privacy_smoke import check
         self.assertEqual(asyncio.run(check())['status'], 'pass')
+
+    def test_smoke_does_not_mistake_nonce_digits_for_an_unmasked_phone(self):
+        from scripts.privacy_smoke import check
+        with patch('prototype.privacy_core.secrets.token_hex', return_value='9990123456789abc'):
+            self.assertEqual(asyncio.run(check())['status'], 'pass')

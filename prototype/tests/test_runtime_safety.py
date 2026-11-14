@@ -179,6 +179,121 @@ class RuntimeSafetyTests(unittest.TestCase):
         self.assertEqual(model.calls, 3)
         self.assertEqual(report['errors'][0]['code'], 'cancelled')
 
+    def test_cross_thread_cancel_interrupts_pending_request_and_preserves_completed_job(self):
+        from prototype.pipeline import RunControl
+
+        async def scenario():
+            started, never = asyncio.Event(), asyncio.Event()
+            cleaned = []
+
+            class PendingSecond(ReplayModel):
+                async def ask(self, schema, task, payload):
+                    if task == 'requirements' and 'Java' in payload['text']:
+                        started.set()
+                        try:
+                            await never.wait()
+                        finally:
+                            cleaned.append(True)
+                    return await super().ask(schema, task, payload)
+
+            model, control = PendingSecond(), RunControl()
+            analysis = asyncio.create_task(run_pipeline(*demo_inputs(), model, SyntheticPrivacy(), control=control))
+            await asyncio.wait_for(started.wait(), timeout=1)
+            await asyncio.to_thread(control.cancel)
+            report = await asyncio.wait_for(analysis, timeout=1)
+            self.assertTrue(cleaned, 'the pending request must finish its cancellation cleanup')
+            self.assertEqual(model.calls, 3)
+            self.assertEqual([j['job_id'] for j in report['ranking']['jobs']], ['job-001'])
+            self.assertEqual(report['errors'][0]['code'], 'cancelled')
+            self.assertEqual(report['unprocessed_job_ids'], ['job-002', 'job-003'])
+            self.assertFalse(control._pending)
+
+        asyncio.run(scenario())
+
+    def _cancel_during_cleanup(self, trigger):
+        from prototype.pipeline import RunControl
+        from prototype.errors import RunStopped
+
+        async def scenario():
+            started, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+            finished = []
+            control = RunControl(timeout_seconds=0.05 if trigger == 'deadline' else 300)
+
+            async def operation():
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cleaning.set()
+                    await release.wait()
+                    finished.append(True)
+
+            call = asyncio.create_task(control.call(operation, 'test'))
+            await started.wait()
+            await asyncio.to_thread(control.cancel)
+            await asyncio.wait_for(cleaning.wait(), timeout=1)
+            if trigger == 'repeat':
+                await asyncio.to_thread(control.cancel)
+            elif trigger == 'deadline':
+                await asyncio.sleep(0.06)
+                self.assertFalse(call.done(), 'deadline must not interrupt cancellation cleanup')
+            else:
+                call.cancel()
+                if trigger == 'caller_twice':
+                    await asyncio.sleep(0)
+                    call.cancel()
+                    await asyncio.sleep(0)
+                    self.assertFalse(call.done(), 'caller must wait for cleanup after repeated cancellation')
+            release.set()
+            expected = asyncio.CancelledError if trigger.startswith('caller') else RunStopped
+            with self.assertRaises(expected) as caught:
+                await asyncio.wait_for(call, timeout=1)
+            if not trigger.startswith('caller'):
+                self.assertEqual(caught.exception.code, 'cancelled')
+            self.assertTrue(finished)
+            self.assertFalse(control._pending)
+
+        asyncio.run(scenario())
+
+    def test_repeated_cancel_does_not_interrupt_async_cleanup(self):
+        self._cancel_during_cleanup('repeat')
+
+    def test_deadline_during_cancel_cleanup_keeps_first_reason(self):
+        self._cancel_during_cleanup('deadline')
+
+    def test_caller_cancellation_is_not_converted_to_a_partial_report(self):
+        self._cancel_during_cleanup('caller')
+
+    def test_repeated_caller_cancellation_waits_for_operation_cleanup(self):
+        self._cancel_during_cleanup('caller_twice')
+
+    def test_cancel_before_deadline_wins_even_when_loop_notification_is_delayed(self):
+        from prototype.pipeline import RunControl
+        from prototype.errors import RunStopped
+
+        async def scenario():
+            control = RunControl(timeout_seconds=0.03)
+            started, cleaned = asyncio.Event(), []
+
+            async def operation():
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cleaned.append(True)
+
+            call = asyncio.create_task(control.call(operation, 'test'))
+            await started.wait()
+            loop = asyncio.get_running_loop()
+            with patch.object(loop, 'call_soon_threadsafe'):
+                control.cancel()  # Record the request; deliberately delay delivery to the loop.
+            with self.assertRaises(RunStopped) as caught:
+                await asyncio.wait_for(call, timeout=1)
+            self.assertEqual(caught.exception.code, 'cancelled')
+            self.assertTrue(cleaned)
+
+        asyncio.run(scenario())
+
     def test_budget_stop_has_distinct_reason(self):
         from prototype.errors import BudgetLimit
         class Limited(ReplayModel):

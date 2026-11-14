@@ -8,6 +8,7 @@ import math
 import shutil
 import tempfile
 import time
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -34,16 +35,48 @@ class RunControl:
         self.deadline = self.started + timeout_seconds
         self.progress = progress
         self.cancelled = False
+        self._cancelled_at = None
         self.events = []
+        self._pending = set()
+        self._pending_lock = threading.Lock()
 
     def cancel(self):
-        self.cancelled = True
+        # The HTTP transport calls this from a different thread than the
+        # analysis event loop. Wake pending I/O through its owning loop.
+        with self._pending_lock:
+            if self.cancelled:
+                return
+            self.cancelled = True
+            self._cancelled_at = time.monotonic()
+            pending = list(self._pending)
+        for signal in pending:
+            try:
+                signal.get_loop().call_soon_threadsafe(self._signal_cancel, signal)
+            except RuntimeError:
+                pass  # The owning loop already finished and closed.
+
+    @staticmethod
+    def _signal_cancel(signal):
+        if not signal.done():
+            signal.set_result(None)
 
     def checkpoint(self):
-        if self.cancelled:
+        if self._cancelled_at is not None and self._cancelled_at <= self.deadline:
             raise RunStopped('cancelled')
         if time.monotonic() >= self.deadline:
             raise RunStopped('deadline_exceeded')
+
+    @staticmethod
+    async def _drain(task):
+        """Finish cancellation cleanup even if the caller is cancelled again."""
+        waiter = asyncio.gather(task, return_exceptions=True)
+        interrupted = False
+        while not waiter.done():
+            try:
+                await asyncio.shield(waiter)
+            except asyncio.CancelledError:
+                interrupted = True
+        return interrupted
 
     def emit(self, stage, job_id=None):
         event = {'stage':stage, 'job_id':job_id, 'elapsed_ms':round((time.monotonic()-self.started)*1000)}
@@ -54,10 +87,42 @@ class RunControl:
     async def call(self, operation, stage, job_id=None):
         self.emit(stage, job_id)
         self.checkpoint()
+        task = asyncio.create_task(operation())
+        signal = asyncio.get_running_loop().create_future()
+        cancelling = False
+        with self._pending_lock:
+            self._pending.add(signal)
+            if self.cancelled:
+                signal.set_result(None)
+                task.cancel()
+                cancelling = True
         try:
-            result = await asyncio.wait_for(operation(), timeout=max(0, self.deadline-time.monotonic()))
-        except TimeoutError:
-            raise RunStopped('deadline_exceeded') from None
+            caller_cancelled = False
+            try:
+                done, _ = await asyncio.wait((task, signal),
+                    timeout=max(0, self.deadline-time.monotonic()), return_when=asyncio.FIRST_COMPLETED)
+            except asyncio.CancelledError:
+                caller_cancelled = True
+                done = set()
+            with self._pending_lock:
+                cancelled_at = self._cancelled_at
+            reason = ('cancelled' if cancelled_at is not None and cancelled_at <= self.deadline
+                      else 'deadline_exceeded' if task not in done else None)
+            if reason or caller_cancelled:
+                # Once a reason wins, there is no second deadline timer to
+                # interrupt the operation's asynchronous cancellation cleanup.
+                if not cancelling:
+                    task.cancel()
+                    cancelling = True
+                caller_cancelled |= await self._drain(task)
+                if caller_cancelled:
+                    raise asyncio.CancelledError
+                raise RunStopped(reason)
+            result = task.result()
+        finally:
+            with self._pending_lock:
+                self._pending.discard(signal)
+            signal.cancel()
         self.checkpoint()
         return result
 

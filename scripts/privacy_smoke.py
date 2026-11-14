@@ -15,15 +15,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 async def check():
     from prototype.privacy import local_privacy
-    from prototype.privacy_core import POLICY_VERSION
+    from prototype.privacy_core import POLICY_VERSION, REFERENCE
     async with local_privacy() as privacy:
         source = 'Иван Иванов. Телефон: +7 (999) 123-45-67. Email: ivan.synthetic@example.com. Разрабатывал на Python 3 года.'
         safe = await privacy.redact(source)
-        if any(value in safe for value in ('Иван', 'Иванов', '999', '123-45-67', 'ivan.synthetic@example.com')):
+        await privacy.check(safe)  # Validate issued references before excluding their random nonces.
+        plain = REFERENCE.sub('', safe)
+        if any(value in plain for value in ('Иван', 'Иванов', '999', '123-45-67', 'ivan.synthetic@example.com')):
             raise RuntimeError('synthetic_contact_not_redacted')
         if len(privacy.issued_refs) < 3 or 'Разрабатывал на Python 3 года.' not in safe:
             raise RuntimeError('professional_text_missing')
-        await privacy.check(safe)
         for text in ['Работала с SQL 1 год как с подрядчиком.', 'Создавала отчёты в Excel, где работала бухгалтером.']:
             protected = await privacy.redact(text)
             if ('SQL' in protected) or ('Excel' in protected):
