@@ -21,6 +21,7 @@ from .review_policy import assess_handoff
 from .evidence import Source, check_pair
 from . import requirements_review as review
 from .errors import ModelOutputError, RunStopped, PrivacyError, error_code
+from .documents import MAX_JOBS
 from .presentation import build_presentation, display_label, gap_question, EXPLANATIONS
 
 
@@ -90,7 +91,7 @@ def refresh_derived(report, decisions=()):
 
 
 async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sink=None):
-    if not jobs or len(jobs) > 20 or len({j[0] for j in jobs}) != len(jobs):
+    if not jobs or len(jobs) > MAX_JOBS or len({j[0] for j in jobs}) != len(jobs):
         raise ValueError('invalid_job_set')
     control = control or RunControl()
     if hasattr(model, 'set_run_control'):
@@ -101,7 +102,7 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
     if hasattr(privacy, 'finalize_sources'):
         sources = await control.call(lambda:privacy.finalize_sources([safe_resume, *(text for _,text in safe_jobs)]), 'privacy')
         safe_resume = sources[0]
-        safe_jobs = [(jid, text) for (jid, _), text in zip(safe_jobs, sources[1:])]
+        safe_jobs = [(jid, text) for (jid, _), text in zip(safe_jobs, sources[1:], strict=True)]
     if source_sink is not None:
         source_sink({'resume':safe_resume, 'jobs':dict(safe_jobs)})
     cv_source = Source.of('cv', safe_resume)

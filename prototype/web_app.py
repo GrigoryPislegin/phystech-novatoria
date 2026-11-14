@@ -1,6 +1,7 @@
 """Loopback-first HTTP transport. No filesystem browsing, implicit live, or CORS."""
 import hashlib
 import hmac
+from ipaddress import IPv4Address, IPv6Address
 import json
 import re
 import secrets
@@ -14,7 +15,9 @@ from .run_store import StoreError
 MAX_BODY = 28_000_000
 MAX_REPORT = 16_000_000
 STATIC = Path(__file__).with_name('static')
-RUN = re.compile(r'/api/runs/([0-9a-f]{32})(?:/(report|cancel|review))?\Z')
+RUN = re.compile(r'/api/runs/([0-9a-f]{32})(?:/(report|display-data|cancel|review))?\Z')
+HTTPS_ORIGIN = re.compile(r'https://(\[[a-fA-F0-9:.]+\]|[a-zA-Z0-9.-]+)(?::([0-9]{1,5}))?')
+DNS_LABEL = re.compile(r'[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?')
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
        "img-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; "
        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
@@ -27,6 +30,26 @@ def _pairs(pairs):
             raise ValueError('duplicate_key')
         obj[key] = value
     return obj
+
+
+def _public_authority(origin):
+    """Validate config before binding and return its exact HTTP authority."""
+    match = HTTPS_ORIGIN.fullmatch(origin) if isinstance(origin, str) else None
+    if not match:
+        raise StoreError('invalid_public_origin')
+    host, port = match.groups()
+    if port is not None and (not 1 <= int(port) <= 65535 or port != str(int(port))):
+        raise StoreError('invalid_public_origin')
+    try:
+        if host.startswith('['):
+            IPv6Address(host[1:-1])
+        elif host.rsplit('.', 1)[-1].isdigit():
+            IPv4Address(host)
+        elif len(host) > 253 or not all(DNS_LABEL.fullmatch(label) for label in host.split('.')):
+            raise ValueError()
+    except ValueError:
+        raise StoreError('invalid_public_origin') from None
+    return origin.removeprefix('https://')
 
 
 class LocalHTTPServer(ThreadingHTTPServer):
@@ -71,18 +94,25 @@ class Handler(BaseHTTPRequestHandler):
         if len(hosts) != 1:
             raise StoreError('origin_rejected')
         host = hosts[0]
-        try:
-            parsed = urlsplit('http://' + host)
-            port = parsed.port
-            if (parsed.hostname not in {'localhost','127.0.0.1','::1'} or parsed.username is not None
-                    or parsed.path or parsed.query or parsed.fragment or (port is not None and not 0 < port < 65536)):
-                raise ValueError()
-        except ValueError:
-            raise StoreError('origin_rejected') from None
+        expected_origin = self.server.public_origin
+        if expected_origin is not None:
+            if host != self.server.public_authority:
+                raise StoreError('origin_rejected')
+        else:
+            expected_origin = 'http://' + host
+            try:
+                parsed = urlsplit(expected_origin)
+                port = parsed.port
+                if (parsed.hostname not in {'localhost','127.0.0.1','::1'} or parsed.username is not None
+                        or parsed.path or parsed.query or parsed.fragment or (port is not None and not 0 < port < 65536)):
+                    raise ValueError()
+            except ValueError:
+                raise StoreError('origin_rejected') from None
         origins = self.headers.get_all('Origin', [])
-        if origins and origins != ['http://' + host]:
+        if origins and origins != [expected_origin]:
             raise StoreError('origin_rejected')
-        if self.headers.get('Sec-Fetch-Site') == 'cross-site' and self.path.startswith('/api/'):
+        if ('cross-site' in self.headers.get_all('Sec-Fetch-Site', [])
+                and (self.server.public_origin is not None or self.path.startswith('/api/'))):
             raise StoreError('origin_rejected')
         if mutate:
             tokens = self.headers.get_all('X-CSRF-Token', [])
@@ -129,6 +159,8 @@ class Handler(BaseHTTPRequestHandler):
                     rid, operation = match.groups()
                     if operation == 'report':
                         return self._send(200, service.store.report(rid))
+                    if operation == 'display-data':
+                        return self._send(200, service.store.display_data(rid))
                     if operation is None:
                         return self._send(200, service.store.get(rid))
                 name = 'index.html' if path == '/' else path.removeprefix('/')
@@ -178,13 +210,16 @@ class Handler(BaseHTTPRequestHandler):
         self._dispatch(mutate=True)
 
 
-def create_server(service, host='127.0.0.1', port=8765):
+def create_server(service, host='127.0.0.1', port=8765, *, public_origin=None):
     # Native app is loopback-only. Container networking requires an internal
     # wildcard bind; publish it on 127.0.0.1 using the documented Docker command.
     if host not in {'127.0.0.1', 'localhost'} and not (host == '0.0.0.0' and Path('/.dockerenv').is_file()):
         raise StoreError('loopback_required')
+    public_authority = _public_authority(public_origin) if public_origin is not None else None
     server = LocalHTTPServer((host, port), Handler)
     server.service = service
+    server.public_origin = public_origin
+    server.public_authority = public_authority
     server.session_token = secrets.token_urlsafe(32)
     server.static_files = {p.name for p in STATIC.iterdir() if p.is_file() and p.suffix in {'.js','.css','.html'}}
     return server
@@ -194,8 +229,9 @@ def serve(args):
     service = LocalService(args.state_dir, allow_live=args.allow_live)
     server = None
     try:
-        server = create_server(service, args.host, args.port)
-        print(f'Откройте http://127.0.0.1:{server.server_port}', flush=True)
+        server = create_server(service, args.host, args.port, public_origin=args.public_origin)
+        address = server.public_origin or f'http://127.0.0.1:{server.server_port}'
+        print(f'Откройте {address}', flush=True)
         print('Внешний API включён явно.' if args.allow_live else 'Локальный режим. Платные запросы выключены.', flush=True)
         server.serve_forever()
     except KeyboardInterrupt:

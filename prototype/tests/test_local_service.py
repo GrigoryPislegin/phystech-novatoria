@@ -1,13 +1,14 @@
 import base64
-import copy
+import json
 import os
 import tempfile
 import unittest
+from contextlib import asynccontextmanager
 from unittest.mock import patch
 from pathlib import Path
 
 from prototype.local_service import LocalService, SyntheticSDKModel
-from prototype.demo import demo_inputs
+from prototype.demo import SyntheticPrivacy, demo_inputs
 from prototype.run_store import StoreError
 
 
@@ -62,6 +63,63 @@ class LocalServiceTests(unittest.TestCase):
         self.assertEqual(bad['files'][0]['status'], 'error')
         with self.assertRaisesRegex(StoreError, 'input_invalid'):
             self.service.inspect({'resume':file('../cv.txt',b'x'),'jobs':[file('job.txt',b'x')]})
+
+    def test_thirty_uploaded_vacancies_complete_or_report_an_explicit_gap(self):
+        self.service.allow_live = True
+        resume, jobs = demo_inputs()
+
+        def file(name, text):
+            return {'name':name, 'content_base64':base64.b64encode(text.encode()).decode()}
+
+        vacancies = [file(f'job-{i}.txt', jobs[1 if i == 21 else 0][1]) for i in range(1, 31)]
+        payload = {'resume':file('resume.txt', resume), 'jobs':vacancies}
+        self.assertEqual(self.service.capabilities['max_files'], 31)
+        with patch('prototype.local_service.read_document_bytes') as parse:
+            with self.assertRaisesRegex(StoreError, '^invalid_job_set$'):
+                self.service.inspect({**payload, 'jobs':[*vacancies, vacancies[0]]})
+            parse.assert_not_called()
+        self.assertFalse(self.service._inputs)
+
+        @asynccontextmanager
+        async def fixture_privacy():
+            # Only the fixed fictional texts above use this substitute. The
+            # tests below cover NER separately; this tests count and recovery.
+            yield SyntheticPrivacy()
+
+        for scenario, skipped in (('success', []), ('incomplete', [21])):
+            with self.subTest(scenario=scenario):
+                models = []
+
+                def make_model(_model, privacy, _budget):
+                    model = SyntheticSDKModel(privacy, scenario)
+                    models.append(model)
+                    return model
+
+                inspected = self.service.inspect(payload)
+                self.assertTrue(inspected['ready'])
+                self.assertEqual(len(inspected['files']), 31)
+                self.assertTrue(all(f['status'] == 'ok' for f in inspected['files']))
+                with patch('prototype.local_service.local_privacy', fixture_privacy), \
+                     patch('prototype.local_service.Model', side_effect=make_model), \
+                     patch('socket.socket.connect', side_effect=AssertionError('network forbidden')):
+                    run = self.service.create({'mode':'protected-live', 'input_id':inspected['input_id'],
+                        'budget':1, 'idempotency_key':f'batch-{scenario}'})
+                    summary = self.service.wait(run['run_id'])
+                self.assertFalse(self.service._inputs)
+                self.assertEqual(summary['total'], 30)
+                self.assertEqual(summary['processed'], 30 - len(skipped))
+                self.assertEqual(summary['state'], 'partial' if skipped else 'complete')
+                self.assertEqual([model.budget.calls for model in models], [61])
+                report = self.service.store.report(run['run_id'])
+                self.assertEqual(report['ranking']['complete'], not skipped)
+                batch_index = lambda jid: int(jid.rsplit('-', 1)[1])
+                expected = [i for i in range(1, 31) if i not in skipped]
+                self.assertEqual(sorted(batch_index(job['job_id']) for job in report['ranking']['jobs']), expected)
+                self.assertEqual([batch_index(e['job_id']) for e in report['events'] if e['stage']=='job_finished'], expected)
+                self.assertEqual([batch_index(jid) for jid in report['unprocessed_job_ids']], skipped)
+                if skipped:
+                    self.assertEqual([item['reason'] for item in report['unprocessed']], ['model_invalid'])
+                    self.assertFalse(any(item['can_mark_for_handoff'] for item in report['handoff']))
 
     def test_replay_cannot_accept_user_documents_or_a_forged_mode(self):
         for request in ({'mode':'synthetic-replay','scenario':'success','input_id':'x','idempotency_key':'a'},
@@ -119,29 +177,48 @@ class LocalServiceTests(unittest.TestCase):
         # Exercise the upload branch with real parsing/NER/SDK and a local
         # transport injected ONLY by this test. This is not evidence of live API.
         self.service.allow_live = True
+        from httpx import MockTransport
         resume, jobs = demo_inputs()
-        contact = 'upload.synthetic@example.com'
+        contacts = ('Upload.Synthetic@example.com', 'upload.synthetic@example.com')
         file = lambda name,text:{'name':name,'content_base64':base64.b64encode(text.encode()).decode()}
-        uploaded = self.service.inspect({'resume':file('synthetic-candidate.txt', 'Email: '+contact+'\n'+resume),
+        cv = '\n'.join([*(f'Email: {contact}' for contact in contacts), resume])
+        uploaded = self.service.inspect({'resume':file('synthetic-candidate.txt', cv),
             'jobs':[file('synthetic-vacancy-'+str(i)+'.md',text) for i,(_,text) in enumerate(jobs)]})
-        outgoing = []
-        class CapturingSDK(SyntheticSDKModel):
-            async def ask(self, schema, task, payload):
-                outgoing.append(copy.deepcopy(payload))
-                return await super().ask(schema, task, payload)
-        with patch('prototype.local_service.Model', side_effect=lambda model,p,b:CapturingSDK(p,'success')) as factory, \
+        outgoing, privacy_sessions = [], []
+        send_mock = MockTransport.handle_async_request
+
+        async def capture_request(transport, request):
+            body = json.loads(request.content)
+            outgoing.append(json.loads(body['input'][1]['content'])['data'])
+            return await send_mock(transport, request)
+
+        def make_model(_model, privacy, _budget):
+            privacy_sessions.append(privacy)
+            return SyntheticSDKModel(privacy, 'success')
+
+        with patch('prototype.local_service.Model', side_effect=make_model) as factory, \
+             patch.object(MockTransport, 'handle_async_request', capture_request), \
              patch('socket.socket.connect', side_effect=AssertionError('network forbidden in this test')):
             run = self.service.create({'mode':'protected-live','input_id':uploaded['input_id'],
                                        'budget':1,'idempotency_key':'uploaded-synthetic'})
             self.assertEqual(self.service.wait(run['run_id'],90)['state'], 'complete')
             self.assertEqual(factory.call_count, 1)
             self.assertEqual(len(outgoing), 7)
-            self.assertNotIn(contact, str(outgoing))
+            for contact in contacts:
+                self.assertNotIn(contact, str(outgoing))
             self.assertNotIn('synthetic-candidate.txt', str(outgoing))
             self.assertFalse(self.service._inputs)
             report = self.service.store.report(run['run_id'])
             self.assertTrue(all(j['job_id'] not in {'job-001','job-002','job-003'} for j in report['ranking']['jobs']))
-            self.assertNotIn(contact, str(report))
+            for contact in contacts:
+                self.assertNotIn(contact, str(report))
+            rid = run['run_id']
+            aliases = self.service.store.display_data(rid)['aliases']
+            facts_input = outgoing[0]['text']
+            refs = {value:ref for ref,value in aliases.items()}
+            self.assertLess(facts_input.index(refs[contacts[0]]), facts_input.index(refs[contacts[1]]))
+            self.assertTrue(privacy_sessions[0].closed)
+            self.assertEqual(privacy_sessions[0]._display_aliases, {})
             jid = report['ranking']['jobs'][0]['job_id']
             for action in ('confirm_requirements','mark_for_handoff'):
                 changed = self.service.store.review(run['run_id'], {'expected_revision':report['revision'],
@@ -149,9 +226,20 @@ class LocalServiceTests(unittest.TestCase):
                 report = changed['report']
             self.assertEqual(report['handoff'][0]['state'], 'reviewed_for_handoff')
             self.assertEqual(len(outgoing), 7, 'HR decisions must not call the model')
-            for path in self.service.root.rglob('*'):
-                if path.is_file():
-                    self.assertNotIn(contact.encode(), path.read_bytes())
+            self.assertNotIn('display_aliases', report)
+            record_path = self.service.root / 'runs' / rid / 'record.json'
+            self.assertEqual(record_path.stat().st_mode & 0o777, 0o600)
+            record = json.loads(record_path.read_text())['record']
+            self.assertEqual(record.pop('display_aliases'), aliases)
+            for contact in contacts:
+                self.assertNotIn(contact, str(record))
+            self.service.close()
+            self.service = LocalService(Path(self.tmp.name), allow_live=True)
+            self.assertEqual(self.service.store.display_data(rid), {
+                'run_id':rid, 'revision':report['revision'], 'aliases':aliases})
+            self.service.store.delete(rid)
+            with self.assertRaisesRegex(StoreError, 'not_found'):
+                self.service.store.display_data(rid)
 
 
 if __name__ == '__main__':

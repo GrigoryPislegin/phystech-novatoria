@@ -1,4 +1,4 @@
-"""Independent local pseudonymization. No certum_core, database or restoration API.
+"""Independent local pseudonymization with a run-local display map.
 
 Russian NER + structural detectors. This is not proof of anonymity: contextual
 identification, unsupported languages and detector misses require a human review.
@@ -12,8 +12,9 @@ import secrets
 import unicodedata
 from collections import Counter
 from ..errors import PrivacyError
+from .professional import source_findings, source_spans
 
-POLICY_VERSION = 'local-privacy-0.5'
+POLICY_VERSION = 'local-privacy-0.6'
 REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
 RESERVED = '[[PRIV:'
 
@@ -83,7 +84,7 @@ class Detector:
             found.extend(Finding(m.start(), m.end(), kind) for m in pattern.finditer(text))
         found.extend(Finding(m.start(1), m.end(1), 'IDENTITY') for m in _LABELS.finditer(text))
         found.extend(Finding(m.start(1), m.end(1), 'CONTACT') for m in _CONTACT_LABELS.finditer(text))
-        found.extend(Finding(m.start(1), m.end(1), 'PERSON') for m in _NAME_LINE.finditer(text))
+        found.extend(Finding(m.start(1), m.end(1), 'PERSON', 'name_header') for m in _NAME_LINE.finditer(text))
         found.extend(Finding(m.start(1), m.end(1), 'PERSON') for m in _RU_NAME_LINE.finditer(text)
                      if any(_RU_PATRONYMIC.fullmatch(token) for token in m.group(1).split()))
         header = _RU_NAME_HEADER.match(text)
@@ -132,12 +133,14 @@ class LocalPrivacy:
         self._key = secrets.token_bytes(32)
         self._nonce = secrets.token_hex(8)
         self._aliases = {}
+        self._display_aliases = {}
         self.issued_refs = set()
         self.closed = False
         self.counts = {}
         self._hidden_lengths = set()
         self._hidden_values = set()
         self._safe_sources = []
+        self._safe_roles = set()
         self._contextual = Counter()
 
     def _ready(self):
@@ -183,10 +186,14 @@ class LocalPrivacy:
                 raise RuntimeError('privacy_residual_findings')
             self.counts[item.kind] = self.counts.get(item.kind, 0) + 1
             value = result[item.start:item.end]
-            digest = hmac.new(self._key, value.casefold().encode(), hashlib.sha256).digest()
+            # Display references preserve exact spelling. The independent
+            # hidden-value index still matches across case and spacing.
+            digest = hmac.new(self._key, value.encode(), hashlib.sha256).digest()
             self._remember_hidden(result, item)
             if digest not in self._aliases:
-                self._aliases[digest] = f'[[PRIV:{self._nonce}:{len(self._aliases)+1}:{item.kind}]]'
+                ref = f'[[PRIV:{self._nonce}:{len(self._aliases)+1}:{item.kind}]]'
+                self._aliases[digest] = ref
+                self._display_aliases[ref] = value
             ref = self._aliases[digest]
             self.issued_refs.add(ref)
             parts.extend((result[pos:item.start], ref))
@@ -204,15 +211,19 @@ class LocalPrivacy:
         # Bound the number of passes; non-convergence still blocks all model calls.
         for _ in range(3):
             clean = self._without_refs(result)
-            raw_findings = self.detector.scan(clean)
+            raw_findings = source_findings(clean, self.detector.scan(clean))
             findings = _merge(raw_findings, len(result))
             if not findings:
-                self._safe_sources.append(clean.casefold())
+                self._remember_source(clean)
                 return result
             result = self._mask(result, raw_findings)
         await self.check(result)
-        self._safe_sources.append(self._without_refs(result).casefold())
+        self._remember_source(self._without_refs(result))
         return result
+
+    def _remember_source(self, text):
+        self._safe_sources.append(text.casefold())
+        self._safe_roles.update(_canonical(text[start:end]) for start, end in source_spans(text)[1])
 
     async def finalize_sources(self, sources):
         """Reconcile all protected sources against the final run-local index.
@@ -222,24 +233,26 @@ class LocalPrivacy:
         """
         self._ready()
         self._safe_sources.clear()
+        self._safe_roles.clear()
         sources = list(sources)
         for _ in range(4):
             changed = False
             for index, text in enumerate(sources):
                 clean = self._without_refs(text)
-                found = self.detector.scan(clean) + await self._known_findings(clean, list(REFERENCE.finditer(text)))
+                found = source_findings(clean, self.detector.scan(clean)) + await self._known_findings(clean, list(REFERENCE.finditer(text)))
                 if found:
                     sources[index] = self._mask(text, found)
                     changed = True
             if not changed:
-                self._safe_sources = [self._without_refs(s).casefold() for s in sources]
+                for source in sources:
+                    self._remember_source(self._without_refs(source))
                 return sources
         raise PrivacyError('privacy_residual_findings')
 
     async def check(self, text):
         self._ready()
         text = self._without_refs(normalized(text))
-        if self.detector.scan(text):
+        if source_findings(text, self.detector.scan(text)):
             raise RuntimeError('privacy_residual_findings')
 
     async def check_prepared(self, text):
@@ -259,7 +272,9 @@ class LocalPrivacy:
                 raise RuntimeError('privacy_detector_failed')
             value = text[item.start:item.end].casefold()
             pattern = re.compile(r'(?<!\w)' + re.escape(value) + r'(?!\w)')
-            if item.method == 'ner' and any(pattern.search(source) for source in self._safe_sources):
+            can_inherit = (item.method == 'ner' or
+                           (item.method == 'name_header' and _canonical(value) in self._safe_roles))
+            if can_inherit and any(pattern.search(source) for source in self._safe_sources):
                 contextual[item.kind] += 1
             else:
                 blocked[item.kind] += 1
@@ -320,12 +335,18 @@ class LocalPrivacy:
                 'professional_information_may_be_hidden':bool(self.counts.get('ORG')),
                 'requires_local_review':True}
 
+    def export_display_aliases(self):
+        self._ready()
+        return self._display_aliases.copy()
+
     def close(self):
         # Best-effort lifetime control, not a claim of secure memory erasure.
         self._aliases.clear()
+        self._display_aliases.clear()
         self.issued_refs.clear()
         self._hidden_lengths.clear()
         self._hidden_values.clear()
         self._safe_sources.clear()
+        self._safe_roles.clear()
         self._key = b''
         self.closed = True

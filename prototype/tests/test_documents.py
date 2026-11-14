@@ -512,15 +512,15 @@ class DocumentTests(unittest.TestCase):
         jobs.mkdir()
         resume = self.directory / 'resume.txt'
         resume.write_text('synthetic')
-        for i in range(20):
+        for i in range(30):
             (jobs / f'{i:02}.txt').write_text('synthetic')
         reader = Mock(return_value='synthetic')
 
         _, parsed, _ = load_documents(resume, jobs, reader=reader)
-        self.assertEqual(len(parsed), 20)
-        self.assertEqual(reader.call_count, 21)  # 20 jobs and the resume
+        self.assertEqual(len(parsed), 30)
+        self.assertEqual(reader.call_count, 31)  # 30 jobs and the resume
         reader.reset_mock()
-        (jobs / '20.txt').write_text('synthetic')
+        (jobs / '30.txt').write_text('synthetic')
         with self.assertRaisesRegex(ValueError, '^invalid_job_set$'):
             load_documents(resume, jobs, reader=reader)
         reader.assert_not_called()

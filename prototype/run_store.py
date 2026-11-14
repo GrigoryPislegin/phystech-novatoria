@@ -20,6 +20,7 @@ from uuid import uuid4
 from .contracts import Requirements
 from . import requirements_review as requirements_review
 from .pipeline import refresh_derived
+from .privacy_core import REFERENCE, RESERVED
 from .review_policy import Decision, closing_decision, current_versions
 
 ACTIVE = {'queued', 'running'}
@@ -293,8 +294,23 @@ class RunStore:
         except (ValueError, TypeError, AttributeError, KeyError):
             raise StoreError('snapshot_mismatch') from None
 
-    def finish(self, rid, report, sources):
+    @staticmethod
+    def _validate_display_aliases(aliases, sources):
+        if not isinstance(aliases, dict):
+            raise StoreError('invalid_display_aliases')
+        if aliases:
+            references = {m.group() for text in (sources['resume'], *sources['jobs'].values())
+                          for m in REFERENCE.finditer(text)}
+            if any(ref not in references or not isinstance(value, str) or not value.strip()
+                   or RESERVED in value.upper() for ref, value in aliases.items()):
+                raise StoreError('invalid_display_aliases')
+            if len(_json(aliases)) > MAX_VIEW:
+                raise StoreError('record_too_large')
+
+    def finish(self, rid, report, sources, *, display_aliases=None):
         self._validate_snapshot(report, sources)
+        aliases = {} if display_aliases is None else display_aliases
+        self._validate_display_aliases(aliases, sources)
         with self._mutex:
             record = self._read(rid)
             if record['state'] != 'running':
@@ -305,6 +321,8 @@ class RunStore:
                           state=('complete' if report['ranking']['complete'] else
                                  'partial' if report['ranking']['jobs'] else 'failed'),
                           stage='finished', processed=len(report['ranking']['jobs']), updated_at=_now())
+            if aliases:
+                record['display_aliases'] = aliases.copy()
             if report.get('errors'):
                 terminal = next((e for e in report['errors'] if e['code'] != 'model_invalid'), report['errors'][0])
                 record.update(error=terminal['code'], stage=terminal['stage'])
@@ -349,6 +367,14 @@ class RunStore:
     def report(self, rid):
         with self._mutex:
             return self._view(self._read(rid))
+
+    def display_data(self, rid):
+        with self._mutex:
+            record = self._read(rid)
+            if record['report'] is None:
+                raise StoreError('report_unavailable')
+            return {'run_id':rid, 'revision':record['revision'],
+                    'aliases':record.get('display_aliases', {})}
 
     def review(self, rid, action):
         fields = {'expected_revision','job_id','action','item_id','idempotency_key'}

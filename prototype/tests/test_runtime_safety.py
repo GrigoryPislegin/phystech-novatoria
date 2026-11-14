@@ -23,7 +23,7 @@ class RuntimeSafetyTests(unittest.TestCase):
     def test_cli_rejects_too_many_files_before_parsing_any_input(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); jobs = root/'jobs'; jobs.mkdir()
-            for i in range(21): (jobs/f'{i}.txt').write_text('synthetic')
+            for i in range(31): (jobs/f'{i}.txt').write_text('synthetic')
             cv = root/'cv.txt'; cv.write_text('synthetic')
             args = SimpleNamespace(command='run', resume=cv, jobs=jobs, out=root/'out')
             with patch('prototype.__main__.read_document', side_effect=AssertionError('parsed before preflight')):

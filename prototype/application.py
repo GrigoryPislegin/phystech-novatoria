@@ -3,10 +3,10 @@ import hashlib
 import asyncio
 import sys
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from .documents import read_document
+from .documents import MAX_JOBS, read_document
 from .pipeline import RunControl, preflight_output, run_pipeline, write_report, refresh_derived
 from .privacy import protect_dependency_logs
 
@@ -35,7 +35,7 @@ def load_documents(resume_path, jobs_root, *, reader=read_document, control=None
         if path.name.startswith('.'):
             continue
         files.append(path)
-        if len(files) > 20:
+        if len(files) > MAX_JOBS:
             raise ValueError('invalid_job_set')
     if not files:
         raise ValueError('invalid_job_set')
@@ -64,6 +64,7 @@ def load_documents(resume_path, jobs_root, *, reader=read_document, control=None
 class RunResult:
     report: dict
     path: Path | None
+    display_aliases: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
 
     @property
     def exit_code(self):
@@ -83,7 +84,7 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
     control.checkpoint()
     if metadata and (set(metadata) != {'demo_scenario'} or metadata['demo_scenario'] not in {'success', 'disputed'}):
         raise ValueError('invalid_metadata')
-    if not jobs or len(jobs) > 20 or len({jid for jid, _ in jobs}) != len(jobs):
+    if not jobs or len(jobs) > MAX_JOBS or len({jid for jid, _ in jobs}) != len(jobs):
         raise ValueError('invalid_job_set')
     if any(not isinstance(text, str) or not text.strip() or len(text) > 60_000 for text in [resume, *(text for _,text in jobs)]):
         raise ValueError('input_invalid')
@@ -138,6 +139,8 @@ async def analyze_protected(resume, jobs, *, privacy_context, model_factory, out
         result = await analyze(resume, jobs, model_factory=lambda:model_factory(privacy),
             privacy=privacy, out=out, mode=mode, control=control, manifest=manifest,
             _defer_publication=True, source_sink=source_sink)
+        if hasattr(privacy, 'export_display_aliases'):
+            result.display_aliases = privacy.export_display_aliases()
     except BaseException:
         await asyncio.wait_for(stack.__aexit__(*sys.exc_info()), timeout=30)
         raise

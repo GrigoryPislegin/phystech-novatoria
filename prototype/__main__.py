@@ -45,6 +45,8 @@ def main():
     web = sub.add_parser('serve', help='Локальный интерфейс, сохранённые запуски и решения HR')
     web.add_argument('--host', default='127.0.0.1')
     web.add_argument('--port', type=int, default=8765)
+    web.add_argument('--public-origin', metavar='HTTPS_ORIGIN',
+                     help='Один HTTPS origin за обратным прокси с аутентификацией')
     web.add_argument('--state-dir', type=Path, default=Path('data/private/local-app'))
     web.add_argument('--allow-live', action='store_true', help='Явно разрешить платный внешний API для загруженных документов')
     for command in ['demo','run']:

@@ -10,6 +10,7 @@ from .privacy import protect_dependency_logs
 
 MAX_BYTES = 5_000_000
 MAX_CHARS = 60_000
+MAX_JOBS = 30
 MAX_PDF_PAGES = 100
 MAX_DOCX_EXPANDED_BYTES = 20_000_000
 
@@ -35,7 +36,7 @@ _DIAGNOSTICS = {
         'Уменьшите размер файла, сохранив весь нужный текст.',
     ),
     'invalid_job_set': (
-        'Нужно от 1 до 20 файлов вакансий.',
+        f'Нужно от 1 до {MAX_JOBS} файлов вакансий.',
         'Проверьте количество файлов в папке вакансий.',
     ),
     'document_empty': (

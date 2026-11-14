@@ -161,6 +161,18 @@ class RunStoreTests(unittest.TestCase):
             self.store.finish(item['run_id'], report, {'resume':resume+'wrong','jobs':dict(jobs)})
         self.assertFalse(self.store.get(item['run_id'])['report_available'])
 
+    def test_display_alias_cannot_be_saved_for_reference_from_outside_snapshot(self):
+        item, _ = self.create()
+        rid = item['run_id']
+        self.store.start(rid)
+        resume, jobs = demo_inputs()
+        report = asyncio.run(run_pipeline(resume, jobs, ReplayModel(), SyntheticPrivacy()))
+        sources = {'resume':resume, 'jobs':dict(jobs)}
+        with self.assertRaisesRegex(StoreError, '^invalid_display_aliases$'):
+            self.store.finish(rid, report, sources,
+                display_aliases={'[[PRIV:0123456789abcdef:1:CONTACT]]':'private@example.test'})
+        self.assertFalse(self.store.get(rid)['report_available'])
+
     def test_catalog_reads_always_see_new_runs(self):
         self.assertEqual(self.store.list(), [])
         first, _ = self.create()

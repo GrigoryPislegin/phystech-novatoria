@@ -15,7 +15,7 @@ from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
 from .application import analyze, analyze_protected
 from .contracts import Requirements
 from .demo import ReplayModel, SyntheticPrivacy, demo_inputs
-from .documents import read_document_bytes, document_diagnostic
+from .documents import MAX_JOBS, read_document_bytes, document_diagnostic
 from .errors import ModelOutputError, error_code
 from .model import Model, Budget
 from .pipeline import RunControl
@@ -90,7 +90,7 @@ class LocalService:
         return {'modes':['synthetic-replay','synthetic-protected-mock'] + (['protected-live'] if self.allow_live else []),
                 'scenarios':['success','disputed','incomplete'],
                 'operations':['create','list','read','cancel','delete','review','inspect'],
-                'live':self.allow_live, 'max_files':21, 'max_file_bytes':5_000_000, 'max_total_bytes':20_000_000}
+                'live':self.allow_live, 'max_files':1 + MAX_JOBS, 'max_file_bytes':5_000_000, 'max_total_bytes':20_000_000}
 
     def close(self):
         with self._lock:
@@ -104,7 +104,7 @@ class LocalService:
         if not isinstance(payload, dict) or set(payload) != {'resume','jobs'}:
             raise StoreError('input_invalid')
         jobs = payload['jobs']
-        if not isinstance(jobs, list) or not 1 <= len(jobs) <= 20:
+        if not isinstance(jobs, list) or not 1 <= len(jobs) <= MAX_JOBS:
             raise StoreError('invalid_job_set')
         entries, total = [], 0
         for file in [payload['resume'], *jobs]:
@@ -225,7 +225,10 @@ class LocalService:
                                              usage_measurement='not_measured_synthetic_response')
                 if mode != 'protected-live':
                     result.report['demo_scenario'] = scenario
-                self.store.finish(rid, result.report, snapshot)
+                try:
+                    self.store.finish(rid, result.report, snapshot, display_aliases=result.display_aliases)
+                finally:
+                    result.display_aliases.clear()
         except Exception as exc:
             self.store.fail(rid, error_code(exc))
         finally:

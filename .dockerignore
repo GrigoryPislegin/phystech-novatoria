@@ -39,6 +39,7 @@ prototype/static/**
 !prototype/tests/test_local_service.py
 !prototype/tests/test_web_app.py
 !prototype/tests/test_c14_boundary.py
+!prototype/tests/test_professional_context.py
 !prototype/tests/test_e13_case_acceptance.py
 !prototype/tests/test_e13_support.py
 !prototype/tests/test_e13_failures.py
@@ -59,6 +60,7 @@ evaluation/expectations/egor/**
 !evaluation/expectations/egor/e13-cases.json
 !prototype/privacy_core/
 !prototype/privacy_core/__init__.py
+!prototype/privacy_core/professional.py
 !prototype/privacy_core/models.py
 !prototype/privacy_core/prepare.py
 !scripts/
