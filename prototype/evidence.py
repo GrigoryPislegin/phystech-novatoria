@@ -61,13 +61,20 @@ _REVERSING = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
     не|нет|нету|ни|без|кроме|никогда|никак|отсутству(?:ет|ют)|отсутствие|
     not|no|never|without|except|none|lacks?|lacking|\w+n't|
     планирую|планирует|хочу|хотел|хотела|хочется|желаю|собираюсь|мечтаю|намерен\w*|
-    изуча(?:ю|л|ла|ет)|осваива(?:ю|л|ла|ет)|учусь|учился|училась|курс(?:а|е|ы|ов|ах|у|ом)?|стажир\w*|
+    готов|готова|готовы|готовлюсь|буду|смогу|ready\s+to|willing\s+to|
+    изуча(?:ю|л|ла|ет)|осваива(?:ю|л|ла|ет)|учусь|учился|училась|стажир\w*|
+    (?:прош[её]л|прошла|прохожу|проходил\w*|проходит|окончил\w*|закончил\w*|слушал\w*)\s+(?:[\w-]+\s+){0,2}курс\w*|
+    на\s+курс(?:е|ах)|
     learning|learned|studying|studied|courses?|plan\s+to|want\s+to|would\s+like|
     только|лишь|немного|чуть|поверхностн\w*|начинающ\w*|слаб(?:о|ый|ая|ое|ые)|теоретически|
     (?:базов|начальн|теоретическ)\w+\s+(?:уров\w+|знани\w+|навык\w+|понимани\w+)|
     (?:как|уровне|уровень|уровня)\s+пользовател\w*|знаком(?:а|ы)?|
     basic|beginner|only|just|familiar
     )(?![0-9a-zа-яё])""")
+# Plain negation: inside a quote it contradicts even a partial match (a limitation does not).
+_NEGATION = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
+    не|нет|нету|ни|без|кроме|никогда|никак|отсутству(?:ет|ют)|отсутствие|
+    not|no|never|without|except|none|lacks?|lacking|\w+n't)(?![0-9a-zа-яё])""")
 # A list heading that is not about what the person did: its bullets are not evidence of experience.
 _HEADING_ONLY = re.compile(r'(?i)(?<![а-яё])(?:интерес\w*|хобби|планы|цели|желаем\w*)(?![а-яё])')
 
@@ -319,13 +326,16 @@ def _row_shape(row: Row, requirement: Requirement) -> list[Reason]:
 
 
 def _evidence_reasons(span: Span, quote: str, requirement_terms: set[str], fact_id: str, lay: Layout,
-                      text: str) -> list[Reason]:
+                      text: str, status: str = 'full') -> list[Reason]:
     """Why a located quote cannot be counted yet (rules evidence-0.2).
 
     A quote is sent to review only when its structure leaves room for another meaning: the part of
     the sentence(s) it leaves out, or the list heading above it, holds a reversing or limiting word;
-    or nothing ties it to the requirement. A fragment of a neutral sentence, a bullet under a neutral
-    heading («Навыки:») and a quote of whole sentences are ordinary ways to cite and are counted."""
+    a quote offered as support holds such a word itself (any for full, a negation for partial); or the quote
+    shares no term with the requirement. The neighbouring text is read only to find reservations:
+    what ties the evidence to the requirement must be inside the quote. A fragment of a neutral
+    sentence, a bullet under a neutral heading («Навыки:») and a neutral quote of whole sentences are
+    ordinary ways to cite and are counted."""
     touched = [s for s in lay.sentences if s.start < span.end and span.start < s.end]
     around = context(lay, span.start, span.end)
     if touched:
@@ -342,8 +352,16 @@ def _evidence_reasons(span: Span, quote: str, requirement_terms: set[str], fact_
             reasons.append(_review('quote_is_fragment',
                                    'Цитата — часть предложения, в остальной части есть оговорка; проверьте целиком.',
                                    fact_id=fact_id, context=span.sentence))
-    if not requirement_terms & _terms(around):
-        hidden = _REFERENCE.search(around) or any(_REFERENCE.fullmatch(t) for t in requirement_terms)
+    cited = text[span.start:span.end]
+    # full: any reservation inside the quote contradicts it; partial is a limited match by definition,
+    # so only a plain negation does.
+    inside = reverses(cited) if status == 'full' else bool(_NEGATION.search(cited.replace('ё', 'е')))
+    if status in ('full', 'partial') and inside:
+        reasons.append(_review('reservation_in_quote',
+                               'В самой цитате есть отрицание или оговорка, а вывод положительный; проверьте смысл.',
+                               fact_id=fact_id, context=around))
+    if not requirement_terms & _terms(cited):
+        hidden = _REFERENCE.search(cited) or any(_REFERENCE.fullmatch(t) for t in requirement_terms)
         reasons.append(_review('link_hidden_by_mask', 'Связь с требованием нельзя проверить: термин скрыт защитой '
                                'данных. Сверьте с исходным документом.', fact_id=fact_id, context=around)
                        if hidden else
@@ -370,7 +388,8 @@ def check_row(row: Row, requirement: Requirement, facts: Facts, cv: Source) -> R
             reasons.append(located.reason.model_copy(update={'fact_id': fact_id}))
             continue
         evidence.append(located.span)
-        reasons += _evidence_reasons(located.span, fact.quote, requirement_terms, fact_id, lay, cv.text)
+        reasons += _evidence_reasons(located.span, fact.quote, requirement_terms, fact_id, lay, cv.text,
+                                     status=row.status)
     if any(r.severity == 'invalid' for r in reasons):
         state = 'invalid'
     elif reasons:
