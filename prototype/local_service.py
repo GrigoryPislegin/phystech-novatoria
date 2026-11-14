@@ -196,7 +196,8 @@ class LocalService:
                 if mode == 'protected-live':
                     self._inputs.pop(request['input_id'], None)
                 rid = summary['run_id']
-                control = RunControl(progress=lambda event:self.store.progress(rid, event))
+                control = RunControl(timeout_seconds=300 if len(inputs[1]) <= 3 else 1800,
+                                     progress=lambda event:self.store.progress(rid, event), defer_start=True)
                 self._controls[rid] = control
                 self._futures[rid] = self._pool.submit(self._execute, rid, dict(request), inputs, control)
             return summary
@@ -206,6 +207,7 @@ class LocalService:
         def capture(value):
             snapshot.update(value)
         try:
+            control.start()
             self.store.start(rid)
             with tempfile.TemporaryDirectory(prefix='analysis-', dir=self.work) as directory:
                 mode, scenario = request['mode'], request.get('scenario', 'success')

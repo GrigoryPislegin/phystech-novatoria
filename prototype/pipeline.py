@@ -28,17 +28,25 @@ from .presentation import build_presentation, display_label, gap_question, EXPLA
 
 class RunControl:
     """One run's deadline, cancellation and text-free stage events."""
-    def __init__(self, timeout_seconds=300, progress=None):
+    def __init__(self, timeout_seconds=300, progress=None, *, defer_start=False):
         if not math.isfinite(timeout_seconds) or timeout_seconds <= 0 or timeout_seconds > 1800:
             raise ValueError('invalid_deadline')
-        self.started = time.monotonic()
-        self.deadline = self.started + timeout_seconds
+        self.timeout_seconds = timeout_seconds
+        self.started, self.deadline = None, math.inf
         self.progress = progress
         self.cancelled = False
         self._cancelled_at = None
         self.events = []
         self._pending = set()
         self._pending_lock = threading.Lock()
+        if not defer_start:
+            self.start()
+
+    def start(self):
+        """Start the execution clock once; queued time must not consume it."""
+        if self.started is None:
+            self.started = time.monotonic()
+            self.deadline = self.started + self.timeout_seconds
 
     def cancel(self):
         # The HTTP transport calls this from a different thread than the
@@ -61,6 +69,7 @@ class RunControl:
             signal.set_result(None)
 
     def checkpoint(self):
+        self.start()
         if self._cancelled_at is not None and self._cancelled_at <= self.deadline:
             raise RunStopped('cancelled')
         if time.monotonic() >= self.deadline:
@@ -79,6 +88,7 @@ class RunControl:
         return interrupted
 
     def emit(self, stage, job_id=None):
+        self.start()
         event = {'stage':stage, 'job_id':job_id, 'elapsed_ms':round((time.monotonic()-self.started)*1000)}
         self.events.append(event)
         if self.progress:
@@ -177,7 +187,7 @@ def refresh_derived(report, decisions=()):
 async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sink=None):
     if not jobs or len(jobs) > MAX_JOBS or len({j[0] for j in jobs}) != len(jobs):
         raise ValueError('invalid_job_set')
-    control = control or RunControl()
+    control = control or RunControl(timeout_seconds=300 if len(jobs) <= 3 else 1800)
     if hasattr(model, 'set_run_control'):
         model.set_run_control(control)
     safe_resume = await control.call(lambda: privacy.redact(resume), 'privacy')
@@ -194,6 +204,9 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
     profile_check = None
     profile_missing = ['summary', 'stack', 'last_position', 'achievements']
     def finish(facts):
+        order = {jid:index for index,(jid,_) in enumerate(jobs)}
+        results.sort(key=lambda result:order[result['job_id']])
+        errors.sort(key=lambda error:order.get(error['job_id'], -1))
         missing = [jid for jid,_ in jobs if jid not in {r['job_id'] for r in results}]
         by_job = {e['job_id']:e['code'] for e in errors}
         control.emit('analysis_finished')
@@ -226,7 +239,7 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
     except Exception as exc:
         errors.append(failure(exc, stage))
         return finish(Facts(items=[]))
-    for jid, text in safe_jobs:
+    async def analyze_job(jid, text):
         stage = 'requirements'
         try:
             extracted_requirements = await control.call(
@@ -265,13 +278,57 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
                                 'rule':'evidence_applied_by_scoring_policy', 'version':POLICY_VERSION},
                             'safe_source_sha256':hashlib.sha256(text.encode()).hexdigest()})
             control.emit('job_finished', jid)
+            return False
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling():
+                raise  # Caller/peer cancellation must finish via the pool drain.
+            # A transport that cancels its own task is a terminal operation
+            # failure, not permission to silently skip this vacancy.
+            errors.append(failure(RuntimeError('operation_cancelled'), stage, jid))
+            return True
         except Exception as exc:
             # Never serialize exception messages: upstream errors may contain text/keys/DSNs.
             code = error_code(exc, stage)
             errors.append(failure(exc, stage, jid))
             # Only known output-validation failures are recoverable, without retry.
-            if code != 'model_invalid':
+            return code != 'model_invalid'
+
+    if len(safe_jobs) <= 3:
+        for jid, text in safe_jobs:
+            if await analyze_job(jid, text):
                 break
+    else:
+        # Only the per-vacancy phase overlaps. All sources are finalized and
+        # facts extracted first; workers share one model and its atomic budget.
+        # At most three requests are in flight, with no hidden background work
+        # after cancellation, a terminal failure or the returned report.
+        remaining, workers, stopped = iter(safe_jobs), [], False
+
+        async def worker():
+            nonlocal stopped
+            while not stopped:
+                job = next(remaining, None)
+                if job is None:
+                    return
+                if await analyze_job(*job):
+                    stopped = True
+                    current = asyncio.current_task()
+                    for task in workers:
+                        if task is not current and not task.done():
+                            task.cancel()
+                    return
+
+        workers = [asyncio.create_task(worker()) for _ in range(3)]
+        try:
+            outcomes = await asyncio.gather(*workers, return_exceptions=True)
+            for outcome in outcomes:
+                if isinstance(outcome, BaseException) and not (stopped and isinstance(outcome, asyncio.CancelledError)):
+                    raise outcome
+        finally:
+            for task in workers:
+                if not task.done():
+                    task.cancel()
+            await control._drain(asyncio.gather(*workers, return_exceptions=True))
     return finish(facts)
 
 

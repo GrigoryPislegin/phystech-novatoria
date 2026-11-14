@@ -14,6 +14,156 @@ from prototype.pipeline import run_pipeline, write_report
 
 
 class RuntimeSafetyTests(unittest.TestCase):
+    def test_thirty_job_pool_waits_for_privacy_and_facts_and_caps_inflight_at_three(self):
+        async def scenario():
+            from prototype.pipeline import RunControl
+            ready, all_started = False, asyncio.Event()
+            active, peak, facts_calls = 0, 0, 0
+            class Privacy(SyntheticPrivacy):
+                async def finalize_sources(self, sources):
+                    nonlocal ready
+                    self_count = len(sources)
+                    self_outer.assertEqual(self_count, 31)
+                    ready = True
+                    return sources
+            class Model(ReplayModel):
+                async def ask(self, schema, task, payload):
+                    nonlocal active, peak, facts_calls
+                    self_outer.assertTrue(ready)
+                    if task == 'facts':
+                        facts_calls += 1
+                        return await super().ask(schema, task, payload)
+                    self_outer.assertEqual(facts_calls, 1)
+                    active += 1
+                    peak = max(peak, active)
+                    if active == 3:
+                        all_started.set()
+                    try:
+                        await asyncio.wait_for(all_started.wait(), 1)
+                        await asyncio.sleep(0)
+                        return await super().ask(schema, task, payload)
+                    finally:
+                        active -= 1
+            self_outer = self
+            resume, examples = demo_inputs()
+            jobs = [(f'job-{i:02}', examples[0][1]) for i in range(30)]
+            model, control = Model(), RunControl()
+            report = await run_pipeline(resume, jobs, model, Privacy(), control=control)
+            self.assertTrue(report['ranking']['complete'])
+            self.assertEqual(len(report['ranking']['jobs']), 30)
+            self.assertEqual((facts_calls, peak, active, model.calls), (1, 3, 0, 61))
+            self.assertEqual([job['job_id'] for job in report['ranking']['jobs']], [jid for jid,_ in jobs])
+            self.assertFalse(control._pending)
+        asyncio.run(scenario())
+
+    def test_pool_fatal_error_keeps_completed_job_and_drains_other_requests(self):
+        async def scenario():
+            from prototype.pipeline import RunControl
+            from prototype.errors import PrivacyError
+            fourth, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+            started, cleaned = [], []
+            class Model(ReplayModel):
+                async def ask(self, schema, task, payload):
+                    if task == 'requirements':
+                        index = int(payload['text'].rsplit('#', 1)[1])
+                        started.append(index)
+                        if index == 1:
+                            await fourth.wait()
+                            raise PrivacyError('privacy_residual_findings', {'PERSON':1})
+                        if index >= 2:
+                            if index == 3:
+                                fourth.set()
+                            try:
+                                await asyncio.Event().wait()
+                            finally:
+                                cleaned.append(index)
+                                if len(cleaned) == 2:
+                                    cleaning.set()
+                                await release.wait()
+                    return await super().ask(schema, task, payload)
+            resume, examples = demo_inputs()
+            jobs = [(f'job-{i:02}', examples[0][1] + f' #{i}') for i in range(30)]
+            control = RunControl()
+            task = asyncio.create_task(run_pipeline(resume, jobs, Model(), SyntheticPrivacy(), control=control))
+            await asyncio.wait_for(cleaning.wait(), 1)
+            self.assertFalse(task.done(), 'must wait for in-flight request cleanup')
+            release.set()
+            report = await asyncio.wait_for(task, 1)
+            self.assertEqual(started, [0,1,2,3])
+            self.assertEqual(sorted(cleaned), [2,3])
+            self.assertEqual([j['job_id'] for j in report['ranking']['jobs']], ['job-00'])
+            self.assertEqual(report['errors'][0]['code'], 'privacy_residual_findings')
+            self.assertFalse(control.cancelled, 'an internal error is not a user cancellation')
+            self.assertFalse(control._pending)
+        asyncio.run(scenario())
+
+    def test_pool_cancel_and_deadline_leave_no_active_requests(self):
+        async def scenario(trigger):
+            from prototype.pipeline import RunControl
+            ready = asyncio.Event()
+            started, cleaned = [], []
+            class Model(ReplayModel):
+                async def ask(self, schema, task, payload):
+                    if task == 'requirements':
+                        started.append(True)
+                        if len(started) == 3:
+                            ready.set()
+                        try:
+                            await asyncio.Event().wait()
+                        finally:
+                            await asyncio.sleep(0)
+                            cleaned.append(True)
+                    return await super().ask(schema, task, payload)
+            resume, examples = demo_inputs()
+            jobs = [(f'job-{i:02}', examples[0][1]) for i in range(30)]
+            control = RunControl(timeout_seconds=0.05 if trigger == 'deadline_exceeded' else 300)
+            task = asyncio.create_task(run_pipeline(resume, jobs, Model(), SyntheticPrivacy(), control=control))
+            await asyncio.wait_for(ready.wait(), 1)
+            if trigger == 'cancelled':
+                await asyncio.to_thread(control.cancel)
+            report = await asyncio.wait_for(task, 1)
+            self.assertEqual((len(started), len(cleaned)), (3,3))
+            self.assertTrue(report['errors'])
+            self.assertTrue(all(error['code'] == trigger for error in report['errors']))
+            self.assertEqual(len(report['unprocessed_job_ids']), 30)
+            self.assertFalse(control._pending)
+        for trigger in ('cancelled','deadline_exceeded'):
+            with self.subTest(trigger=trigger):
+                asyncio.run(scenario(trigger))
+
+    def test_deferred_deadline_starts_at_execution_and_preserves_queued_cancel(self):
+        from prototype.pipeline import RunControl
+        from prototype.errors import RunStopped
+        with patch('prototype.pipeline.time.monotonic', return_value=100) as clock:
+            control = RunControl(timeout_seconds=10, defer_start=True)
+            self.assertIsNone(control.started)
+            clock.return_value = 1000
+            control.start()
+            self.assertEqual((control.started, control.deadline), (1000,1010))
+            control.start()
+            clock.return_value = 1005
+            control.checkpoint()
+            pending = RunControl(timeout_seconds=10, defer_start=True)
+            pending.cancel()
+            clock.return_value = 2000
+            pending.start()
+            with self.assertRaisesRegex(RunStopped, '^cancelled$'):
+                pending.checkpoint()
+
+    def test_pool_self_cancelled_transport_stops_dispatch_with_explicit_failure(self):
+        class Model(ReplayModel):
+            async def ask(self, schema, task, payload):
+                if task == 'requirements':
+                    raise asyncio.CancelledError()
+                return await super().ask(schema, task, payload)
+        resume, examples = demo_inputs()
+        jobs = [(f'job-{i:02}', examples[0][1]) for i in range(30)]
+        report = asyncio.run(run_pipeline(resume, jobs, Model(), SyntheticPrivacy()))
+        self.assertTrue(report['errors'])
+        self.assertTrue(all(e['code'] == 'requirements_failed' for e in report['errors']))
+        self.assertLessEqual(len([e for e in report['events'] if e['stage'] == 'requirements']), 3)
+        self.assertEqual(len(report['unprocessed_job_ids']), 30)
+
     def test_metadata_cannot_replace_computed_verification(self):
         from prototype.application import analyze
         with tempfile.TemporaryDirectory() as tmp:

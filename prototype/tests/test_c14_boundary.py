@@ -83,6 +83,47 @@ class C14BoundaryTests(unittest.TestCase):
                 privacy.close()
         asyncio.run(run())
 
+    def test_fatal_batch_transport_marks_cost_incomplete_and_drains_dispatched_requests(self):
+        from prototype.application import analyze
+        from prototype.demo import SyntheticPrivacy
+        from httpx import MockTransport, Response
+        from unittest.mock import patch
+        async def run():
+            ready, pending = asyncio.Event(), asyncio.Event()
+            dispatched, cleaned = [], []
+            transport = MockTransport.handle_async_request
+            async def interrupt(instance, request):
+                task = json.loads(json.loads(request.content)['input'][1]['content'])['task']
+                if task == 'requirements':
+                    number = len(dispatched)
+                    dispatched.append(True)
+                    if len(dispatched) == 3:
+                        ready.set()
+                    await ready.wait()
+                    if number == 0:
+                        return Response(500, request=request, json={'error':{'message':'synthetic failure'}})
+                    try:
+                        await pending.wait()
+                    finally:
+                        cleaned.append(True)
+                return await transport(instance, request)
+            model = FixtureSDK(SyntheticPrivacy(), lambda *_:None,
+                               response_usage={'input_tokens':2,'output_tokens':2,'total_tokens':4,
+                                               'input_tokens_details':{'cached_tokens':0},
+                                               'output_tokens_details':{'reasoning_tokens':0}})
+            resume, examples = demo_inputs()
+            jobs = [(f'job-{i:02}',examples[0][1]) for i in range(30)]
+            with tempfile.TemporaryDirectory() as directory, patch.object(MockTransport, 'handle_async_request', interrupt):
+                result = await asyncio.wait_for(analyze(resume, jobs, model_factory=lambda:model,
+                    privacy=model.privacy, out=Path(directory), mode='synthetic_sdk_mock_NOT_model_output'), 3)
+            self.assertEqual((len(dispatched),len(cleaned),model.budget.calls), (3,2,4))
+            self.assertFalse(result.report['usage_complete'])
+            self.assertIsNone(result.report['usage_usd_estimate'])
+            self.assertEqual(len(result.report['usage']),1)
+            self.assertGreater(float(result.report['reserved_usd_estimate']),
+                               float(result.report['recorded_usage_usd_estimate']))
+        asyncio.run(run())
+
     def test_hidden_company_equal_to_category_drops_only_optional_labels(self):
         def mutate(task, payload, value):
             if task == 'requirements':

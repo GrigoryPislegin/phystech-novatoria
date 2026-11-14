@@ -25,6 +25,7 @@ COPY prototype/static /app/prototype/static
 COPY scripts/privacy_smoke.py /app/scripts/privacy_smoke.py
 COPY scripts/check_cli_replays.py /app/scripts/check_cli_replays.py
 COPY prototype/tests/test_core.py /app/prototype/tests/test_core.py
+COPY prototype/tests/test_model.py prototype/tests/test_runtime_safety.py /app/prototype/tests/
 COPY prototype/tests/test_integrated_analysis.py prototype/tests/test_run_store.py prototype/tests/test_local_service.py prototype/tests/test_web_app.py /app/prototype/tests/
 COPY prototype/tests/test_c14_boundary.py /app/prototype/tests/
 COPY prototype/tests/test_professional_context.py /app/prototype/tests/
@@ -32,7 +33,9 @@ COPY prototype/tests/test_e13_case_acceptance.py prototype/tests/test_e13_suppor
 COPY prototype/tests/test_e14_evidence_fidelity.py prototype/tests/test_e14_competency_axes.py prototype/tests/test_e14_professional_fidelity.py /app/prototype/tests/
 COPY evaluation/fixtures/integration/egor-e13-minimal.json evaluation/fixtures/integration/egor-e13-finance.json evaluation/fixtures/integration/egor-e13-analytics.json evaluation/fixtures/integration/egor-e13-development.json /app/evaluation/fixtures/integration/
 COPY evaluation/expectations/egor/e13-cases.json /app/evaluation/expectations/egor/
+COPY evaluation/policy_compare.py /app/evaluation/policy_compare.py
 RUN python -m unittest discover -s prototype/tests -p 'test_core.py' -v \
+    && python -m unittest prototype.tests.test_model prototype.tests.test_runtime_safety -q \
     && python -m unittest prototype.tests.test_integrated_analysis prototype.tests.test_run_store prototype.tests.test_local_service prototype.tests.test_web_app -q \
     && mkdir -p data/private && ln -s /opt/privacy-models data/private/privacy-models \
     && python -m unittest prototype.tests.test_c14_boundary prototype.tests.test_professional_context prototype.tests.test_e13_case_acceptance prototype.tests.test_e13_failures -q \

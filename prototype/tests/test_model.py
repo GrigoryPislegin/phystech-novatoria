@@ -97,3 +97,14 @@ class ModelBoundaryTests(unittest.TestCase):
         self.assertEqual(result.items[0].quote, 'Python\n3 года')
         self.assertEqual(result.profile.summary[0].sources[0].quote, 'Python\n3')
         self.assertEqual(result.profile.summary[1].sources[0].quote, 'SQL 1 год')
+
+    def test_failed_or_cancelled_request_without_usage_is_not_reported_as_fully_measured(self):
+        for error in (RuntimeError('transport failed'), asyncio.CancelledError()):
+            with self.subTest(error=type(error).__name__):
+                model = self.model(AsyncMock())
+                model.client.responses.parse.side_effect = error
+                with self.assertRaises(type(error)):
+                    asyncio.run(model.ask(Facts, 'facts', {'text':'fictional'}))
+                self.assertFalse(model.usage_complete)
+                self.assertEqual(model.budget.calls, 1)
+                self.assertGreater(model.budget.reserved, 0)

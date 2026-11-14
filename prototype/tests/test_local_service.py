@@ -115,7 +115,7 @@ class LocalServiceTests(unittest.TestCase):
                 batch_index = lambda jid: int(jid.rsplit('-', 1)[1])
                 expected = [i for i in range(1, 31) if i not in skipped]
                 self.assertEqual(sorted(batch_index(job['job_id']) for job in report['ranking']['jobs']), expected)
-                self.assertEqual([batch_index(e['job_id']) for e in report['events'] if e['stage']=='job_finished'], expected)
+                self.assertEqual(sorted(batch_index(e['job_id']) for e in report['events'] if e['stage']=='job_finished'), expected)
                 self.assertEqual([batch_index(jid) for jid in report['unprocessed_job_ids']], skipped)
                 if skipped:
                     self.assertEqual([item['reason'] for item in report['unprocessed']], ['model_invalid'])

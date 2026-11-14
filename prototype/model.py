@@ -253,6 +253,11 @@ class Model:
             # complete cost estimate after a successful retry.
             self.usage_complete = False
             raise ModelOutputError('model_invalid') from None
+        except BaseException:
+            # A dispatched request can be billed even if its transport fails
+            # or a peer failure cancels it before usage becomes available.
+            self.usage_complete = False
+            raise
         if response.usage:
             self.usage.append({'input_tokens':response.usage.input_tokens,
                                'output_tokens':response.usage.output_tokens})
