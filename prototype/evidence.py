@@ -23,8 +23,17 @@ INTEGRATED = True
 
 # A sentence ends at .!?; only before whitespace or end of text: «Node.js», «ASP.NET», «3.5» stay whole.
 _SENTENCE = re.compile(r'(?:[^\n.!?;]|[.!?;]+(?=[^\s.!?;]))+[.!?;]*')
-_LIST_ITEM = re.compile(r'^\s*(?:[-*•–—]|\d+[.)])\s+\S')
-_BULLET = re.compile(r'^[\s\-*•–—]+')
+# List markers as documents really carry them after DOCX/PDF extraction, not only «-» and «•».
+_MARKS = '-*•–—‒●·▪◦‣➢✓✔+■□▸►○◆'
+_LIST_ITEM = re.compile(rf'^\s*(?:[{re.escape(_MARKS)}]|o(?=\s)|\d+[.)])\s+\S')
+_BULLET = re.compile(rf'^[\s{re.escape(_MARKS)}]+')
+# A plain line that opens another part of a vacancy: the list above it ends here even without a colon.
+_SECTION = re.compile(r'''(?ix)^\W*(?:будет\s+плюсом|плюсом\s+будет|желательн\w*|необязательн\w*|приветству\w*|
+    преимуществ\w*|дополнительн\w*|условия|мы\s+предлагаем|что\s+мы\s+предлагаем|обязанности|задачи|о\s+компании|
+    о\s+нас|nice\s+to\s+have|optional|preferred|we\s+offer|responsibilities|benefits|about\s+us)''')
+# A heading that itself says the list is NOT obligatory: a mandatory marker cannot rest on it.
+_NOT_MANDATORY = re.compile(r'''(?ix)(?<![а-яёa-z])(?:не\s+обязательн\w*|необязательн\w*|желательн\w*|плюсом|
+    приветству\w*|преимуществ\w*|optional|nice\s+to\s+have|preferred|not\s+required)''')
 _CLOSING = re.compile(r'[\s.!?;,:]+$')
 _WORD = re.compile(r'[0-9A-Za-zА-Яа-яЁё#+]+')
 
@@ -156,8 +165,12 @@ class Layout(NamedTuple):
 def layout(text: str) -> Layout:
     """Sentences and list headings of a text, computed once per text.
 
-    A heading is a line ending with ':' («Обязательно:»). Its block is only the list items
-    directly under it and stops at a blank or non-list line («Желательно: SQL», «Будет плюсом»).
+    A heading is a line ending with ':' («Обязательно:»), or a short line without closing punctuation
+    directly above a marked list. Its block is the list under it:
+    - marked items, after optional blank lines under the heading; the block stops at the first line
+      that is not a marked item, a blank one included («Желательно: SQL», «Будет плюсом»);
+    - or, right under a heading with ':', plain lines up to a blank line, another heading or a line
+      that opens another part of the vacancy («Будет плюсом», «Условия»).
     """
     sentences = tuple(Sentence(m.start(), m.end(), core(m.group()))
                       for m in _SENTENCE.finditer(text) if core(m.group()))
@@ -166,15 +179,37 @@ def layout(text: str) -> Layout:
         lines.append((pos, pos + len(line), line))
         pos += len(line) + 1
     headings = []
+
+    def marked(index):
+        return index < len(lines) and bool(_LIST_ITEM.match(lines[index][2]))
+
+    def blank(index):
+        return index < len(lines) and not lines[index][2].strip()
+
     for i, (start, end, line) in enumerate(lines):
-        if not line.strip().endswith(':'):
+        name = line.strip()
+        if not name or _LIST_ITEM.match(line):
             continue
-        block_end = end
-        for _, item_end, item in lines[i + 1:]:
-            if not _LIST_ITEM.match(item):
-                break
-            block_end = item_end
-        headings.append(Heading(start, end, block_end, line.strip()))
+        first = i + 1
+        while blank(first):
+            first += 1
+        titled = name.endswith(':')
+        # Without a colon only a short unpunctuated line right above a marked list is a heading.
+        if not titled and not (marked(first) and len(name.split()) <= 6 and name[-1] not in '.!?;,'):
+            continue
+        block_end, j = end, first
+        if marked(first):
+            while marked(j):  # a blank line inside the list ends it: what follows may be another list
+                block_end = lines[j][1]
+                j += 1
+        elif first == i + 1:  # plain lines directly under «…:»
+            while j < len(lines) and not blank(j):
+                item = lines[j][2].strip()
+                if item.endswith(':') or _SECTION.match(item):
+                    break
+                block_end = lines[j][1]
+                j += 1
+        headings.append(Heading(start, end, block_end, name))
     return Layout(sentences, tuple(s.start for s in sentences), tuple(headings))
 
 
@@ -449,6 +484,14 @@ def check_mandatory(requirement: Requirement, vacancy: Source) -> MandatoryCheck
         return any(h.start <= m and m_end <= h.end and h.end <= r and r_end <= h.block_end for h in lay.headings)
 
     linked = [r for r in requirement_at if any(governs(m, r) for m in marker_at)]
+    # A marker resting on a heading that says «желательно» / «не обязательно» states no obligation.
+    resting = [h for h in lay.headings for m in marker_at
+               if h.start <= m < h.end or (h.start <= m and m + len(marker) <= h.end)]
+    if linked and any(_NOT_MANDATORY.search(h.text.replace('ё', 'е')) for h in resting):
+        joined = ' | '.join(sorted({h.text for h in resting}))
+        return MandatoryCheck(requirement_id=rid, state='needs_review', context=joined, reasons=[_review(
+            'mandatory_not_stated', 'Заголовок называет пункты желательными или необязательными, а не обязательными.',
+            context=joined)])
     if linked:
         places = {context(lay, r, r + len(quote)) for r in requirement_at}
         if len(linked) < len(requirement_at) and len(places) > 1:

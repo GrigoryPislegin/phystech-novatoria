@@ -47,6 +47,8 @@
        }
       ]
      },
+     "contract_warnings": [],
+     "requirement_factors": null,
      "evidence_check": {
       "rules_version": "evidence-0.2",
       "cv_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
@@ -314,7 +316,16 @@
       "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "e9dbb779b9babdcd7f94bfe12acec3beef74bd1a96ff8152bda81eab2fc9b0f9",
-     "rank": 1
+     "rank": 1,
+     "competency_axes": {
+      "policy_version": "draft-2026-11-14-v3",
+      "job_id": "job-a",
+      "radar_ready": false,
+      "reason": "no_labels",
+      "axes": [],
+      "outside_weight": 100.0,
+      "summary": "Подтверждено 25.0 п. из 100, предложено моделью и ждёт сверки 75.0 п., нет сведений по 0.0 п. Группы компетенций для требований не заданы: диаграмма не строится."
+     }
     },
     {
      "job_id": "job-b",
@@ -328,6 +339,8 @@
        }
       ]
      },
+     "contract_warnings": [],
+     "requirement_factors": null,
      "evidence_check": {
       "rules_version": "evidence-0.2",
       "cv_sha256": "a9a73696491bda3cc0663aea1c8622fc6b45d282f4d5cd9cb86632419bdf3d9a",
@@ -507,7 +520,16 @@
       "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "d298f2487f9b2e5b7f5b5e1fb7c15b4a815fb79cc0aa8d43e9ad10b2e6361653",
-     "rank": 2
+     "rank": 2,
+     "competency_axes": {
+      "policy_version": "draft-2026-11-14-v3",
+      "job_id": "job-b",
+      "radar_ready": false,
+      "reason": "no_labels",
+      "axes": [],
+      "outside_weight": 100.0,
+      "summary": "Подтверждено 0.0 п. из 100, предложено моделью и ждёт сверки 100.0 п., нет сведений по 0.0 п. Группы компетенций для требований не заданы: диаграмма не строится."
+     }
     }
    ],
    "recommendation": "clarify",
