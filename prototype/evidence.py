@@ -33,13 +33,13 @@ _REQUIREMENTS = re.compile(r'(?i)(?<![а-яёa-z])(?:обязател\w*|тре�
                            r'must[\s-]+have|required|requirements?)(?![а-яёa-z])')
 _BULLET = re.compile(rf'^[\s{re.escape(_MARKS)}]+')
 # A plain line that opens another part of a vacancy: the list above it ends here even without a colon.
-_SECTION = re.compile(r'''(?ix)^\W*(?:будет\s+плюсом|плюсом\s+будет|желател\w*|необязател\w*|приветству\w*|
+_SECTION = re.compile(r'''(?ix)^\W*(?:будет\s+плюсом|плюсом\s+будет|плюс(?:ом|ы)?(?![а-яё])|бонус\w*|желател\w*|необязател\w*|приветству\w*|
     преимуществ\w*|дополнительн\w*|условия|мы\s+предлагаем|что\s+мы\s+предлагаем|обязанности|задачи|о\s+компании|
     о\s+нас|nice\s+to\s+have|optional|preferred|we\s+offer|responsibilities|benefits|about\s+us)''')
 # A heading that itself says the list is NOT obligatory: a mandatory marker cannot rest on it.
-_NOT_MANDATORY = re.compile(r'''(?ix)(?<![а-яёa-z])(?:не\s+обязател\w*|необязател\w*|желател\w*|плюсом|
+_NOT_MANDATORY = re.compile(r'''(?ix)(?<![а-яёa-z])(?:не\s+обязател\w*|необязател\w*|желател\w*|плюс(?:ом|ы)?(?![а-яё])|бонус\w*|
     приветству\w*|преимуществ\w*|не\s+требу\w+|не\s+нуж\w+|не\s+критичн\w*|по\s+желанию|
-    optional|nice\s+to\s+have|preferred|not\s+required|not\s+necessary)''')
+    optional|nice\s+to\s+have|preferred|bonus|a\s+plus|not\s+required|not\s+necessary)''')
 _CLOSING = re.compile(r'[\s.!?;,:]+$')
 _WORD = re.compile(r'[0-9A-Za-zА-Яа-яЁё#+]+')
 
