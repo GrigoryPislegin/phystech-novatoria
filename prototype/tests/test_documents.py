@@ -144,7 +144,7 @@ class DocumentTests(unittest.TestCase):
             'После таблицы',
         )
 
-    def test_rejects_nonempty_docx_headers_and_footers(self):
+    def test_reads_nonempty_docx_headers_and_footers(self):
         for variant in ('header', 'footer', 'first_page_header', 'even_page_footer'):
             with self.subTest(variant=variant):
                 path = self.directory / f'{variant}.docx'
@@ -155,8 +155,81 @@ class DocumentTests(unittest.TestCase):
                 document.settings.odd_and_even_pages_header_footer = True
                 getattr(section, variant).paragraphs[0].text = 'Обязательное условие'
                 document.save(path)
-                with self.assertRaisesRegex(ValueError, '^docx_header_footer$'):
-                    read_document(path)
+                text = read_document(path)
+                self.assertIn('Обязательное условие', text)
+                self.assertIn('Синтетический основной текст', text)
+
+    def test_header_tables_and_linked_sections_are_read_once(self):
+        from docx.shared import Inches
+        path = self.directory / 'header-tables.docx'
+        document = Document()
+        section = document.sections[0]
+        section.header.paragraphs[0].text = 'Header contact'
+        table = section.header.add_table(rows=1, cols=2, width=Inches(5))
+        table.cell(0, 0).text = 'Python'
+        table.cell(0, 1).text = '5 years'
+        section.footer.paragraphs[0].text = 'Footer note'
+        document.add_paragraph('Body experience')
+        document.add_section()
+        document.add_paragraph('Other section')
+        document.save(path)
+        text = read_document(path)
+        self.assertEqual(text.count('Header contact'), 1)
+        self.assertEqual(text.count('Footer note'), 1)
+        self.assertIn('Python | 5 years', text)
+        self.assertLess(text.index('Header contact'), text.index('Body experience'))
+        self.assertGreater(text.index('Footer note'), text.index('Other section'))
+
+    def test_inactive_and_historical_headers_are_not_candidate_evidence(self):
+        from docx.oxml.ns import qn
+        path = self.directory / 'inactive-headers.docx'
+        document = Document()
+        section = document.sections[0]
+        section.first_page_header.paragraphs[0].text = 'Inactive first page'
+        section.even_page_footer.paragraphs[0].text = 'Inactive even page'
+        section.header.paragraphs[0].text = 'Historical header'
+        # Move every default header reference into historical section properties.
+        for candidate in list(section._sectPr.findall(qn('w:headerReference'))):
+            if candidate.get(qn('w:type')) == 'default':
+                old = parse_xml(f'<w:sectPrChange {nsdecls("w")}><w:sectPr/></w:sectPrChange>')
+                old[0].append(candidate)
+                section._sectPr.append(old)
+        document.add_paragraph('Current body')
+        document.save(path)
+        self.assertEqual(read_document(path), 'Current body')
+
+    def test_first_page_header_inherited_when_enabled_in_later_section(self):
+        path = self.directory / 'inherited-first-header.docx'
+        document = Document()
+        document.sections[0].first_page_header.paragraphs[0].text = 'Inherited first header'
+        document.add_paragraph('First body')
+        later = document.add_section()
+        later.different_first_page_header_footer = True
+        document.add_paragraph('Later body')
+        document.save(path)
+        text = read_document(path)
+        self.assertEqual(text.count('Inherited first header'), 1)
+
+    def test_unread_header_textbox_still_fails_explicitly(self):
+        path = self.directory / 'header-textbox.docx'
+        document = Document()
+        document.add_paragraph('Body')
+        add_textbox(document.sections[0].header.paragraphs[0])
+        document.save(path)
+        with self.assertRaisesRegex(ValueError, '^docx_shape_text$'):
+            read_document(path)
+
+    def test_header_only_text_and_combined_size_limit(self):
+        path = self.directory / 'header-only.docx'
+        document = Document()
+        document.sections[0].header.paragraphs[0].text = 'Header content'
+        document.save(path)
+        self.assertEqual(read_document(path), 'Header content')
+        document.add_paragraph('Body content')
+        document.save(path)
+        with patch('prototype.documents.MAX_CHARS', 20):
+            with self.assertRaisesRegex(ValueError, '^document_text_too_long$'):
+                read_document(path)
 
     def test_rejects_docx_textboxes_with_visible_text(self):
         for modern in (False, True):
@@ -424,7 +497,7 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual([item['file'] for item in files], list(range(1, len(paths) + 1)))
         self.assertEqual([item.get('code') for item in files], [
             'input_invalid', 'document_unreadable', 'document_encoding_invalid',
-            'document_empty', 'input_unsupported', None, 'input_symlink', 'docx_header_footer',
+            'document_empty', 'input_unsupported', None, 'input_symlink', None,
         ])
         self.assertEqual(files[5], {'file': 6, 'status': 'ok', 'characters': len('Пример\nтекста')})
         for item in files:

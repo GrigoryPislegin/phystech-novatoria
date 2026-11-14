@@ -132,10 +132,42 @@ def _read_pdf(stream) -> str:
         return '\n\n'.join(parts)
 
 
-def _check_docx_structure(document) -> None:
+def _docx_containers(document):
+    """Referenced stories once each: headers, body, footers (not page layout)."""
     from docx.oxml.ns import qn
 
-    body = document.element.body
+    def stories(kind):
+        seen = set()
+        inherited = {}
+        for section in document.sections:
+            # Only current direct references, never historical sectPrChange.
+            for reference in section._sectPr.findall(qn(f'w:{kind}Reference')):
+                inherited[reference.get(qn('w:type'), 'default')] = reference.get(qn('r:id'))
+            active = ['default']
+            if section.different_first_page_header_footer:
+                active.append('first')
+            if document.settings.odd_and_even_pages_header_footer:
+                active.append('even')
+            for variant in active:
+                part_id = inherited.get(variant)
+                if part_id is None:
+                    continue
+                part = document.part.related_parts[part_id]
+                if part.partname not in seen:
+                    seen.add(part.partname)
+                    yield part.element
+
+    return [*stories('header'), document.element.body, *stories('footer')]
+
+
+def _check_docx_structure(document) -> None:
+    for container in _docx_containers(document):
+        _check_docx_container(container)
+
+
+def _check_docx_container(body) -> None:
+    from docx.oxml.ns import qn
+
     word_text, shape_text, math_text = (qn(tag) for tag in ('w:t', 'a:t', 'm:t'))
     textbox = qn('w:txbxContent')
     vml_textpath = '{urn:schemas-microsoft-com:vml}textpath'
@@ -146,15 +178,6 @@ def _check_docx_structure(document) -> None:
 
     def contains_wordart(element):
         return any(node.get('string', '').strip() for node in element.iter(vml_textpath))
-
-    references = body.iter(qn('w:headerReference'), qn('w:footerReference'))
-    relationship_id = qn('r:id')
-    for part_id in dict.fromkeys(reference.get(relationship_id) for reference in references):
-        element = document.part.related_parts[part_id].element
-        if (contains_text(element, word_text, shape_text, math_text)
-                or contains_wordart(element)
-                or next(element.iter(qn('w:sym'), *linked_drawings), None) is not None):
-            raise DocumentReadError('docx_header_footer')
 
     if contains_text(body, shape_text) or contains_wordart(body):
         raise DocumentReadError('docx_shape_text')
@@ -175,10 +198,10 @@ def _check_docx_structure(document) -> None:
         qn('w:t'): {qn('w:r')},
         qn('w:r'): {qn('w:p'), qn('w:hyperlink')},
         qn('w:hyperlink'): {qn('w:p')},
-        qn('w:p'): {qn('w:body'), qn('w:tc')},
+        qn('w:p'): {qn('w:body'), qn('w:hdr'), qn('w:ftr'), qn('w:tc')},
         qn('w:tc'): {qn('w:tr')},
         qn('w:tr'): {qn('w:tbl')},
-        qn('w:tbl'): {qn('w:body'), qn('w:tc')},
+        qn('w:tbl'): {qn('w:body'), qn('w:hdr'), qn('w:ftr'), qn('w:tc')},
     }
     for node in body.iter(word_text, math_text):
         if not (node.text or '').strip():
@@ -220,8 +243,8 @@ def _read_docx(stream) -> str:
     stream.seek(0)
     document = Document(stream)
     _check_docx_structure(document)
-    text, has_text = _docx_text(document.element.body)
-    return text if has_text else ''
+    stories = [_docx_text(container) for container in _docx_containers(document)]
+    return '\n'.join(text for text, has_text in stories if has_text)
 
 
 def read_document(path: Path) -> str:
