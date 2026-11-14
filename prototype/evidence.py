@@ -75,6 +75,21 @@ _REVERSING = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
 _NEGATION = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
     не|нет|нету|ни|без|кроме|никогда|никак|отсутству(?:ет|ют)|отсутствие|
     not|no|never|without|except|none|lacks?|lacking|\w+n't)(?![0-9a-zа-яё])""")
+# A stated intent or a future: readiness is not experience, even a partial one (learning and a low
+# level are: that is what partial means).
+_INTENT = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
+    планирую|планирует|хочу|хотел|хотела|хочется|желаю|собираюсь|мечтаю|намерен\w*|
+    готов|готова|готовы|готовлюсь|буду|смогу|
+    plan\s+to|want\s+to|would\s+like|ready\s+to|willing\s+to)(?![0-9a-zа-яё])""")
+# Somebody else as the subject of the action: «коллеги писали на Python» says nothing about the candidate.
+_OTHERS = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
+    (?:коллеги|коллега|сотрудники|подчин[её]нные|подрядчики|подрядчик|заказчики|заказчик|клиенты|партн[её]ры|
+       разработчики|аналитики|команда|руководитель|тимлид|напарник|они|он|она|
+       (?:другие|другой|другая|соседн\w+|смежн\w+)\s+[а-яё-]+)
+    \s+(?:[а-яё-]+\s+){0,2}?[а-яё]+(?:ли|ла|ло|ал|ял|ил|ел|ет|ёт|ют|ут|ит|ят|ат)(?:сь|ся)?
+    |(?:colleagues?|teammates?|coworkers?|contractors?|they|(?:the|another|other)\s+teams?)
+     \s+(?:\w+\s+)?(?:used|use|wrote|write|worked|work|built|build|developed|develop|did|do))(?![0-9a-zа-яё])""")
+_CLAUSE_START = re.compile(r'[,;:—–(]')
 # A list heading that is not about what the person did: its bullets are not evidence of experience.
 _HEADING_ONLY = re.compile(r'(?i)(?<![а-яё])(?:интерес\w*|хобби|планы|цели|желаем\w*)(?![а-яё])')
 
@@ -353,12 +368,20 @@ def _evidence_reasons(span: Span, quote: str, requirement_terms: set[str], fact_
                                    'Цитата — часть предложения, в остальной части есть оговорка; проверьте целиком.',
                                    fact_id=fact_id, context=span.sentence))
     cited = text[span.start:span.end]
-    # full: any reservation inside the quote contradicts it; partial is a limited match by definition,
-    # so only a plain negation does.
-    inside = reverses(cited) if status == 'full' else bool(_NEGATION.search(cited.replace('ё', 'е')))
+    # full: any reservation inside the quote contradicts it. partial is a limited match by definition, so
+    # learning or a low level fit it; a plain negation or a mere intent do not.
+    plain = cited.replace('ё', 'е')
+    inside = reverses(cited) if status == 'full' else bool(_NEGATION.search(plain) or _INTENT.search(plain))
     if status in ('full', 'partial') and inside:
         reasons.append(_review('reservation_in_quote',
                                'В самой цитате есть отрицание или оговорка, а вывод положительный; проверьте смысл.',
+                               fact_id=fact_id, context=around))
+    # The clause the quote stands in, from its own start: a subject left just outside the quote counts.
+    before = text[touched[0].start:span.start] if touched else ''
+    cut = max((m.end() for m in _CLAUSE_START.finditer(before)), default=0)
+    if status in ('full', 'partial') and _OTHERS.search(before[cut:] + cited):
+        reasons.append(_review('attributed_to_others',
+                               'Действие в цитате приписано другим людям, а не кандидату; проверьте, чей это опыт.',
                                fact_id=fact_id, context=around))
     if not requirement_terms & _terms(cited):
         hidden = _REFERENCE.search(cited) or any(_REFERENCE.fullmatch(t) for t in requirement_terms)
