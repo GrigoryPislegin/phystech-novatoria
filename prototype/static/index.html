@@ -100,10 +100,11 @@
       <p id="runs-message" class="support" role="status" aria-live="polite"></p>
       <ul id="saved-runs" class="saved-runs"></ul>
     </section>
-    <dialog id="confirm-run-removal" class="confirm-dialog report-confirm" aria-labelledby="delete-run-title" aria-describedby="delete-run-copy">
+    <dialog id="confirm-run-removal" class="confirm-dialog report-confirm" aria-labelledby="delete-run-title" aria-describedby="delete-run-label delete-run-copy">
       <button type="button" class="dialog-close" data-dismiss-dialog aria-label="Закрыть">×</button>
       <h2 id="delete-run-title">Удалить запуск?</h2>
-      <p id="delete-run-copy">Отчёт и результаты проверки этого запуска будут удалены из локального хранилища.</p>
+      <p id="delete-run-label" class="support"></p>
+      <p id="delete-run-copy">Обработанные копии документов, отчёт и решения рекрутера будут удалены из локального хранилища. Ваши исходные файлы и данные у провайдера останутся.</p>
       <div class="dialog-actions">
         <button type="button" id="dismiss-run-removal" class="button button-secondary" data-dismiss-dialog autofocus>Отмена</button>
         <button type="button" id="remove-run" class="button button-danger">Удалить</button>
@@ -133,7 +134,7 @@
           <span id="run-progress" class="support"></span>
         </div>
         <div class="summary-cell">
-          <span class="eyeline">Проверка требований</span>
+          <span class="eyeline">Источник и проверка</span>
           <strong id="run-review"></strong>
           <span id="run-review-detail" class="support"></span>
         </div>
@@ -144,6 +145,10 @@
         <ul id="skipped-jobs" hidden></ul>
       </section>
       <p id="privacy-note" class="run-note" data-tone="warning" hidden>Защита могла скрыть часть профессиональных сведений. Сверьте их с локальными оригиналами.</p>
+      <section id="unranked-review" class="view-panel" aria-labelledby="unranked-review-title" hidden>
+        <h2 id="unranked-review-title">Замечания по запуску</h2>
+        <div id="unranked-review-list" class="source-list"></div>
+      </section>
 
       <div id="report-views" class="views" role="group" aria-label="Раздел отчёта">
         <button type="button" data-view="ranking" aria-controls="view-ranking" aria-pressed="true">Вакансии <span id="ranking-count" class="numeric"></span></button>
@@ -184,6 +189,20 @@
             <p id="job-conditions" class="run-note" data-tone="warning" hidden></p>
           </header>
 
+          <section id="review-panel" class="conditions-section" aria-labelledby="review-title">
+            <div class="requirements-heading">
+              <h3 id="review-title" tabindex="-1">Проверка рекрутером</h3>
+              <div id="review-controls" class="review-controls"></div>
+            </div>
+            <p id="review-state" class="support"></p>
+            <p id="review-message" class="support" tabindex="-1" role="status" aria-live="polite"></p>
+            <details id="requirements-draft" class="source-disclosure">
+              <summary id="requirements-draft-title" class="source-heading">Состав требований</summary>
+              <div id="requirements-draft-content" class="source-body"></div>
+            </details>
+            <p id="review-empty" class="support" hidden></p>
+            <div id="review-list" class="source-list"></div>
+          </section>
           <div class="comparison-section" id="comparison-section" hidden>
             <div class="requirements-heading">
               <h3>Сравнение вакансий</h3>
@@ -214,23 +233,14 @@
             <p id="result-count" class="sr-only" role="status" aria-live="polite"></p>
             <table id="requirements-table">
               <thead>
-                <tr><th scope="col">Требование</th><th scope="col">Соответствие</th><th scope="col">Фрагмент резюме</th></tr>
+                <tr><th scope="col">Требование</th><th scope="col">Оценка в отчёте</th><th scope="col">Фрагмент резюме</th></tr>
               </thead>
               <tbody id="requirement-rows"></tbody>
             </table>
             <p id="empty-rows" class="empty-panel" hidden>По этому фильтру нет требований.</p>
           </div>
-          <div id="review-panel" class="conditions-section" hidden>
-            <div class="requirements-heading">
-              <h3 id="review-title" tabindex="-1">Проверка рекрутером</h3>
-              <div id="review-controls" class="review-controls"></div>
-            </div>
-            <p id="review-state" class="support"></p>
-            <p id="review-message" class="support" role="status" aria-live="polite"></p>
-            <div id="review-list" class="source-list"></div>
-          </div>
           <div class="conditions-section">
-            <h3>Условия для HR</h3>
+            <h3 id="conditions-title" tabindex="-1">Условия для HR</h3>
             <p id="conditions-summary" class="support"></p>
             <div id="condition-list" class="source-list"></div>
           </div>

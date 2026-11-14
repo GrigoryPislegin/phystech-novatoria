@@ -36,10 +36,15 @@
     invalid: 'Отчёт отмечает ошибку в доказательстве'
   };
   const requirementReviews = {
-    confirmed: 'Состав подтверждён в отчёте',
+    confirmed: 'Состав подтверждён рекрутером',
     stale: 'Подтверждение состава устарело',
     invalid: 'Подтверждение состава недействительно',
-    unconfirmed: 'Состав не подтверждён'
+    unconfirmed: 'Состав не подтверждён',
+    unverified: 'Подтверждение состава не проверено'
+  };
+  const handoffLabels = {
+    draft: 'Черновик для проверки', reviewed_for_handoff: 'Проверено рекрутером для передачи',
+    blocked: 'Передача заблокирована', stale: 'Проверка устарела', invalid: 'Проверка недействительна'
   };
   const checkStates = ['structure_ok', 'needs_review', 'invalid'];
   const conditionLabels = {
@@ -77,6 +82,33 @@
     return requirementReviews[state] || requirementReviews.unconfirmed;
   }
 
+  function hasTrustedRevision(report, context) {
+    return Boolean(report.runId && report.revision) &&
+      context?.runId === report.runId && context?.revision === report.revision;
+  }
+
+  function handoffLabel(handoff) {
+    return handoff && Object.hasOwn(handoffLabels, handoff.state) ? handoffLabels[handoff.state] : handoffLabels.draft;
+  }
+
+  function reviewFor(report, job, context) {
+    const handoff = hasTrustedRevision(report, context)
+      ? report.handoff.find(item => item.job_id === job.id) : null;
+    if (!handoff) {
+      return { handoff, requirements: job.requirementsReview === 'unconfirmed' ? 'unconfirmed' : 'unverified' };
+    }
+    const requirements = handoff.requirements_confirmed ? 'confirmed'
+      : ['stale', 'invalid'].includes(job.requirementsReview) ? job.requirementsReview : 'unconfirmed';
+    return { handoff, requirements };
+  }
+
+  function acceptedConditionKinds(report, job, handoff) {
+    const accepted = new Set(handoff?.accepted_exceptions);
+    return new Set((report.reviewItems ?? [])
+      .filter(item => item.job_id === job.id && accepted.has(item.id))
+      .map(item => item.conditionKind));
+  }
+
   function mandatoryNeedsReview(row) {
     return row.mandatoryExcluded || (Boolean(row.mandatoryQuote) && row.mandatoryCheck?.state !== 'structure_ok');
   }
@@ -101,7 +133,7 @@
     return row.evidence?.state !== 'structure_ok';
   }
 
-  function describeFit(report, job) {
+  function describeFit(report, job, context = null) {
     const rows = job.rows.map((row, index) => ({ row, number: index + 1 }));
     const groups = { mismatch: [], partial: [], unknown: [], review: [] };
     const grounds = [];
@@ -118,14 +150,15 @@
     }
 
     const gap = ['mismatch', 'partial', 'unknown', 'review'].find(state => groups[state].length);
-    const listConfirmed = job.requirementsReview === 'confirmed';
+    const { requirements } = reviewFor(report, job, context);
+    const listConfirmed = requirements === 'confirmed';
     const state = gap ?? (report.complete && listConfirmed ? 'match' : 'review');
     const notes = [];
     if (state === 'review' && !report.complete) notes.push('Обработана часть вакансий.');
     if (state === 'review' && !gap && grounds.length === rows.length) {
       notes.push('По всем оценённым требованиям есть признаки соответствия.');
     }
-    if (!gap && !listConfirmed) notes.push(requirementReviewLabel(job.requirementsReview) + '.');
+    if (!gap && !listConfirmed) notes.push(requirementReviewLabel(requirements) + '.');
 
     const risks = Object.values(groups).flat();
     risks.sort((left, right) => Number(Boolean(right.row.mandatoryQuote)) - Number(Boolean(left.row.mandatoryQuote)));
@@ -215,9 +248,10 @@
         invalid = true;
         continue;
       }
-      const label = conditionLabels[item.kind];
-      if (items.has(item.kind)) {
-        items.set(item.kind, { label, state: 'invalid' });
+      const kind = item.kind;
+      const label = conditionLabels[kind];
+      if (items.has(kind)) {
+        items.set(kind, { kind, label, state: 'invalid' });
         invalid = true;
         continue;
       }
@@ -230,16 +264,16 @@
         (item.vacancy_span == null || vacancy) &&
         (item.state === 'unknown' || (cv && vacancy));
       if (!valid) {
-        items.set(item.kind, { label, state: 'invalid' });
+        items.set(kind, { kind, label, state: 'invalid' });
         invalid = true;
         continue;
       }
-      const needsReview = item.kind === 'salary' || item.check !== 'structure_ok' || item.findings.length > 0;
+      const needsReview = kind === 'salary' || item.check !== 'structure_ok' || item.findings.length > 0;
       const state = item.state === 'compatible' && needsReview ? 'unknown' : item.state;
       const where = 'conditions[' + index + ']';
       const unresolved = field => item.findings.some(finding => finding?.where === where + '.' + field);
-      items.set(item.kind, {
-        label, state, cv, vacancy, needsReview,
+      items.set(kind, {
+        kind, label, state, cv, vacancy, needsReview,
         cvUnresolved: !cv && unresolved('cv'), vacancyUnresolved: !vacancy && unresolved('vacancy_quote')
       });
     }
@@ -355,8 +389,25 @@
   function requirementReviewFrom(job) {
     const review = job.requirements_review;
     return isRecord(review) && review.vacancy_id === job.job_id && isText(review.state) &&
-      Object.hasOwn(requirementReviews, review.state)
+      ['confirmed', 'stale', 'invalid', 'unconfirmed'].includes(review.state)
       ? review.state : 'unconfirmed';
+  }
+
+  function readRequirementsDraft(job, sourceDigest) {
+    const draft = job.requirements_draft;
+    if (!isRecord(draft) || draft.vacancy_id !== job.job_id || draft.state !== 'unconfirmed' ||
+        !sourceDigest || draft.source_sha256 !== sourceDigest || !digest(draft.requirements_sha256) ||
+        !Array.isArray(draft.requirements) || draft.requirements.length !== job.requirements.items.length ||
+        !Array.isArray(draft.uncovered) || !draft.uncovered.every(isText)) return null;
+
+    const ids = new Set();
+    for (const item of draft.requirements) {
+      const canonical = job.requirements.items.find(req => req.id === item?.id);
+      if (!canonical || !isRecord(item) || ids.has(item.id) || item.text !== canonical.text ||
+          item.quote !== canonical.quote || item.mandatory_quote !== (canonical.mandatory_quote ?? null)) return null;
+      ids.add(item.id);
+    }
+    return { requirements: draft.requirements, uncovered: draft.uncovered };
   }
 
   function vacancyTitle(id, index) {
@@ -365,10 +416,14 @@
   }
 
   function readReviewItems(queue, jobs, leader) {
-    if (queue?.schema_version !== 'review-queue-0.1' || !Array.isArray(queue.items)) return [];
+    if (queue?.schema_version !== 'review-queue-0.1' || !Array.isArray(queue.items)) return null;
     return queue.items.slice(0, 2000).filter(item => isRecord(item) && isText(item.id) &&
       (item.job_id === null || jobs.has(item.job_id)) && isText(item.explanation)).map(item => ({
         id: item.id, job_id: item.job_id, action: isText(item.action) ? item.action : null, explanation: item.explanation,
+        requirementId: isText(item.requirement_id) ? item.requirement_id : null,
+        conditionKind: isText(item.condition_kind) ? item.condition_kind : null,
+        reason: isText(item.reason_code) ? item.reason_code : null,
+        priority: [1, 2, 3, 4].includes(item.priority) ? item.priority : null,
         decisive: queue.policy_version === 'draft-2026-11-14-v3' && item.decisive === true &&
           !!leader?.canChange.some(ref => ref.jobId === item.job_id && ref.unitIds.includes(item.requirement_id)),
         refs: Array.isArray(item.refs) ? item.refs.filter(ref => isRecord(ref) && isText(ref.quote) &&
@@ -568,6 +623,7 @@
         id: job.job_id, title: vacancyTitle(job.job_id, index), rank: job.rank,
         score: scoreFrom(job.score), rows, excluded, disputed, conflicts, units, unitMetadataValid,
         requirementsReview: requirementReviewFrom(job),
+        requirementsDraft: readRequirementsDraft(job, sourceDigest),
         sourceDigest, policyDigest: digest(job.score.policy_sha256),
         conditions: conditionsFrom(job.conditions, job.job_id, resumeDigest, sourceDigest, factQuotes)
       };
@@ -577,17 +633,18 @@
     return {
       jobs, comparisons: Array.isArray(report.comparisons)
         ? report.comparisons.slice(0, 19).map(item => readComparison(item, jobs, report.policy_version)).filter(Boolean) : [],
-      policyVersion: report.policy_version, unprocessed, processed: jobs.length, total,
+      policyVersion: versionLabel(report.policy_version), unprocessed, processed: jobs.length, total,
       leader,
       complete: report.ranking.complete, recommendation: report.ranking.recommendation,
-      requirementsConfirmed: report.ranking.complete && jobs.every(job => job.requirementsReview === 'confirmed'),
       runId: typeof report.run_id === 'string' && /^[0-9a-f]{32}$/.test(report.run_id) ? report.run_id : null,
       revision: Number.isSafeInteger(report.revision) && report.revision > 0 ? report.revision : null,
       finalAllowed: false,
       schemaVersion: report.schema_version,
       mode: report.mode, model: versionLabel(report.model), scenario: report.demo_scenario || null,
       resumeDigest, modelDigest: digest(report.model_sha256),
-      profile, reviewItems: readReviewItems(report.review_queue, rankedJobs, leader), handoff: readHandoff(report.handoff, rankedJobs),
+      profile,
+      reviewItems: readReviewItems(report.review_queue, new Set([...rankedJobs.keys(), ...unprocessed.map(job => job.id)]), leader),
+      handoff: readHandoff(report.handoff, rankedJobs),
       privacyWarning: report.privacy?.professional_information_may_be_hidden === true
     };
   }
@@ -621,7 +678,7 @@
   const api = {
     MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeDashboard, describeRun, describeFit, scoreRange, assessments,
     mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel,
-    readComparison
+    readComparison, hasTrustedRevision, reviewFor, handoffLabel, acceptedConditionKinds
   };
   if (typeof module === 'object' && module.exports) {
     module.exports = api;

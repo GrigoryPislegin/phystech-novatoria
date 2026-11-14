@@ -4,7 +4,8 @@
   const commonJS = typeof module === 'object' && module.exports;
   const {
     describeRun, describeFit, scoreRange, assessments, mandatoryStates, evidenceLabel, evidenceNeedsReview,
-    mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
+    mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel, hasTrustedRevision, reviewFor, handoffLabel,
+    acceptedConditionKinds
   } = commonJS ? require('./report.js') : root.NanimaiReport;
 
   const htmlEntities = {
@@ -103,7 +104,7 @@
     unknown: 'Нужно уточнить', invalid: 'Не удалось проверить'
   };
 
-  function conditionsSection(conditions) {
+  function conditionsSection(conditions, accepted) {
     if (conditions.state === 'missing') return '<section id="conditions" class="unavailable">' +
       '<p><strong>Условия для HR.</strong> Условия не сравнивались.</p></section>';
     const heading = '<section id="conditions"><h2>Условия для HR</h2>';
@@ -119,12 +120,13 @@
     }
     const ordered = [...conditions.items.filter(item => item.state === 'conflict'),
       ...conditions.items.filter(item => item.state !== 'conflict')];
-    const items = ordered.map(({ label, state, cv, vacancy, needsReview, cvUnresolved, vacancyUnresolved }) => {
+    const items = ordered.map(({ kind, label, state, cv, vacancy, needsReview, cvUnresolved, vacancyUnresolved }) => {
       const flag = state === 'conflict' ? ' class="condition-conflict"' : '';
       const sources = state === 'invalid' ? '' : '<p><span>Резюме</span> ' + quote(cv, cvUnresolved) +
         '</p><p><span>Вакансия</span> ' + quote(vacancy, vacancyUnresolved) + '</p>';
       const status = conditionStatus[state] + (state === 'conflict' && needsReview ? ' · Нужна ручная сверка' : '');
-      return '<div' + flag + '><h3>' + label + ' <span>· ' + status + '</span></h3>' + sources + '</div>';
+      const decision = accepted.has(kind) ? '<p class="state">Решение HR · Исключение принято</p>' : '';
+      return '<div' + flag + '><h3>' + label + ' <span>· ' + status + '</span></h3>' + sources + decision + '</div>';
     }).join('');
     const note = conditions.state === 'invalid'
       ? '<p class="state">Часть условий не удалось проверить.</p>' : '';
@@ -249,19 +251,22 @@
   const printScript = "document.getElementById('print-report').addEventListener('click', () => window.print());";
   const printScriptDigest = 'Ly5N7hfg2ILqQD8qjfrNRGdeV9zTxlJEU/jhMitXdoU=';
 
-  function renderManagerReport(report, jobId, trustedContext = null) {
+  function renderManagerReport(report, jobId, trustedContext = null, origin = 'file') {
     const job = report.jobs.find(item => item.id === jobId);
     if (!job) throw new Error('Выберите оценённую вакансию.');
 
     const run = describeRun(report);
-    const trustedRevision = report.runId && report.revision && trustedContext?.runId === report.runId &&
-      trustedContext.revision === report.revision ? report.revision : null;
-    const reviewed = trustedRevision && report.complete
-      ? report.handoff.find(item => item.job_id === job.id && item.state === 'reviewed_for_handoff') : null;
-    const reviewStatus = reviewed ? 'Проверено рекрутером для передачи' : 'Черновик для проверки';
-    const reviewRevision = trustedRevision ? ' · Ревизия ' + trustedRevision : '';
-    const exceptions = reviewed?.accepted_exceptions.length ?? 0;
-    const fit = describeFit(report, job);
+    const trusted = hasTrustedRevision(report, trustedContext);
+    const { handoff, requirements } = reviewFor(report, job, trustedContext);
+    const reviewStatus = !report.complete && handoff?.state === 'reviewed_for_handoff'
+      ? handoffLabel(null) : handoffLabel(handoff);
+    const source = trusted ? 'Локальный запуск · Ревизия ' + report.revision
+      : origin === 'example' ? 'Встроенный пример' : 'Внешний непроверенный файл';
+    const exceptions = handoff?.accepted_exceptions.length ?? 0;
+    const decided = new Set(handoff?.acknowledged);
+    const read = (report.reviewItems ?? []).filter(item => decided.has(item.id) &&
+      !['requirements_unconfirmed', 'uncovered_text'].includes(item.reason)).length;
+    const fit = describeFit(report, job, trustedContext);
     const profile = profileSections(report.profile);
     const risks = fit.risks.slice(0, 3);
     if (fit.priority && !risks.includes(fit.priority)) risks.splice(2, 1, fit.priority);
@@ -294,11 +299,13 @@
   </div>
   <header>
     <p class="run-state${report.complete ? '' : ' incomplete'}">${progress}</p>
-    <p class="eyebrow">AI-рекрутер · ${run.mode} · ${reviewStatus}${reviewRevision} · Версия отчёта ${escape(report.schemaVersion)}</p>
+    <p class="eyebrow">AI-рекрутер · ${run.mode} · ${source} · Версия отчёта ${escape(report.schemaVersion)}</p>
     <h1>Отчёт для менеджера</h1>
     <p class="vacancy">Вакансия ${escape(job.title)}</p>
     <p>${place} · Диапазон L–H ${scoreRange(job.score)}</p>
-    <p class="state">${requirementReviewLabel(job.requirementsReview)} · ${mandatoryStates[job.score.mandatory][0]}</p>
+    <p class="state">${reviewStatus}</p>
+    <p class="state">${requirementReviewLabel(requirements)} · ${mandatoryStates[job.score.mandatory][0]}</p>
+    ${read ? '<p class="state">Рекрутер ознакомился с замечаниями · ' + read + '</p>' : ''}
     ${exceptions ? '<p class="state">Принятые исключения по условиям · ' + exceptions + '</p>' : ''}
   </header>
   <section id="vacancy-fit" class="recommendation">
@@ -314,7 +321,7 @@
     ${fit.risks.length > risks.length ? '<p>Остальные пробелы перечислены в <a href="#evidence">цитатах и оценках</a>.</p>' : ''}
   </section>
   ${profile.brief}
-  ${conditionsSection(job.conditions)}
+  ${conditionsSection(job.conditions, acceptedConditionKinds(report, job, handoff))}
   ${report.privacyWarning ? '<p>Защита могла скрыть часть профессиональных сведений. Сверьте их с локальным оригиналом.</p>' : ''}
   ${showQuestions}
   <p class="state">Предварительная рекомендация по запуску. ${recommendation}</p>

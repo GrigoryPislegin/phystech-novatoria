@@ -73,10 +73,27 @@ class WebAppTests(unittest.TestCase):
                   'item_id':None,'idempotency_key':'confirm'}
         status, checked, _ = self.request('POST',f'/api/runs/{rid}/review',action,headers)
         self.assertEqual((status,checked['report']['revision']),(200,2))
-        status, _, _ = self.request('POST',f'/api/runs/{rid}/review',{**action,'idempotency_key':'stale'},headers)
-        self.assertEqual(status,409)
+        self.assertEqual(self.request('POST',f'/api/runs/{rid}/review',action,headers)[1]['report']['revision'],2)
+        status, conflict, _ = self.request('POST',f'/api/runs/{rid}/review',{**action,'idempotency_key':'stale'},headers)
+        self.assertEqual((status,conflict),(409,{'error':'stale_revision'}))
+        neighbor, _ = self.service.store.create({'mode':'synthetic-replay'},'active-neighbor')
+        neighbor_id = neighbor['run_id']
+        status, refused, _ = self.request('DELETE',f'/api/runs/{neighbor_id}',{},headers)
+        self.assertEqual((status,refused),(409,{'error':'run_active'}))
+        for unknown in ('0' * 32, '..', '%2e%2e'):
+            self.assertEqual(self.request('DELETE',f'/api/runs/{unknown}',{},headers)[0],404)
+        alias = 'f' * 32
+        link = self.service.store.root / alias
+        link.symlink_to(neighbor_id, target_is_directory=True)
+        try:
+            status, refused, _ = self.request('DELETE',f'/api/runs/{alias}',{},headers)
+            self.assertEqual((status,refused),(400,{'error':'unsafe_path'}))
+            self.assertTrue(link.is_symlink())
+        finally:
+            link.unlink()
         self.assertEqual(self.request('DELETE',f'/api/runs/{rid}',{},headers)[0],200)
         self.assertEqual(self.request('GET',f'/api/runs/{rid}/report')[0],404)
+        self.assertEqual(self.request('GET',f'/api/runs/{neighbor_id}')[1]['state'],'queued')
 
     def test_static_whitelist_csp_and_no_private_paths(self):
         for path in ('/.env','/../.env','/%2e%2e/.env','/api/runs/../../.env','/data/private'):
