@@ -86,5 +86,39 @@ class AxesTests(unittest.TestCase):
         self.assertNotIn('language', [a.axis for a in outside.axes])
 
 
+class RepeatedUnitLabelTests(unittest.TestCase):
+    """A literal repeat is one unit of weight; its rows must name one axis or none."""
+
+    def job(self):
+        from evaluation.policy_compare import build_job
+        reqs, evaluation, evidence = build_job({'job_id': 'j', 'rows': [
+            {'id': 'r1', 'text': 'Python', 'quote': 'Python', 'm': False, 'status': 'full'},
+            {'id': 'r2', 'text': 'python', 'quote': 'python.', 'm': False, 'status': 'full'},
+            {'id': 'r3', 'text': 'SQL', 'm': False, 'status': 'full'}]})
+        s = score(reqs, evaluation, evidence)
+        self.assertEqual(s['repeated_ids'], [['r1', 'r2']])
+        return {'job_id': 'j', 'score': s, 'evaluation': evaluation.model_dump()}
+
+    def weights(self, labels):
+        result = competency_axes(self.job(), labels)
+        return {a.axis: a.weight for a in result.axes}, result.outside_weight
+
+    def test_agreeing_rows_put_the_unit_on_their_axis(self):
+        self.assertEqual(self.weights({'r1': 'stack', 'r2': 'stack', 'r3': 'stack'}), ({'stack': 100}, 0))
+
+    def test_conflicting_or_missing_labels_leave_the_whole_unit_outside(self):
+        for labels in ({'r1': 'management', 'r2': 'stack', 'r3': 'stack'},   # two different axes
+                       {'r1': 'stack', 'r3': 'stack'},                       # one row not labelled
+                       {'r1': 'stack', 'r2': 'other', 'r3': 'stack'},        # an axis and «other»
+                       {'r2': 'stack', 'r1': 'conditions', 'r3': 'stack'}):
+            with self.subTest(labels):
+                self.assertEqual(self.weights(labels), ({'stack': 50}, 50))
+
+    def test_the_order_of_ids_does_not_choose_the_axis(self):
+        first = self.weights({'r1': 'management', 'r2': 'stack', 'r3': 'stack'})
+        swapped = self.weights({'r1': 'stack', 'r2': 'management', 'r3': 'stack'})
+        self.assertEqual(first, swapped)
+
+
 if __name__ == '__main__':
     unittest.main()
