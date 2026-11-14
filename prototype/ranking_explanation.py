@@ -396,6 +396,9 @@ def explain_leader(report: dict) -> LeaderExplanation | None:
     state_text = (_STATE_TEXT[leader['state']] if ranking.get('complete', True) else
                   'Предварительный выбор среди обработанных вакансий. Сравнение со всем набором не завершено.')
     text = f'{names}: {state_text}'
+    if not leader.get('comparable', True):  # nothing counted anywhere: there is no leader to present
+        text = ('Недостаточно данных для сравнения: ни по одной вакансии нет подтверждённых совпадений. '
+                'Порядок показа не является выбором; интервал 0–100 означает неизвестность, а не шанс.')
     if factors and leader['state'] != 'none_fit':
         text += ' Решающие основания: ' + '; '.join(
             f'«{r.requirement_quote}» — {r.status}, {r.effect} п' for r in factors) + '.'
