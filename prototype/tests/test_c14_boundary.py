@@ -45,20 +45,69 @@ class C14BoundaryTests(unittest.TestCase):
     def setUpClass(cls):
         cls.detector = Detector(load('data/private/privacy-models'))
 
-    def run_fixture(self, mutate):
+    def run_fixture(self, mutate, resume_suffix=''):
         async def run():
             privacy = LocalPrivacy(self.detector)
             model = FixtureSDK(privacy, mutate)
             resume, jobs = demo_inputs()
             sources = {}
             try:
-                report = await run_pipeline(resume + ' Использовал Excel 1 год.', jobs, model, privacy,
+                report = await run_pipeline(resume + ' Использовал Excel 1 год.' + resume_suffix, jobs, model, privacy,
                                             source_sink=sources.update)
                 return report, model.requests, privacy.summary(), sources
             finally:
                 await model.close()
                 privacy.close()
         return asyncio.run(run())
+
+    def test_known_value_in_fact_prose_uses_checked_evidence_without_repeating_network(self):
+        def mutate(task, payload, value):
+            if task == 'facts':
+                value['items'][0]['text'] = 'Опыт zqxprivate в разработке'
+                value['profile']['summary'][0]['text'] = 'Разработчик zqxprivate'
+        report, requests, _, sources = self.run_fixture(mutate, '\nФИО: zqxprivate')
+        self.assertTrue(report['ranking']['complete'], report['errors'])
+        self.assertEqual(len(requests), 7)
+        self.assertNotIn('zqxprivate', json.dumps(report, ensure_ascii=False))
+        self.assertNotIn('zqxprivate', json.dumps(requests, ensure_ascii=False))
+        fact = report['facts']['items'][0]
+        self.assertEqual(fact['text'], fact['quote'])
+        self.assertIn(fact['quote'], sources['resume'])
+
+    def test_known_value_recovery_does_not_rewrite_quotes_or_identifiers(self):
+        for field in ('quote', 'id', 'profile_source_quote'):
+            def mutate(task, payload, value):
+                if task == 'facts':
+                    if field == 'profile_source_quote':
+                        value['profile']['summary'][0]['sources'][0]['quote'] = 'zqxprivate'
+                    else:
+                        value['items'][0][field] = 'zqxprivate'
+            report, requests, _, _ = self.run_fixture(mutate, '\nФИО: zqxprivate')
+            self.assertEqual(report['ranking']['jobs'], [])
+            self.assertEqual(report['errors'][0]['code'], 'privacy_residual_findings')
+            self.assertEqual(len(requests), 1)
+
+    def test_recovered_prose_cannot_make_invented_citation_valid(self):
+        def mutate(task, payload, value):
+            if task == 'facts':
+                value['items'][0]['text'] = 'Опыт zqxprivate'
+                value['items'][0]['quote'] = 'Несуществующая цитата об опыте.'
+        report, requests, _, _ = self.run_fixture(mutate, '\nФИО: zqxprivate')
+        self.assertEqual(report['ranking']['jobs'], [])
+        self.assertEqual(report['errors'][0]['code'], 'model_invalid')
+        self.assertEqual(len(requests), 1)
+
+    def test_recovered_claim_preserves_number_boundaries_between_sources(self):
+        def mutate(task, payload, value):
+            if task == 'facts':
+                value['items'].extend([
+                    {'id':'f3','text':'Два результата','quote':'Выпустил 2 единицы.'},
+                    {'id':'f4','text':'Отчёты','quote':'Выпустил 300 отчётов.'}])
+                value['profile']['summary'] = [{'text':'Опыт zqxprivate', 'sources':[
+                    {'fact_id':'f3','quote':'Выпустил 2'}, {'fact_id':'f4','quote':'300 отчётов'}]}]
+        report, _, _, _ = self.run_fixture(mutate, '\nВыпустил 2 единицы. Выпустил 300 отчётов.\nФИО: zqxprivate')
+        self.assertTrue(report['ranking']['complete'], report['errors'])
+        self.assertEqual(report['profile']['state'], 'structure_ok', report['profile']['findings'])
 
     def test_contextual_ner_response_and_re_egress_keep_exact_quotes(self):
         def mutate(task, payload, value):

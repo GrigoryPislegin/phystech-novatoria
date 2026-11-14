@@ -96,6 +96,8 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
             report['privacy'] = privacy.summary()
         refresh_derived(report)
         report['model'] = getattr(model, 'model', None)
+        if getattr(model, 'response_normalizations', None):
+            report['model_response_normalizations'] = list(model.response_normalizations)
         if hasattr(model, 'budget'):
             report['usage'] = model.usage
             report['reserved_usd_estimate'] = str(model.budget.reserved)
