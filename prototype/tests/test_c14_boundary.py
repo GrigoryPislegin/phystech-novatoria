@@ -72,6 +72,56 @@ class C14BoundaryTests(unittest.TestCase):
         self.assertTrue(all(j['requirement_factors'] is None for j in report['ranking']['jobs']))
         self.assertNotIn('Education', json.dumps(requests, ensure_ascii=False))
 
+    def test_inexact_optional_mandatory_markers_keep_requirements_with_explicit_warnings(self):
+        def mutate(task, payload, value):
+            if task == 'requirements':
+                value['items'][0]['mandatory_quote'] = 'Требования:\n' + value['items'][0]['quote']
+        report, requests, _, sources = self.run_fixture(mutate)
+        self.assertEqual(report['errors'], [])
+        self.assertEqual(len(requests), 7, 'discarding an unsupported marker needs no new model call')
+        self.assertTrue(report['ranking']['complete'])
+        self.assertFalse(report['verification']['final_allowed'])
+        for job in report['ranking']['jobs']:
+            requirement = job['requirements']['items'][0]
+            self.assertIsNone(requirement['mandatory_quote'])
+            self.assertIn(requirement['quote'], sources['jobs'][job['job_id']])
+            self.assertEqual(job['contract_warnings'],
+                             [{'code':'mandatory_status_unconfirmed', 'requirement_id':requirement['id']}])
+            queued = [item for item in report['review_queue']['items']
+                      if item['job_id'] == job['job_id'] and item['requirement_id'] == requirement['id']
+                      and item['reason_code'] == 'mandatory_unbound']
+            self.assertEqual(len(queued), 1)
+            self.assertEqual(queued[0]['action'], 'check_list')
+        two = next(j for j in report['ranking']['jobs'] if j['job_id'] == 'job-001')
+        self.assertEqual([r['id'] for r in two['requirements']['items']], ['r1','r2'])
+        self.assertEqual(len(two['evaluation']['rows']), 2)
+
+    def test_mandatory_recovery_does_not_accept_invalid_requirement_quotes_or_ids(self):
+        for defect in ('quote', 'duplicate_id'):
+            def mutate(task, payload, value):
+                if task == 'requirements':
+                    value['items'][0]['mandatory_quote'] = 'Требования:\n' + value['items'][0]['quote']
+                    if defect == 'quote':
+                        value['items'][0]['quote'] = 'Требования:\n' + value['items'][0]['quote']
+                    else:
+                        value['items'].append(dict(value['items'][0]))
+            report, requests, _, _ = self.run_fixture(mutate)
+            self.assertEqual(report['ranking']['jobs'], [])
+            self.assertTrue(all(e['code'] == 'model_invalid' for e in report['errors']))
+            self.assertEqual(sum(r['task']=='requirements' for r in requests), 6)
+            self.assertFalse(any(r['task']=='evaluation' for r in requests))
+
+    def test_private_or_untrusted_mandatory_marker_blocks_before_recovery(self):
+        for marker, error in [('zqxprivate', 'privacy_residual_findings'),
+                              ('[[PRIV:0123456789abcdef:99:PERSON]]', 'privacy_untrusted_reference')]:
+            def mutate(task, payload, value):
+                if task == 'requirements':
+                    value['items'][0]['mandatory_quote'] = marker + ' ' + value['items'][0]['quote']
+            report, requests, _, _ = self.run_fixture(mutate, '\nФИО: zqxprivate')
+            self.assertEqual(report['ranking']['jobs'], [])
+            self.assertEqual(report['errors'][0]['code'], error)
+            self.assertEqual([r['task'] for r in requests], ['facts','requirements'])
+
     def test_optional_labels_do_not_hide_forged_or_private_core_ids(self):
         for core_id in (False, True):
             def mutate(task, payload, value):

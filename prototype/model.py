@@ -18,6 +18,7 @@ requirements: извлеки отдельные проверяемые проф�
 В factors используй только существующие requirement_id, без повторов. Группы описывают требования вакансии, а не качества кандидата; не выдумывай отсутствующие компетенции ради диаграммы. Группировка не меняет веса и итоговый скоринг.
 mandatory_quote только для явно обязательного требования (нужна дословная цитата обязательности), иначе null.
 mandatory_quote должна включать целиком quote этого требования и не быть короче 8 символов.
+Не склеивай заголовок раздела с отдельным пунктом в mandatory_quote: это должен быть один непрерывный фрагмент исходника. Если такую цитату дать нельзя, верни null.
 Если обязательность задана заголовком, цитируй непрерывный фрагмент от заголовка до требования включительно.
 Не дублируй одно и то же требование разными ids. Наличие цитаты не доказывает её смысловую релевантность.
 facts: извлеки профессиональные факты резюме с дословной цитатой, ids f1,f2...
@@ -128,12 +129,15 @@ class Model:
 
     async def ask(self, schema, task, payload):
         from .contracts import Facts, Requirements, Evaluation, validate_pair
+        from .analysis_contracts import RequirementsAnalysis
         # Retry only output-contract failures, once, from the same checked
         # source. Never send a rejected answer back or retry a privacy failure.
         for attempt in range(2):
             try:
                 result = await self._ask_once(schema, task, payload, repair=bool(attempt))
                 try:
+                    if isinstance(result, RequirementsAnalysis):
+                        result = result.without_unverified_mandatory(payload['text'])
                     if isinstance(result, (Facts, Requirements)):
                         result.validate_source(payload['text'])
                     elif isinstance(result, Evaluation):
@@ -141,6 +145,13 @@ class Model:
                                       Facts.model_validate(payload['facts']), result)
                 except ValueError:
                     raise ModelOutputError('model_invalid') from None
+                if isinstance(result, RequirementsAnalysis) and result._contract_warnings:
+                    await check_data(self.privacy, result.model_dump(mode='json'),
+                                     prepared=True, stage=task, direction='response')
+                    if not hasattr(self, 'response_normalizations'):
+                        self.response_normalizations = []
+                    self.response_normalizations.append({'stage':task, 'action':'unverified_mandatory_removed',
+                                                         'count':len(result._contract_warnings)})
                 return result
             except ModelOutputError as exc:
                 if attempt or str(exc) != 'model_invalid':

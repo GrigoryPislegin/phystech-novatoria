@@ -57,6 +57,42 @@ def clean_report():
 
 
 class HandoffTests(unittest.TestCase):
+    def test_recovered_mandatory_warning_requires_reading_and_versions_decisions(self):
+        from prototype.tests.test_c14_boundary import FixtureSDK
+
+        def mutate(task, payload, value):
+            if task == 'requirements':
+                value['items'][0]['mandatory_quote'] = 'Требования:\n' + value['items'][0]['quote']
+
+        async def recovered():
+            privacy = SyntheticPrivacy()
+            model = FixtureSDK(privacy, mutate)
+            try:
+                resume, vacancies = demo_inputs()
+                return await run_pipeline(resume, vacancies[:1], model, privacy)
+            finally:
+                await model.close()
+
+        report = {**asyncio.run(recovered()), 'run_id':'run-warning'}
+        warning = items(report, 'job-001', 'mandatory_unbound')[0]
+        confirmed = [decision(report, 'job-001', 'confirm_requirements')]
+        pending = assess_handoff(report, confirmed, 'job-001')
+        self.assertIn(warning.id, pending.open_items)
+        early = assess_handoff(report, confirmed + [decision(report, 'job-001', 'mark_for_handoff')], 'job-001')
+        self.assertNotEqual(early.state, 'reviewed_for_handoff')
+        reviewed = close_all(report, 'job-001')
+        self.assertEqual(assess_handoff(report, reviewed, 'job-001').state, 'reviewed_for_handoff')
+        changed = copy.deepcopy(report)
+        job(changed, 'job-001').pop('contract_warnings')
+        self.assertNotEqual(report_sha256(changed), report_sha256(report))
+        self.assertEqual(assess_handoff(changed, reviewed, 'job-001').state, 'stale')
+
+        legacy = clean_report()
+        old = report_sha256(legacy)
+        for vacancy in legacy['ranking']['jobs']:
+            vacancy.pop('contract_warnings', None)
+        self.assertEqual(report_sha256(legacy), old)
+
     def test_clean_report_needs_confirmation_and_an_explicit_mark(self):
         report = clean_report()
         self.assertEqual(assess_handoff(report, [], 'job-001').state, 'draft')

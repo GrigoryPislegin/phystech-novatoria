@@ -232,6 +232,7 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
             extracted_requirements = await control.call(
                 lambda: model.ask(RequirementsAnalysis, 'requirements', {'text':text}), stage, jid)
             stage = 'requirements_validation'
+            contract_warnings = list(getattr(extracted_requirements, '_contract_warnings', []))
             extracted_requirements = RequirementsAnalysis.model_validate(extracted_requirements.model_dump())
             extracted_requirements.validate_source(text)
             requirements = Requirements(items=extracted_requirements.items)
@@ -252,6 +253,7 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
             review_checks[jid] = review.check(None, jid, text, requirements)
             computed_score = score(requirements, evaluation, evidence)
             results.append({'job_id':jid, 'requirements':requirements.model_dump(),
+                            'contract_warnings':contract_warnings,
                             'requirement_factors':(extracted_requirements.factors.model_dump()
                                                    if extracted_requirements.factors is not None else None),
                             'evidence_check':evidence.model_dump(),
