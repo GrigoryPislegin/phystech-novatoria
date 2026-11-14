@@ -89,6 +89,7 @@ class _Job:
         self.evaluation = Evaluation.model_validate(job['evaluation'])
         reported = job['score']
         self.policy = reported.get('policy_version')
+        self.leader_rules = reported.get('leader_rules')
         if self.policy not in POLICIES:  # a report is explained only by the policy that scored it
             raise ValueError('policy_mismatch')
         checks = PairCheck.model_validate(job['evidence_check']) if 'evidence_check' in job else None
@@ -142,7 +143,10 @@ class _Job:
                 evidence = evidence.model_copy(update={'rows': [
                     c.model_copy(update={'status': status, 'state': state}) if c.requirement_id in ids
                     else c for c in evidence.rows]})
-        return score(self.requirements, evaluation, evidence, policy=self.policy)
+        result = score(self.requirements, evaluation, evidence, policy=self.policy)
+        if self.leader_rules is None:  # a score saved before the stamp is ranked by the rules it was saved under
+            result.pop('leader_rules', None)
+        return result
 
     def contribution(self, rid: str) -> float:
         """Points of L the row gives now: L minus L with the row unknown."""
@@ -400,6 +404,9 @@ def explain_leader(report: dict) -> LeaderExplanation | None:
     state_text = (_STATE_TEXT[leader['state']] if ranking.get('complete', True) else
                   'Предварительный выбор среди обработанных вакансий. Сравнение со всем набором не завершено.')
     text = f'{names}: {state_text}'
+    if 'own_mostly_unknown' in leader['reasons']:
+        text += (' Подтверждённые сведения покрывают меньше половины требований этой вакансии: это лучший из '
+                 'мало изученных вариантов, а не установленный выбор.')
     if not leader.get('comparable', True):  # nothing counted anywhere: there is no leader to present
         text = ('Недостаточно данных для сравнения: ни по одной вакансии нет подтверждённых совпадений. '
                 'Порядок показа не является выбором; интервал 0–100 означает неизвестность, а не шанс.')

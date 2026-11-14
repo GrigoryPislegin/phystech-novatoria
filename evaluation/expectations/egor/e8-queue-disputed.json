@@ -211,6 +211,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 25.0,
        "disputed": 75.0,
@@ -434,6 +435,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 100.0,
@@ -610,6 +612,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 0.0,
@@ -663,6 +666,7 @@
     "reasons": [
      "own_mandatory_unresolved",
      "own_disputed",
+     "own_mostly_unknown",
      "challenger_doubted",
      "close_margin"
     ],
@@ -932,6 +936,7 @@
    "reasons": [
     "own_mandatory_unresolved",
     "own_disputed",
+    "own_mostly_unknown",
     "challenger_doubted",
     "close_margin"
    ],
@@ -1019,7 +1024,7 @@
    "unassessed": [
     "job-c"
    ],
-   "summary": "job-a: Предварительный выбор среди обработанных вакансий. Сравнение со всем набором не завершено. Решающие основания: «SQL желателен.» — full, 25.0 п. Ограничения: «Обязателен опыт Python.» — спорно. Условия работы расходятся (work_mode): в оценку не входят, решает HR. Может изменить выбор: job-a «Обязателен опыт Python.»; job-b «Python». Близкие вакансии: job-b. Без подтверждённых совпадений: job-c — это отсутствие сведений, не отказ. Обработаны не все вакансии: место предварительное."
+   "summary": "job-a: Предварительный выбор среди обработанных вакансий. Сравнение со всем набором не завершено. Подтверждённые сведения покрывают меньше половины требований этой вакансии: это лучший из мало изученных вариантов, а не установленный выбор. Решающие основания: «SQL желателен.» — full, 25.0 п. Ограничения: «Обязателен опыт Python.» — спорно. Условия работы расходятся (work_mode): в оценку не входят, решает HR. Может изменить выбор: job-a «Обязателен опыт Python.»; job-b «Python». Близкие вакансии: job-b. Без подтверждённых совпадений: job-c — это отсутствие сведений, не отказ. Обработаны не все вакансии: место предварительное."
   },
   "review_queue": {
    "schema_version": "review-queue-0.1",
@@ -1427,6 +1432,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 25.0,
        "disputed": 75.0,
@@ -1697,6 +1703,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 100.0,
@@ -1932,6 +1939,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 0.0,
