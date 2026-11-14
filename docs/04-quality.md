@@ -1,6 +1,10 @@
 # Качество и резерв
 
-**Последняя принятая поставка, 14 ноября 02:22 МСК:** runtime bffa94a, scoring v3, 404 Python +40 JS PASS, нативный/Docker UI и независимый Linux CI PASS. [Итоговая приёмка с ограничениями](reviews/night-bffa94a-acceptance.md) · [готовый release](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-bffa94a) · [команды](28-local-app-runbook.md). Более ранние записи ниже — история, а не текущий статус.
+**C14, 14 ноября: source runtime 36f406b.** Настоящий NER + SDK/mock полный путь 3/3, спорный 3/3, неполный 2/3; отрицательные проверки 0/3 и 1/3. 425 Python +41 JS PASS, одно независимое ревью и исправления. Chrome показывает конкретную причину/этап, 0/3 как неуспех, сохранённые успехи при частичной остановке и предварительный выбор. Семь исходных DOCX читаются; резюме №2 + 3 вакансии проходят локальную защиту и исходящую проверку; HTTP inspect 4/4. **Новых live-вызовов 0; успешный live на кейсе не подтверждён.** [SHA, команды, Certum-сравнение, проверки и ограничения](c14-recovery.md).
+
+Новый **локальный** Docker arm64 `recruiter-prototype:c14-36f406b-arm64`, image `sha256:969a443d20f0a1fe20ab6bc0f43e5f946a8081ebac0d796d4512cebda5d4c0d8`: сборка и 25 boundary/service/HTTP-тестов под UID10001 без сети PASS; архив загружен и 12 C14-регрессий повторены. В опубликованном release этот образ отсутствует. E12 принят, его формулировка неполного лидера исправлена. E13 пока не опубликован и не принят. Точная причина старого response-failure неизвестна, так как ответ не сохранялся; фикс подтверждён отдельной синтетической регрессией и не выдаётся за доказанный case-live.
+
+**Опубликованная ночная поставка, 14 ноября 02:22 МСК:** runtime bffa94a, scoring v3, 404 Python +40 JS PASS, нативный/Docker UI и независимый Linux CI PASS. [Приёмка](reviews/night-bffa94a-acceptance.md) · [release без C14](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-bffa94a) · [старые команды](28-local-app-runbook.md). Записи ниже — история, а не подтверждение готовности нового live.
 
 ## Комплексный аудит и совместимость новых PR — 13 ноября, около 17:20 МСК
 
