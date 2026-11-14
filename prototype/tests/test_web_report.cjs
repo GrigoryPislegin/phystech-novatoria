@@ -413,3 +413,11 @@ test('interview plan is bounded, deduplicated and distinguishes calculated swing
   assert.ok(plan.every(ref => !ref.changesOrder || report.leader.canChange.some(item => item.jobId === ref.jobId && item.row === ref.row)));
   assert.equal(JSON.stringify(report), before);
 });
+
+
+test('score labels show only confirmed lower credit, never hypothetical upper or average', () => {
+  const { scoreLabel } = require('../static/report.js');
+  assert.equal(scoreLabel({lower:25,upper:81.25}), '25 / 100');
+  assert.equal(scoreLabel({lower:3.3333,upper:96.6667}), '3,3 / 100');
+  assert.equal(scoreLabel({lower:0,upper:100}), '0 / 100');
+});

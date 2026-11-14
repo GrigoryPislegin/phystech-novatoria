@@ -108,10 +108,8 @@
     match: 'По оценённым требованиям соответствует'
   };
 
-  function scoreRange(score) {
-    const low = numberFormat.format(score.lower);
-    const high = numberFormat.format(score.upper);
-    return (score.lower === score.upper ? low : low + '–' + high) + '%';
+  function scoreLabel(score) {
+    return numberFormat.format(score.lower) + ' / 100';
   }
 
   function describeRun(report) {
@@ -748,7 +746,7 @@
   }
 
   const api = {
-    MAX_REPORT_BYTES, interviewPlan, parseReport, createDisplayText, displayCopy, bindDisplayData, radarGeometry, filterRows, statusCounts, describeDashboard, describeRun, describeFailure, describeFit, scoreRange, assessments,
+    MAX_REPORT_BYTES, interviewPlan, parseReport, createDisplayText, displayCopy, bindDisplayData, radarGeometry, filterRows, statusCounts, describeDashboard, describeRun, describeFailure, describeFit, scoreLabel, assessments,
     mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
   };
   if (typeof module === 'object' && module.exports) {

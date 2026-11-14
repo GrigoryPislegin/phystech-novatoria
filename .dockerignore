@@ -32,6 +32,7 @@ prototype/tests/**
 !prototype/run_store.py
 !prototype/local_service.py
 !prototype/web_app.py
+!prototype/public_demo.py
 !prototype/static/
 prototype/static/**
 !prototype/static/*.html
@@ -41,6 +42,7 @@ prototype/static/**
 !prototype/tests/test_run_store.py
 !prototype/tests/test_local_service.py
 !prototype/tests/test_web_app.py
+!prototype/tests/test_public_demo.py
 !prototype/tests/test_c14_boundary.py
 !prototype/tests/test_professional_context.py
 !prototype/tests/test_e13_case_acceptance.py
@@ -85,3 +87,7 @@ runtime/**
 runtime/privacy-models/**
 !runtime/privacy-models/slovnet_ner_news_v1.tar
 !runtime/privacy-models/navec_news_v1_1B_250K_300d_100q.tar
+
+!prototype/recheck.py
+!prototype/tests/test_evidence_linking.py
+!prototype/tests/test_recheck.py

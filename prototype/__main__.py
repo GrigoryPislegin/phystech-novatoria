@@ -50,6 +50,8 @@ def main():
                      help='Один HTTPS origin за обратным прокси с аутентификацией')
     web.add_argument('--state-dir', type=Path, default=Path('data/private/local-app'))
     web.add_argument('--allow-live', action='store_true', help='Явно разрешить платный внешний API для загруженных документов')
+    web.add_argument('--anonymous-demo-budget', type=float, default=None, metavar='USD',
+                     help='Без пароля: отдельная история браузера и общий сохраняемый бюджет демо; нужен HTTPS origin')
     for command in ['demo','run']:
         p = sub.add_parser(command)
         p.add_argument('--model', choices=list(RATES), default='gpt-6-luna')

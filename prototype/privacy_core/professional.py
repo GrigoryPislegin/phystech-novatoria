@@ -163,7 +163,7 @@ def _relationship_context(text, pos):
     return bool(_RELATION.search(prefix))
 
 
-def _table_terms(value):
+def technical_list_spans(value):
     """A skills table cell must be a complete flat vocabulary list, not fields."""
     terms, pos = [], 0
     while pos < len(value):
@@ -250,7 +250,7 @@ def source_spans(text, *, include_usage=True):
     for row in _SKILL_ROW.finditer(text):
         if not _RELATION.search(row['items']):
             spans.extend((row.start('items')+start, row.start('items')+end)
-                         for start, end in _table_terms(row['items']))
+                         for start, end in technical_list_spans(row['items']))
     for concept in _PROFESSIONAL_CONCEPT.finditer(text):
         if not _RELATION.search(_clause(text, _clause_start(text, concept.start()))):
             name = 'pixel' if concept['pixel'] else 'support'
