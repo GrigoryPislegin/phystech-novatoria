@@ -1,0 +1,78 @@
+{
+ "schema_version": "e13-cases-0.1",
+ "decision_status": "draft",
+ "note": "Ожидания — гипотезы команды: допустимые отношения порядка и статусы, не единственный рейтинг. known_blocker и known_leak фиксируют текущее поведение настоящего privacy_core на этих вымышленных документах; expected — что должно получаться.",
+ "cases": [
+  {
+   "case_id": "E13-minimal",
+   "fixture": "minimal",
+   "domain": "analytics",
+   "split": "dev",
+   "decision_status": "draft",
+   "rationale": "Первый минимальный набор: подтверждённый SQL и дашборд против явного отрицания Python; «об Airflow ничего не сказано» — unknown, не fail; удалёнка против офиса — конфликт условий, не отказ.",
+   "personal": [
+    "Орлова",
+    "Ксения",
+    "Павловна",
+    "900) 000-00-01",
+    "ksenia.synthetic@example.com"
+   ],
+   "min_facts": 6,
+   "min_requirements": 2,
+   "passthrough": {
+    "order": [
+     [
+      "job-a",
+      "job-b"
+     ]
+    ],
+    "recommendation_in": [
+     "clarify"
+    ],
+    "statuses": {
+     "job-a": {
+      "Желателен опыт работы с Python.": [
+       "fail"
+      ]
+     },
+     "job-b": {
+      "Желательно знание Airflow.": [
+       "unknown"
+      ],
+      "Обязателен коммерческий опыт разработки на Python от 1 года.": [
+       "fail",
+       "partial"
+      ]
+     }
+    },
+    "mandatory": {
+     "job-b": "violated"
+    },
+    "conflicts": {
+     "job-a": [],
+     "job-b": [
+      "work_mode"
+     ]
+    }
+   },
+   "real_privacy": {
+    "expected": {
+     "processed": 2,
+     "stopped_at": null
+    },
+    "known_blocker": {
+     "processed": 0,
+     "stopped_at": {
+      "stage": "facts",
+      "code": "privacy_residual_findings"
+     }
+    },
+    "known_leak": [
+     "Орлова",
+     "Ксения",
+     "Павловна"
+    ]
+   }
+  }
+ ]
+}
