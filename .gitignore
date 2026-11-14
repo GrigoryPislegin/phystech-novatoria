@@ -5,13 +5,14 @@ coverage/
 playwright-report/
 test-results/
 .env
+model.env
 .env.*
 !.env.example
 .DS_Store
 artifacts/
 *.log
 .cache/
-.venv/
+.venv
 venv/
 __pycache__/
 .pytest_cache/
@@ -32,6 +33,11 @@ vendor/superpowers/
 # Local copies of development tools; not part of the team project
 /vendor/
 
+# Generated project skill links/config; recreate with scripts/setup_* after cloning.
+/.agents/skills/
+/.claude/skills/
+/.codex/config.toml
+
 # Private runtime configuration, datasets and local checkouts
 **/config.toml
 .envrc
@@ -40,5 +46,6 @@ vendor/superpowers/
 *.onnx
 *.pt
 *.pth
-!services/platform/dist/
-!services/platform/dist/hhsdk-1.0.1-py3-none-any.whl
+
+# Optional checksum-verified public weights for an offline Docker build
+/runtime/privacy-models/

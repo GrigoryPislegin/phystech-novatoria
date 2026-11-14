@@ -1,0 +1,31 @@
+diff --git a/prototype/pipeline.py b/prototype/pipeline.py
+index 0fcf54b..cf5617a 100644
+--- a/prototype/pipeline.py
++++ b/prototype/pipeline.py
+@@ -15,7 +15,7 @@ from .contracts import Facts, Requirements, Evaluation, validate_pair
+ from .scoring import score, rank, POLICY_VERSION
+ from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
+ from .candidate_profile import check_profile, check_conditions
+-from .ranking_explanation import compare
++from .ranking_explanation import compare, explain_leader
+ from .review_queue import build_review_queue
+ from .review_policy import assess_handoff
+ from .evidence import Source, check_pair
+@@ -73,6 +73,8 @@ def refresh_derived(report, decisions=()):
+     ranked = report['ranking']['jobs']
+     report['comparisons'] = [compare(report, ranked[0]['job_id'], job['job_id']).model_dump()
+                              for job in ranked[1:]]
++    leader = explain_leader(report)  # None for a report scored before policy v3
++    report['leader'] = leader.model_dump() if leader is not None else None
+     report['review_queue'] = build_review_queue(report).model_dump()
+     report['handoff'] = [assess_handoff(report, list(decisions), job['job_id']).model_dump()
+                          for job in ranked]
+@@ -246,6 +248,8 @@ def _write_report_files(report, out):
+     ):
+         actions['clarify'] = 'Подтверждённого соответствия недостаточно. Проверьте выявленные несоответствия и релевантность доказательств; автоматический отказ недопустим.'
+     lines += [actions.get(recommendation, 'Проверьте результат вручную.')]
++    if report.get('leader'):  # policy v3: factors, limits and what can change the first place
++        lines += ['Первое место по политике: ' + literal(report['leader']['summary'])]
+     if ranked:
+         label = 'Первое место' if report['ranking']['complete'] else 'Первое место среди обработанных (предварительно)'
+         lines += [label + ': ' + ', '.join(literal(j['job_id']) for j in ranked if j['rank'] == 1)]

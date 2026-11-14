@@ -23,6 +23,12 @@ class CredentialDiagnosticsTests(unittest.TestCase):
         header = '-----BEGIN ' + 'PRIVATE KEY-----'
         self.assertIn(('private key', 1), module.credential_findings(header))
 
+    def test_openai_token_is_detected_without_exposing_value(self):
+        token = 'sk-proj-' + 'C' * 40
+        findings = module.credential_findings(token)
+        self.assertIn(('OpenAI token', 1), findings)
+        self.assertNotIn(token, repr(findings))
+
     def test_config_uri_credentials_are_not_printed(self):
         uri = 'amqp://' + 'fixture-user:fixture-password@local/'
         findings = module.credential_findings(uri, check_dsn=True)
@@ -60,21 +66,21 @@ class RepositoryIntegrationTests(unittest.TestCase):
             result = module.main()
         return result, stream.getvalue()
 
-    def test_missing_pyproject_is_rejected(self):
-        (self.root / 'services/platform/pyproject.toml').unlink()
+    def test_missing_runtime_dependencies_are_rejected(self):
+        (self.root / 'prototype/requirements.lock.txt').unlink()
         result, output = self.run_check()
         self.assertEqual(result, 1)
-        self.assertIn('Missing or ignored required file: services/platform/pyproject.toml', output)
+        self.assertIn('Missing or ignored required file: prototype/requirements.lock.txt', output)
 
     def test_toml_example_is_parsed(self):
-        (self.root / 'services/hharon/config.toml.example').write_text('port = [')
+        (self.root / 'config.toml.example').write_text('port = [')
         result, output = self.run_check()
         self.assertEqual(result, 1)
         self.assertIn('config.toml.example: parse error', output)
 
     def test_toml_example_credentials_are_rejected(self):
         secret = 'ghp_' + 'B' * 36
-        (self.root / 'services/hharon/config.toml.example').write_text('secret = "' + secret + '"')
+        (self.root / 'config.toml.example').write_text('secret = "' + secret + '"')
         result, output = self.run_check()
         self.assertEqual(result, 1)
         self.assertIn('GitHub token', output)

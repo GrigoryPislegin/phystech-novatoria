@@ -1,1 +1,0 @@
-from hharon.protocols.user.protocol import HharonUserRepositoryProtocol as HharonUserRepositoryProtocol

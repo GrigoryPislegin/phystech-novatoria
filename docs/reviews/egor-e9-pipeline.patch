@@ -1,0 +1,65 @@
+diff --git a/prototype/pipeline.py b/prototype/pipeline.py
+index b081ed5..9ec0af5 100644
+--- a/prototype/pipeline.py
++++ b/prototype/pipeline.py
+@@ -119,10 +119,10 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
+         extracted = ResumeAnalysis.model_validate(extracted.model_dump())
+         facts = Facts(items=extracted.items)
+         facts.validate_source(safe_resume)
+-        checked = check_profile(extracted.profile, facts, cv_source)
+-        if checked.state == 'invalid':
+-            raise ModelOutputError('invalid_profile')
+-        profile_check, profile_missing = checked, extracted.profile.missing
++        # An invalid profile is shown as «не удалось проверить» and queued (profile_review);
++        # it must not cost the ranking of every vacancy.
++        profile_check = check_profile(extracted.profile, facts, cv_source)
++        profile_missing = extracted.profile.missing
+     except Exception as exc:
+         errors.append({'job_id':None, 'code':error_code(exc, stage), 'stage':stage, 'type':type(exc).__name__})
+         return finish(Facts(items=[]))
+@@ -141,9 +141,8 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None):
+             evaluation = Evaluation(rows=assessed.rows)
+             validate_pair(requirements, facts, evaluation)
+             job_source = Source.of(jid, text)
++            # Invalid conditions block this vacancy's handoff (queue: invalid_evidence) but keep it ranked.
+             conditions = check_conditions(assessed.conditions, facts, cv_source, job_source)
+-            if conditions.has_invalid:
+-                raise ModelOutputError('invalid_conditions')
+             evidence = check_pair(requirements, facts, evaluation, cv_source, job_source)
+             if evidence.has_invalid:
+                 raise ModelOutputError('invalid_evidence')
+@@ -231,7 +230,10 @@ def _write_report_files(report, out):
+         'review_none_fit': 'Проверьте выявленные обязательные несоответствия; автоматический отказ недопустим.',
+         'incomplete': 'Завершите обработку пропущенных вакансий; окончательный выбор по этому отчёту невозможен.',
+     }
+-    if recommendation == 'clarify' and not any(
++    top_scores = [job['score'] for job in ranked if job['rank'] == 1]
++    if recommendation == 'clarify' and any(s.get('disputed_ids') or s.get('excluded_mandatory_ids') for s in top_scores):
++        actions['clarify'] = 'Подтверждённого соответствия недостаточно: у первого места есть спорные доказательства или неприменённые маркеры обязательности. Прочитайте их контекст в очереди проверки до вывода; автоматический отказ недопустим.'
++    elif recommendation == 'clarify' and not any(
+         row['status'] in {'unknown', 'partial'} for job in ranked if job['rank'] == 1
+         for row in job['evaluation']['rows']
+     ):
+@@ -274,11 +276,21 @@ def _write_report_files(report, out):
+             if req['mandatory_quote']:
+                 lines.append(f"  Обязательность предложена моделью — подтвердите: {literal(req['mandatory_quote'])}")
+             if question: lines.append(f"  Вопрос для уточнения: {literal(question)}")
++        for item in (job.get('conditions') or {}).get('items', []):
++            if item.get('state') == 'conflict' or item.get('check') == 'needs_review':
++                sides = '; '.join(f"{who}: {literal(span['quote'])}" for who, span in
++                                  (('резюме', item.get('cv_span')), ('вакансия', item.get('vacancy_span'))) if span)
++                lines.append(f"- Условие {literal(item['kind'])}: {literal(item['state'])}; {sides}. Решает HR, это не отказ.")
+         lines.append('')
++        disputed = set(job['score'].get('disputed_ids', []))
+         for status, label in [('full', 'Сильные стороны'), ('partial', 'Частичное соответствие'),
+                               ('fail', 'Выявленные несоответствия'), ('unknown', 'Не хватает сведений')]:
+-            names = [literal(display_label(reqs[row['requirement_id']])) for row in job['evaluation']['rows'] if row['status'] == status]
++            names = [literal(display_label(reqs[row['requirement_id']])) for row in job['evaluation']['rows']
++                     if row['status'] == status and row['requirement_id'] not in disputed]
+             lines.append(label + ': ' + (', '.join(names) if names else 'не выявлены по оценке'))
++        if disputed:
++            lines.append('Спорное доказательство, проверить до вывода: ' + ', '.join(
++                literal(display_label(reqs[rid])) for rid in sorted(disputed)))
+         lines += ['Риск интерпретации: статусы предложены моделью; дословность цитат не доказывает правильность вывода.',
+                   'Действие рекрутера: проверить обоснования и уточнить открытые вопросы; решение остаётся за человеком.', '']
+     if report['errors']: lines += ['Есть ошибки: рейтинг неполный. Подробности в report.json.']

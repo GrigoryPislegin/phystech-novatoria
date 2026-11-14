@@ -15,20 +15,18 @@ ROOT = Path(__file__).resolve().parents[1]
 PATTERNS = {
     'private key': re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'),
     'GitHub token': re.compile(r'\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{40,})\b'),
+    'OpenAI token': re.compile(r'\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}\b'),
+    'AWS access key': re.compile(r'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b'),
     'Telegram bot token': re.compile(r'\b\d{8,12}:[A-Za-z0-9_-]{30,}\b'),
     'JWT literal': re.compile(r'\beyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\b'),
 }
 DSN_PATTERN = re.compile(r"\b(?:mongodb(?:\+srv)?|postgres(?:ql)?(?:\+asyncpg)?|amqps?|rediss?)://[^\s/:@\"']+:[^\s/@\"']+@")
-TEXT_SUFFIXES = {'.py', '.md', '.toml', '.yaml', '.yml', '.json', '.tmpl', '.proto', '.j2', '.sh', '.csv'}
-TEAM_DOCS = ['README.md', 'START_HERE.md', 'CONTRIBUTING.md', 'THIRD_PARTY_NOTICES.md',
-             'docs/01-brief.md', 'docs/ML_READINESS.md', 'docs/SETUP.md', 'docs/TEAM_REQUEST.md',
-             'docs/nanimai/REVIEW.md', 'docs/nanimai/MIPT_CASE.md']
-REQUIRED = TEAM_DOCS + ['services/platform/uv.lock', 'services/hharon/uv.lock',
-                       'services/platform/pyproject.toml', 'services/hharon/pyproject.toml',
-                       'services/platform/example.config.toml', 'services/hharon/config.toml.example',
-                       'docs/nanimai/import-manifest.json', 'docs/nanimai/input-sha256.json',
-                       'services/platform/dist/hhsdk-1.0.1-py3-none-any.whl',
-                       '.github/workflows/repository-check.yml', 'templates/team.csv', 'templates/backlog.csv']
+TEXT_SUFFIXES = {'.py', '.md', '.toml', '.yaml', '.yml', '.json', '.tmpl', '.proto', '.j2', '.sh', '.csv',
+                 '.txt', '.js', '.cjs', '.html', '.css', '.example'}
+TEAM_DOCS = ['README.md', 'START_HERE.md', 'THIRD_PARTY_NOTICES.md']
+REQUIRED = TEAM_DOCS + ['Dockerfile', '.dockerignore', 'prototype/requirements.lock.txt',
+                       'prototype/.env.example', 'prototype/__main__.py',
+                       '.github/workflows/repository-check.yml']
 
 
 def credential_findings(text: str, *, check_dsn: bool = False) -> list[tuple[str, int]]:
@@ -44,7 +42,7 @@ def credential_findings(text: str, *, check_dsn: bool = False) -> list[tuple[str
 
 def main() -> int:
     if sys.version_info < (3, 13):
-        print('Use Python 3.13+ to parse both imported services.'); return 1
+        print('Use Python 3.13+ to check the application.'); return 1
     result = subprocess.run(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
                             cwd=ROOT, capture_output=True, check=True)
     paths = sorted({p.decode() for p in result.stdout.split(b'\0') if p})
@@ -59,7 +57,7 @@ def main() -> int:
             errors.append(f'Symlink must be reviewed: {name}'); continue
         if not path.is_file():
             continue
-        if path.name == 'config.toml' or path.name == '.env' or (path.name.startswith('.env.') and path.name != '.env.example'):
+        if path.name in {'config.toml', '.env', 'model.env'} or (path.name.startswith('.env.') and path.name != '.env.example'):
             errors.append(f'Runtime config must not be tracked: {name}')
         if path.suffix in {'.pem', '.key', '.zip', '.safetensors', '.onnx', '.pt', '.pth'}:
             errors.append(f'Private/large artifact must not be tracked: {name}')

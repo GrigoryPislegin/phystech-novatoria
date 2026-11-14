@@ -1,6 +1,0 @@
-from . import skills as skills
-from .skills import SkillRecommendationError as SkillRecommendationError
-from .skills import SkillRecommendationProtocol as SkillRecommendationProtocol
-from .skills import SkillRecommendationRequest as SkillRecommendationRequest
-from .skills import SkillRecommendationResponse as SkillRecommendationResponse
-from .skills import SkillsRecommendationsNotFound as SkillsRecommendationsNotFound

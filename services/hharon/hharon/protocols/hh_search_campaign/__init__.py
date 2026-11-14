@@ -1,1 +1,0 @@
-from .db_protocol import SearchCampaignRepositoryProtocol as SearchCampaignRepositoryProtocol

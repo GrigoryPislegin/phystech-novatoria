@@ -1,1 +1,0 @@
-from .adapter import PostgresHharonUserRepositoryAdapter as PostgresHharonUserRepositoryAdapter

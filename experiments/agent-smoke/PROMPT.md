@@ -1,0 +1,6 @@
+Run a bounded native subagent smoke test. This is explicitly authorized as a synthetic orchestration experiment, not product development. Do not brainstorm, implement, install, commit, read personal memory, or follow the general first-hour workflow. Do not load irrelevant skills.
+
+1. Discover the project-defined hackathon_scout and hackathon_reviewer roles. If unavailable, report that and stop; do not silently substitute a generic role.
+2. Spawn hackathon_scout with no inherited conversation, model gpt-6-luna and reasoning high. Give only the absolute paths to experiments/agent-smoke/BRIEF.md and score.py. Ask for the contract and test cases, read-only, no child agents. Wait for its result. If close_agent exists, close it; V2 automatically evicts completed agents and has no close_agent.
+3. Spawn hackathon_reviewer with no inherited conversation, model gpt-6.1-sol and reasoning medium. Give the same paths, ask for concrete correctness findings against the brief, read-only, no child agents. Wait for its result and close only if supported.
+4. Return the two agent IDs, roles, observed model configuration if available, findings and whether each child actually completed. Do not claim a model or tool ran without evidence. Do not fix the fixture: the parent desktop session will do that. Maximum two children total, one open at a time.

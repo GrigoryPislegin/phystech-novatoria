@@ -1,6 +1,0 @@
-from . import service as service
-from .service import CriterionService as CriterionService
-from .service import CriterionServiceCriterionNotFoundError as CriterionServiceCriterionNotFoundError
-from .service import CriterionServiceError as CriterionServiceError
-from .service import CriterionServiceInvalidDataError as CriterionServiceInvalidDataError
-from .service import CriterionServiceVacancyNotFoundError as CriterionServiceVacancyNotFoundError

@@ -1,3 +1,0 @@
-from .protocol import GetVacancyByIDAccessDeniedError as GetVacancyByIDAccessDeniedError
-from .protocol import GetVacancyByIDError as GetVacancyByIDError
-from .protocol import GetVacancyByIDProtocol as GetVacancyByIDProtocol

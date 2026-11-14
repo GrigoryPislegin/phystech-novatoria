@@ -1,4 +1,0 @@
-from . import service as service
-from .service import VacancyImporterService as VacancyImporterService
-from .service import VacancyImporterServiceError as VacancyImporterServiceError
-from .service import VacancyImporterServiceWrongURLFormatError as VacancyImporterServiceWrongURLFormatError

@@ -1,6 +1,0 @@
-from . import service as service
-from .service import PublisherService as PublisherService
-from .service import PublisherServiceError as PublisherServiceError
-from .service import PublisherServiceInvalidDataError as PublisherServiceInvalidDataError
-from .service import PublisherServiceOAuth2Error as PublisherServiceOAuth2Error
-from .service import PublisherServiceWrongVacancyUrlError as PublisherServiceWrongVacancyUrlError

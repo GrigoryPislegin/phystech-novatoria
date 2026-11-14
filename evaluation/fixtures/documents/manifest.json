@@ -1,0 +1,60 @@
+{
+  "origin": "synthetic",
+  "expectations_commit": "5da6e81",
+  "documents": [
+    {
+      "kind": "resume",
+      "id": "E6-FE-01",
+      "file": "E6-FE-01.docx",
+      "text_sha256": "15d2169732e6d4e2d5cb4d10e0a2c88c423e643bd5d52e2a84c424d317a5ecf4"
+    },
+    {
+      "kind": "resume",
+      "id": "E6-FE-02",
+      "file": "E6-FE-02.pdf",
+      "text_sha256": "5e4071f902faef53d6c357cca1b9d734e33e67f6cd74a35ad4f83334c1a9af7b"
+    },
+    {
+      "kind": "resume",
+      "id": "E6-FA-01",
+      "file": "E6-FA-01.pdf",
+      "text_sha256": "590cdeaaef0b112d2bf48c7a95c8df0dae8b1a7c15d019e8f9c6bd0c1ba6b17e"
+    },
+    {
+      "kind": "resume",
+      "id": "E6-FA-03",
+      "file": "E6-FA-03.docx",
+      "text_sha256": "02e5243191cad50a751df342b8b553582de9c157c20d1bec7b8d71e2129c75d6"
+    },
+    {
+      "kind": "resume",
+      "id": "E6-ED-01",
+      "file": "E6-ED-01.docx",
+      "text_sha256": "a1eb0cdba919389a5622d2de9a88b9feb26dc7a2243582db22af5a823895dd31"
+    },
+    {
+      "kind": "resume",
+      "id": "E6-ED-02",
+      "file": "E6-ED-02.pdf",
+      "text_sha256": "a0ac2a809f5b5ac26a57cbf80b6fe45b6c79eb5224fbce36a9e136b772f70658"
+    },
+    {
+      "kind": "vacancy",
+      "id": "job-fe",
+      "file": "job-fe.pdf",
+      "text_sha256": "d01bf2f898da7454aaf360407ec13ce4df69011e4d60be411b120af86ca4dc33"
+    },
+    {
+      "kind": "vacancy",
+      "id": "job-fa",
+      "file": "job-fa.docx",
+      "text_sha256": "c1d5b747a42333165be670a8497d6fc70887b8afa5e2b6d148d56c003be25558"
+    },
+    {
+      "kind": "vacancy",
+      "id": "job-ed",
+      "file": "job-ed.pdf",
+      "text_sha256": "7ebbefaa90876b3518bd4277e011ece8477c4d9a44ae8994b79d7f97fd841942"
+    }
+  ]
+}
