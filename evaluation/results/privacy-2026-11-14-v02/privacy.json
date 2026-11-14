@@ -1,0 +1,1029 @@
+{
+  "schema_version": "privacy-acceptance-0.1",
+  "mode": "real_local_ner_on_synthetic",
+  "origin": "synthetic",
+  "policy_version": "local-privacy-0.2",
+  "cases_expected": 21,
+  "cases_assessed": 21,
+  "scope": "synthetic_span_regression_only",
+  "anonymity_verified": false,
+  "semantic_model_quality_measured": false,
+  "model_api_calls": 0,
+  "metrics": {
+    "identifiers_masked": {
+      "expected": 19,
+      "assessed": 19,
+      "passed": 19,
+      "failed": 0,
+      "unmeasured": 0,
+      "value": 1.0,
+      "failure_case_ids": []
+    },
+    "professional_preserved": {
+      "expected": 28,
+      "assessed": 28,
+      "passed": 24,
+      "failed": 4,
+      "unmeasured": 0,
+      "value": 0.8571428571428571,
+      "failure_case_ids": [
+        "employment_dates",
+        "english_job_title",
+        "rust_resume"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "ru_name_city",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "Мария Петрова\nМосква\nРазрабатывала на Python 3 года.",
+      "source_sha256": "6646456f0aba7a1f09b5bbf7a4fbb75d581215acb535f2948b1acf9c18c656d7",
+      "spans": [
+        {
+          "start": 0,
+          "end": 13,
+          "quote": "Мария Петрова",
+          "role": "identifier",
+          "covered_characters": 13,
+          "outcome": "masked"
+        },
+        {
+          "start": 14,
+          "end": 20,
+          "quote": "Москва",
+          "role": "identifier",
+          "covered_characters": 6,
+          "outcome": "masked"
+        },
+        {
+          "start": 21,
+          "end": 52,
+          "quote": "Разрабатывала на Python 3 года.",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 0,
+          "end": 13,
+          "kind": "PERSON",
+          "quote": "Мария Петрова"
+        },
+        {
+          "start": 14,
+          "end": 20,
+          "kind": "LOCATION",
+          "quote": "Москва"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "PERSON": 1,
+          "LOCATION": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "contacts",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "Email: candidate.synthetic@example.org\nТелефон: +7 (999) 123-45-67\nНавыки: Python, SQL.",
+      "source_sha256": "2923eb145e3ce9e6dca39a36861574dc04e93f112edc999330b623848174ee0c",
+      "spans": [
+        {
+          "start": 7,
+          "end": 38,
+          "quote": "candidate.synthetic@example.org",
+          "role": "identifier",
+          "covered_characters": 31,
+          "outcome": "masked"
+        },
+        {
+          "start": 48,
+          "end": 66,
+          "quote": "+7 (999) 123-45-67",
+          "role": "identifier",
+          "covered_characters": 18,
+          "outcome": "masked"
+        },
+        {
+          "start": 75,
+          "end": 86,
+          "quote": "Python, SQL",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 7,
+          "end": 38,
+          "kind": "EMAIL",
+          "quote": "candidate.synthetic@example.org"
+        },
+        {
+          "start": 48,
+          "end": 66,
+          "kind": "PHONE",
+          "quote": "+7 (999) 123-45-67"
+        },
+        {
+          "start": 7,
+          "end": 38,
+          "kind": "CONTACT",
+          "quote": "candidate.synthetic@example.org"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "EMAIL": 1,
+          "PHONE": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "obfuscated_email",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "Контакт: resume [at] example [dot] org\nОпыт SQL 2 года.",
+      "source_sha256": "5e43f376f09f8f188229c8f5a7c307563933eda1f8319dc8b68c406d2511173d",
+      "spans": [
+        {
+          "start": 9,
+          "end": 38,
+          "quote": "resume [at] example [dot] org",
+          "role": "identifier",
+          "covered_characters": 29,
+          "outcome": "masked"
+        },
+        {
+          "start": 44,
+          "end": 54,
+          "quote": "SQL 2 года",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 9,
+          "end": 38,
+          "kind": "EMAIL",
+          "quote": "resume [at] example [dot] org"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "EMAIL": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "unicode_email",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "Email: synthetic@example.org\nРазработка на Java 3 года.",
+      "source_sha256": "20c2649146d4f53d1d9445479515ded63859d0741f0c4ef8d1c37603574c4efd",
+      "spans": [
+        {
+          "start": 7,
+          "end": 28,
+          "quote": "synthetic@example.org",
+          "role": "identifier",
+          "covered_characters": 21,
+          "outcome": "masked"
+        },
+        {
+          "start": 43,
+          "end": 54,
+          "quote": "Java 3 года",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 7,
+          "end": 28,
+          "kind": "EMAIL",
+          "quote": "synthetic@example.org"
+        },
+        {
+          "start": 7,
+          "end": 28,
+          "kind": "CONTACT",
+          "quote": "synthetic@example.org"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "EMAIL": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "handles_links",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "Telegram — fictive_person\nLinkedIn: linkedin.com/in/fictive-person\nНавыки: Python.",
+      "source_sha256": "89f3097fe452179c5ec49d62e4bac7607caf17ccfbc411f3267e8729b8abf5f9",
+      "spans": [
+        {
+          "start": 11,
+          "end": 25,
+          "quote": "fictive_person",
+          "role": "identifier",
+          "covered_characters": 14,
+          "outcome": "masked"
+        },
+        {
+          "start": 36,
+          "end": 66,
+          "quote": "linkedin.com/in/fictive-person",
+          "role": "identifier",
+          "covered_characters": 30,
+          "outcome": "masked"
+        },
+        {
+          "start": 75,
+          "end": 81,
+          "quote": "Python",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 36,
+          "end": 66,
+          "kind": "LINK",
+          "quote": "linkedin.com/in/fictive-person"
+        },
+        {
+          "start": 36,
+          "end": 66,
+          "kind": "LINK",
+          "quote": "linkedin.com/in/fictive-person"
+        },
+        {
+          "start": 11,
+          "end": 25,
+          "kind": "CONTACT",
+          "quote": "fictive_person"
+        },
+        {
+          "start": 36,
+          "end": 66,
+          "kind": "CONTACT",
+          "quote": "linkedin.com/in/fictive-person"
+        },
+        {
+          "start": 0,
+          "end": 8,
+          "kind": "ORG",
+          "quote": "Telegram"
+        },
+        {
+          "start": 26,
+          "end": 34,
+          "kind": "ORG",
+          "quote": "LinkedIn"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "ORG": 2,
+          "CONTACT": 1,
+          "LINK": 1
+        },
+        "professional_information_may_be_hidden": true,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "ru_address",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "Адрес — ул. Лесная, д. 12, кв. 45\nОпыт: SQL 3 года.",
+      "source_sha256": "6316de2f716dcbff2437248392d0a055c3c94cf53f49f7a4822b8f3c4e8c2066",
+      "spans": [
+        {
+          "start": 8,
+          "end": 33,
+          "quote": "ул. Лесная, д. 12, кв. 45",
+          "role": "identifier",
+          "covered_characters": 25,
+          "outcome": "masked"
+        },
+        {
+          "start": 40,
+          "end": 50,
+          "quote": "SQL 3 года",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 8,
+          "end": 33,
+          "kind": "IDENTITY",
+          "quote": "ул. Лесная, д. 12, кв. 45"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "IDENTITY": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "birthdate",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "Дата рождения: 31 декабря 1990\nНавыки: Python 3 года.",
+      "source_sha256": "1fb48851503743cd0fb4affbc5994a9fc467dd976b0cfd9c53d3d5715b786b1a",
+      "spans": [
+        {
+          "start": 15,
+          "end": 30,
+          "quote": "31 декабря 1990",
+          "role": "identifier",
+          "covered_characters": 15,
+          "outcome": "masked"
+        },
+        {
+          "start": 39,
+          "end": 52,
+          "quote": "Python 3 года",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 15,
+          "end": 30,
+          "kind": "IDENTITY",
+          "quote": "31 декабря 1990"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "IDENTITY": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "english_header",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "John Smith\nWorked with Python for 4 years.",
+      "source_sha256": "6f5a735c6430aa2004f4d3389043a72c94c08be2cd610d9cb0fc0d65ffb6066b",
+      "spans": [
+        {
+          "start": 0,
+          "end": 10,
+          "quote": "John Smith",
+          "role": "identifier",
+          "covered_characters": 10,
+          "outcome": "masked"
+        },
+        {
+          "start": 23,
+          "end": 41,
+          "quote": "Python for 4 years",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 0,
+          "end": 10,
+          "kind": "PERSON",
+          "quote": "John Smith"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "PERSON": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "english_labels",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "Full name: John Smith\nAddress: London, Baker Street 22\nSQL: 3 years.",
+      "source_sha256": "44ac98fb39b05baf074fea156fb6a1f1ac3e0f58ee08376a479b71a5ea5e0d83",
+      "spans": [
+        {
+          "start": 11,
+          "end": 21,
+          "quote": "John Smith",
+          "role": "identifier",
+          "covered_characters": 10,
+          "outcome": "masked"
+        },
+        {
+          "start": 31,
+          "end": 54,
+          "quote": "London, Baker Street 22",
+          "role": "identifier",
+          "covered_characters": 23,
+          "outcome": "masked"
+        },
+        {
+          "start": 55,
+          "end": 67,
+          "quote": "SQL: 3 years",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 11,
+          "end": 21,
+          "kind": "IDENTITY",
+          "quote": "John Smith"
+        },
+        {
+          "start": 31,
+          "end": 54,
+          "kind": "IDENTITY",
+          "quote": "London, Baker Street 22"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "IDENTITY": 2
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "english_prose",
+      "status": "assessed",
+      "error": null,
+      "known_limit": "English personal names embedded in prose are not guaranteed by Russian news NER.",
+      "normalized_text": "My name is John Smith. I develop software using Python.",
+      "source_sha256": "4e2052091c484d938f0d0984a1a9e3cb8b7fd80965c2fa482f45f95d629801d2",
+      "spans": [
+        {
+          "start": 11,
+          "end": 21,
+          "quote": "John Smith",
+          "role": "identifier",
+          "covered_characters": 10,
+          "outcome": "masked"
+        },
+        {
+          "start": 25,
+          "end": 54,
+          "quote": "develop software using Python",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 11,
+          "end": 21,
+          "kind": "PERSON",
+          "quote": "John Smith"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "PERSON": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "skills_negation",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "Разрабатывал на Python 3 года. Использовал SQL 1 год. Не работал с Java.",
+      "source_sha256": "76346586ee4504dbedd3022fda4521d6b14c83bc344914c0673b1885c5ea41fa",
+      "spans": [
+        {
+          "start": 16,
+          "end": 29,
+          "quote": "Python 3 года",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        },
+        {
+          "start": 43,
+          "end": 52,
+          "quote": "SQL 1 год",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        },
+        {
+          "start": 54,
+          "end": 71,
+          "quote": "Не работал с Java",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {},
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "rust_resume",
+      "status": "assessed",
+      "error": null,
+      "known_limit": "Known Rust mismatch: resume context may mask skill as ORG.",
+      "normalized_text": "Пишу код на Go и Rust.",
+      "source_sha256": "5de6323a966ecac697ad54f8302ebc004947d88759e70fb86f9176965b87e139",
+      "spans": [
+        {
+          "start": 12,
+          "end": 14,
+          "quote": "Go",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        },
+        {
+          "start": 17,
+          "end": 21,
+          "quote": "Rust",
+          "role": "professional",
+          "covered_characters": 4,
+          "outcome": "removed"
+        }
+      ],
+      "findings": [
+        {
+          "start": 17,
+          "end": 21,
+          "kind": "ORG",
+          "quote": "Rust"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "ORG": 1
+        },
+        "professional_information_may_be_hidden": true,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "rust_vacancy",
+      "status": "assessed",
+      "error": null,
+      "known_limit": "Paired context control for rust_resume; preserve the same professional skill.",
+      "normalized_text": "Требуется знание Rust.",
+      "source_sha256": "4e6d7d42f5abc5e727e6be45443b8e8f4e16b3b48660a8d71aa8badfe6a55698",
+      "spans": [
+        {
+          "start": 17,
+          "end": 21,
+          "quote": "Rust",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {},
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "sql_contractor",
+      "status": "assessed",
+      "error": null,
+      "known_limit": "Conservative company/contractor control; do not fix skill loss using a blanket technology allowlist.",
+      "normalized_text": "Работала с SQL 1 год как с подрядчиком.",
+      "source_sha256": "43bbd8e392ae0f7c8f6dc501df5f3a6a2e7e23253032c0d06c9b2be09c7b2bfb",
+      "spans": [
+        {
+          "start": 11,
+          "end": 14,
+          "quote": "SQL",
+          "role": "identifier",
+          "covered_characters": 3,
+          "outcome": "masked"
+        },
+        {
+          "start": 15,
+          "end": 38,
+          "quote": "1 год как с подрядчиком",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 11,
+          "end": 14,
+          "kind": "ORG",
+          "quote": "SQL"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "ORG": 1
+        },
+        "professional_information_may_be_hidden": true,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "excel_employer",
+      "status": "assessed",
+      "error": null,
+      "known_limit": "Company-context control paired with excel_skill.",
+      "normalized_text": "Создавала отчёты в Excel, где работала бухгалтером.",
+      "source_sha256": "90f7eff9401e9b3cbc08aa6e2bd40045502a88f4555e59a25c1b8a7f300bc081",
+      "spans": [
+        {
+          "start": 19,
+          "end": 24,
+          "quote": "Excel",
+          "role": "identifier",
+          "covered_characters": 5,
+          "outcome": "masked"
+        },
+        {
+          "start": 30,
+          "end": 50,
+          "quote": "работала бухгалтером",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 19,
+          "end": 24,
+          "kind": "ORG",
+          "quote": "Excel"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "ORG": 1
+        },
+        "professional_information_may_be_hidden": true,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "excel_skill",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "Использую Excel для составления таблиц.",
+      "source_sha256": "417341c4aa9bb4fa9b2e554808eebafcae857a461503e9af90bff31865954402",
+      "spans": [
+        {
+          "start": 10,
+          "end": 15,
+          "quote": "Excel",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        },
+        {
+          "start": 20,
+          "end": 38,
+          "quote": "составления таблиц",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {},
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "english_job_title",
+      "status": "assessed",
+      "error": null,
+      "known_limit": "Conservative English name-header rule may mask a professional heading.",
+      "normalized_text": "Senior Python Developer\nCommercial experience: 4 years.",
+      "source_sha256": "73869768193468970a382865ae0715bebd21ab9bc681b376266cce408ed592d8",
+      "spans": [
+        {
+          "start": 0,
+          "end": 23,
+          "quote": "Senior Python Developer",
+          "role": "professional",
+          "covered_characters": 23,
+          "outcome": "removed"
+        },
+        {
+          "start": 24,
+          "end": 54,
+          "quote": "Commercial experience: 4 years",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 0,
+          "end": 23,
+          "kind": "PERSON",
+          "quote": "Senior Python Developer"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "PERSON": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "employment_dates",
+      "status": "assessed",
+      "error": null,
+      "known_limit": "Full dates may be masked even when they describe professional experience.",
+      "normalized_text": "Работал с 2020-01-01 по 2023-12-31. Разрабатывал на Python.",
+      "source_sha256": "90e427c9d0a548adcb616c63c24f9a9dc38f81cc92025a6f233f2be5757cd4b5",
+      "spans": [
+        {
+          "start": 10,
+          "end": 20,
+          "quote": "2020-01-01",
+          "role": "professional",
+          "covered_characters": 10,
+          "outcome": "removed"
+        },
+        {
+          "start": 24,
+          "end": 34,
+          "quote": "2023-12-31",
+          "role": "professional",
+          "covered_characters": 10,
+          "outcome": "removed"
+        },
+        {
+          "start": 36,
+          "end": 58,
+          "quote": "Разрабатывал на Python",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 10,
+          "end": 20,
+          "kind": "DATE",
+          "quote": "2020-01-01"
+        },
+        {
+          "start": 24,
+          "end": 34,
+          "kind": "DATE",
+          "quote": "2023-12-31"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "DATE": 2
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "english_middle_initial",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "My name is John A. Smith. I develop software using Python.",
+      "source_sha256": "f38e2508287ec53b3e511423cb488fb32af7fdf0e88c9245e2104615d63f03d8",
+      "spans": [
+        {
+          "start": 11,
+          "end": 24,
+          "quote": "John A. Smith",
+          "role": "identifier",
+          "covered_characters": 13,
+          "outcome": "masked"
+        },
+        {
+          "start": 26,
+          "end": 58,
+          "quote": "I develop software using Python.",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 11,
+          "end": 24,
+          "kind": "PERSON",
+          "quote": "John A. Smith"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "PERSON": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "english_initials",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "My name is J. R. Smith. I develop software using Python.",
+      "source_sha256": "461f7ab93cf24975a76759fb788d1447aed3b98c90a6d4ef8d8db4ce049714b6",
+      "spans": [
+        {
+          "start": 11,
+          "end": 22,
+          "quote": "J. R. Smith",
+          "role": "identifier",
+          "covered_characters": 11,
+          "outcome": "masked"
+        },
+        {
+          "start": 24,
+          "end": 56,
+          "quote": "I develop software using Python.",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 11,
+          "end": 22,
+          "kind": "PERSON",
+          "quote": "J. R. Smith"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "PERSON": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    },
+    {
+      "id": "english_conjunction",
+      "status": "assessed",
+      "error": null,
+      "known_limit": null,
+      "normalized_text": "My name is John Smith and I develop software using Python.",
+      "source_sha256": "cb1d9b9015fd461983c5da0ec455ec89ae79e652fb37b4c1a15d6116d7acbde4",
+      "spans": [
+        {
+          "start": 11,
+          "end": 21,
+          "quote": "John Smith",
+          "role": "identifier",
+          "covered_characters": 10,
+          "outcome": "masked"
+        },
+        {
+          "start": 26,
+          "end": 58,
+          "quote": "I develop software using Python.",
+          "role": "professional",
+          "covered_characters": 0,
+          "outcome": "preserved"
+        }
+      ],
+      "findings": [
+        {
+          "start": 11,
+          "end": 21,
+          "kind": "PERSON",
+          "quote": "John Smith"
+        }
+      ],
+      "privacy_summary": {
+        "backend": "local-privacy-0.2",
+        "kind": "pseudonymization_not_anonymity",
+        "redactions": {
+          "PERSON": 1
+        },
+        "professional_information_may_be_hidden": false,
+        "requires_local_review": true
+      }
+    }
+  ],
+  "corpus_sha256": "52648ccb05cd77df6cfbe6c1c4b7234c160e0b55e1f15e2a3df980dc62d01b62",
+  "model_artifacts": {
+    "slovnet_ner_news_v1.tar": "16c3343a6572ddf0e2b2fc1923113de15a7f5ca5bde90e780dd590418665603e",
+    "navec_news_v1_1B_250K_300d_100q.tar": "f07270833d78523edc5781538d67038e95b43975e4a7ae757c693b687f9cbfca"
+  }
+}

@@ -29,6 +29,12 @@ class PipelineTests(unittest.TestCase):
             out = write_report(report, Path(tmp))
             self.assertTrue((out / 'report.json').is_file())
             self.assertIn('requirement', (out / 'requirements.csv').read_text())
+            self.assertEqual(report['leader']['state'], report['ranking']['leader']['state'])
+            self.assertEqual(report['leader']['policy_version'], report['policy_version'])
+            markdown = (out / 'report.md').read_text()
+            self.assertIn('обязательная группа — 75', markdown)
+            self.assertIn(literal(report['leader']['summary']), markdown)
+            self.assertNotIn('обязательное требование — 3', markdown)
 
     def test_privacy_failure_prevents_model_calls(self):
         model = ReplayModel()

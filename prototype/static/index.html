@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Вакансии · AI-рекрутер</title>
+  <link rel="stylesheet" href="report.css">
+  <script src="report.js" defer></script>
+  <script src="manager-report.js" defer></script>
+  <script src="demo-report.js" defer></script>
+  <script src="viewer.js" defer></script>
+  <script src="run-api.js" defer></script>
+  <script src="runs.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="shell masthead-inner">
+      <span class="brand">AI-рекрутер</span>
+      <div class="masthead-actions">
+        <span class="local-label"><span aria-hidden="true"></span> Локальный просмотр</span>
+        <button class="button button-secondary" id="open-demo" type="button">Открыть демо</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell workspace">
+    <header class="intro">
+      <div class="intro-copy">
+        <h1>Рейтинг вакансий</h1>
+        <p>Сравнение вакансий по одному резюме</p>
+      </div>
+      <div class="intro-actions">
+        <button class="button button-secondary" id="show-inputs" type="button" aria-controls="input-center" aria-expanded="false" hidden>Документы</button>
+        <button class="button button-secondary" id="show-runs" type="button" aria-controls="run-center" aria-expanded="false" hidden>Запуски</button>
+        <label class="button button-primary upload">
+          <span class="icon-plus" aria-hidden="true">＋</span> Открыть отчёт
+          <input id="report-file" type="file" accept=".json,application/json" aria-label="Открыть отчёт">
+        </label>
+      </div>
+    </header>
+    <p id="file-status" class="file-status" tabindex="-1" role="status" aria-live="polite" hidden></p>
+
+    <section id="welcome" class="welcome" aria-labelledby="welcome-title">
+      <h2 id="welcome-title">Откройте сохранённый отчёт</h2>
+      <p>Выберите <code>report.json</code> из папки запуска. Файл читается на этом устройстве.</p>
+      <details class="demo-help">
+        <summary>Как получить собственный отчёт</summary>
+        <p>Запустите синтетический сценарий из корня проекта. Путь к отчёту появится в выводе.</p>
+        <pre><code>python -m prototype demo --scenario disputed</code></pre>
+      </details>
+    </section>
+
+    <section id="input-center" class="view-panel run-center" aria-labelledby="inputs-title" hidden>
+      <div class="requirements-heading">
+        <h2 id="inputs-title">Резюме и вакансии</h2>
+      </div>
+      <p class="support" id="input-limits"></p>
+      <div class="run-form input-form">
+        <label>Резюме
+          <input type="file" id="resume-input" accept=".pdf,.docx,.txt,.md">
+        </label>
+        <label>Вакансии
+          <input type="file" id="vacancies-input" accept=".pdf,.docx,.txt,.md" multiple>
+        </label>
+        <button class="button button-primary" type="button" id="inspect-inputs">Проверить документы</button>
+      </div>
+      <p id="inputs-message" class="support" role="status" aria-live="polite"></p>
+      <ol id="inspected-files" class="saved-runs"></ol>
+      <button class="button button-primary protected-start" type="button" id="analyze-inputs" hidden>Запустить защищённый анализ</button>
+    </section>
+    <dialog id="confirm-live" class="confirm-dialog" aria-labelledby="live-dialog-title">
+      <h2 id="live-dialog-title">Запустить защищённый анализ?</h2>
+      <p>После локальной защиты текст будет обработан внешней моделью. Лимит этого запуска — 1 доллар США.</p>
+      <div class="dialog-actions">
+        <button type="button" id="dismiss-live" class="button button-secondary" autofocus>Отмена</button>
+        <button type="button" id="submit-live" class="button button-primary">Запустить</button>
+      </div>
+    </dialog>
+
+    <section id="run-center" class="view-panel run-center" aria-labelledby="runs-title" hidden>
+      <div class="requirements-heading">
+        <h2 id="runs-title">Локальные запуски</h2>
+        <button id="reload-runs" class="button button-secondary compact" type="button" hidden>Обновить</button>
+      </div>
+      <div id="start-run-form" class="run-form" hidden>
+        <label>Режим
+          <select id="run-type"></select>
+        </label>
+        <label>Сценарий
+          <select id="run-scenario"></select>
+        </label>
+        <button class="button button-primary" id="start-run" type="button">Запустить</button>
+      </div>
+      <p id="runs-message" class="support" role="status" aria-live="polite"></p>
+      <ul id="saved-runs" class="saved-runs"></ul>
+    </section>
+    <dialog id="confirm-run-removal" class="confirm-dialog report-confirm" aria-labelledby="delete-run-title" aria-describedby="delete-run-copy">
+      <button type="button" class="dialog-close" data-dismiss-dialog aria-label="Закрыть">×</button>
+      <h2 id="delete-run-title">Удалить запуск?</h2>
+      <p id="delete-run-copy">Отчёт и результаты проверки этого запуска будут удалены из локального хранилища.</p>
+      <div class="dialog-actions">
+        <button type="button" id="dismiss-run-removal" class="button button-secondary" data-dismiss-dialog autofocus>Отмена</button>
+        <button type="button" id="remove-run" class="button button-danger">Удалить</button>
+      </div>
+    </dialog>
+
+    <dialog id="confirm-review" class="confirm-dialog report-confirm" aria-labelledby="review-dialog-title" aria-describedby="review-dialog-copy">
+      <button type="button" class="dialog-close" data-dismiss-dialog aria-label="Закрыть">×</button>
+      <h2 id="review-dialog-title">Подтвердите действие</h2>
+      <p id="review-dialog-copy"></p>
+      <div class="dialog-actions">
+        <button type="button" id="dismiss-review" class="button button-secondary" data-dismiss-dialog autofocus>Отмена</button>
+        <button type="button" id="save-review" class="button button-primary">Подтвердить</button>
+      </div>
+    </dialog>
+
+    <div id="report-workspace" hidden>
+      <section class="run-summary" aria-label="Сведения об анализе">
+        <div class="summary-cell">
+          <span class="eyeline">Режим</span>
+          <strong id="run-mode"></strong>
+          <span id="run-mode-detail" class="support"></span>
+        </div>
+        <div class="summary-cell">
+          <span class="eyeline">Обработано вакансий</span>
+          <strong id="run-count" class="numeric"></strong>
+          <span id="run-progress" class="support"></span>
+        </div>
+        <div class="summary-cell">
+          <span class="eyeline">Проверка требований</span>
+          <strong id="run-review"></strong>
+          <span id="run-review-detail" class="support"></span>
+        </div>
+      </section>
+      <section id="run-note" class="run-note" aria-labelledby="run-note-title" hidden>
+        <h2 id="run-note-title"></h2>
+        <p id="run-note-text"></p>
+        <ul id="skipped-jobs" hidden></ul>
+      </section>
+      <p id="privacy-note" class="run-note" data-tone="warning" hidden>Защита могла скрыть часть профессиональных сведений. Сверьте их с локальными оригиналами.</p>
+
+      <div id="report-views" class="views" role="group" aria-label="Раздел отчёта">
+        <button type="button" data-view="ranking" aria-controls="view-ranking" aria-pressed="true">Вакансии <span id="ranking-count" class="numeric"></span></button>
+        <button type="button" data-view="overview" aria-controls="view-overview" aria-pressed="false">Сводка</button>
+        <button type="button" data-view="profile" aria-controls="view-profile" aria-pressed="false">Профиль резюме</button>
+      </div>
+
+      <section id="view-ranking" aria-label="Вакансии">
+        <ol id="job-list" class="job-list" aria-label="Рейтинг вакансий"></ol>
+        <p id="empty-ranking" class="empty-panel" hidden>В этом запуске нет оценённых вакансий.</p>
+        <details id="score-help" class="score-help">
+          <summary>Как читать рейтинг</summary>
+          <p id="ranking-method"></p>
+          <p id="score-policy" hidden></p>
+          <p><strong>L</strong> — нижняя граница по известным сведениям. <strong>H</strong> — верхняя граница, если неизвестные требования подтвердятся.</p>
+        </details>
+
+        <section id="job-detail" class="detail" aria-labelledby="job-title" hidden>
+          <header class="detail-header">
+            <div class="detail-heading">
+              <div>
+                <p id="job-place" class="eyeline"></p>
+                <h2 id="job-title" tabindex="-1"></h2>
+              </div>
+              <button type="button" id="manager-report" class="button button-secondary" title="Скачать HTML для просмотра и печати" disabled>Отчёт для менеджера ↓</button>
+            </div>
+            <div class="detail-meta">
+              <span id="job-mandatory" class="tag"></span>
+              <span id="job-coverage"></span>
+              <span id="job-requirements-review"></span>
+            </div>
+            <div class="fit-block">
+              <h3>Предварительный вывод</h3>
+              <p id="job-fit"></p>
+              <p id="job-fit-notes" class="support" hidden></p>
+            </div>
+            <p id="job-score-review" class="run-note" data-tone="warning" hidden></p>
+            <p id="job-conditions" class="run-note" data-tone="warning" hidden></p>
+          </header>
+
+          <div class="comparison-section" id="comparison-section" hidden>
+            <div class="requirements-heading">
+              <h3>Почему такое место</h3>
+              <label id="comparison-picker" class="comparison-picker" hidden>
+                <span>Сравнить с вакансией</span>
+                <select id="comparison-job"></select>
+              </label>
+            </div>
+            <p id="comparison-summary" class="support"></p>
+            <div id="comparison-detail" class="source-list"></div>
+          </div>
+
+          <div class="requirements" aria-labelledby="requirements-title">
+            <div class="requirements-heading">
+              <h3 id="requirements-title">Критерии соответствия</h3>
+              <label class="search">
+                <span class="sr-only">Поиск по требованиям</span>
+                <input id="requirement-search" type="search" placeholder="Поиск по требованиям">
+              </label>
+            </div>
+            <div id="row-filters" class="filters" role="group" aria-label="Фильтр требований">
+              <button type="button" data-filter="all" aria-pressed="true">Все</button>
+              <button type="button" data-filter="review" aria-pressed="false">Требуют проверки</button>
+              <button type="button" data-filter="unknown" aria-pressed="false">Не указано</button>
+              <button type="button" data-filter="fail" aria-pressed="false">Несоответствия</button>
+            </div>
+            <p id="result-count" class="sr-only" role="status" aria-live="polite"></p>
+            <table id="requirements-table">
+              <thead>
+                <tr><th scope="col">Требование</th><th scope="col">Соответствие</th><th scope="col">Фрагмент резюме</th></tr>
+              </thead>
+              <tbody id="requirement-rows"></tbody>
+            </table>
+            <p id="empty-rows" class="empty-panel" hidden>По этому фильтру нет требований.</p>
+          </div>
+          <div id="review-panel" class="conditions-section" hidden>
+            <div class="requirements-heading">
+              <h3>Проверка рекрутером</h3>
+              <div id="review-controls" class="review-controls"></div>
+            </div>
+            <p id="review-state" class="support"></p>
+            <p id="review-message" class="support" role="status" aria-live="polite"></p>
+            <div id="review-list" class="source-list"></div>
+          </div>
+          <div class="conditions-section">
+            <h3>Условия для HR</h3>
+            <p id="conditions-summary" class="support"></p>
+            <div id="condition-list" class="source-list"></div>
+          </div>
+        </section>
+      </section>
+
+      <section id="view-overview" class="view-panel" aria-labelledby="overview-title" hidden>
+        <h2 id="overview-title">Сводка по вакансиям</h2>
+        <p class="support">Диапазон L–H и доля известных данных взяты из отчёта. Статусы показывают число требований каждой категории.</p>
+        <section id="leader-analysis" class="comparison-section" aria-labelledby="leader-title" hidden>
+          <h3 id="leader-title">Что определяет первое место</h3>
+          <p id="leader-summary" class="support"></p>
+          <p id="leader-scope" class="support"></p>
+          <div id="leader-evidence" class="source-list"></div>
+        </section>
+        <div id="overview-list"></div>
+      </section>
+
+      <section id="view-profile" class="view-panel" aria-labelledby="profile-title" hidden>
+        <h2 id="profile-title">Краткий профиль</h2>
+        <p id="profile-summary" class="support"></p>
+        <div id="profile-list" class="source-list"></div>
+      </section>
+    </div>
+  </main>
+  <footer class="footer"><div class="shell footer-inner"><span>AI-рекрутер</span></div></footer>
+</body>
+</html>

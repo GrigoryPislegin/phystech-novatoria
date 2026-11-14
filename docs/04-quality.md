@@ -1,5 +1,100 @@
 # Качество и резерв
 
+**Последняя принятая поставка, 14 ноября 02:22 МСК:** runtime bffa94a, scoring v3, 404 Python +40 JS PASS, нативный/Docker UI и независимый Linux CI PASS. [Итоговая приёмка с ограничениями](reviews/night-bffa94a-acceptance.md) · [готовый release](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-bffa94a) · [команды](28-local-app-runbook.md). Более ранние записи ниже — история, а не текущий статус.
+
+## Комплексный аудит и совместимость новых PR — 13 ноября, около 17:20 МСК
+
+Локальный HEAD `791851d`, PR #3 Егора `7c341772e97ce3e4b78e7ed52388fbf7389c4bfa`, PR #4 Вани `469dbe41887e558e3553f55c715c51703093f315`. Обе ветки получены, PR не сливались. В изолированный снимок зафиксированных файлов наложены новые runtime/tests/docs Егора и documents.py/test_documents.py Вани; README не перезаписывался. `.venv/bin/python -m unittest discover -s prototype/tests -q` из снимка — **84 PASS**; оба `python -m prototype demo` и `demo --scenario disputed` — **exit 0**. Базовые 36+10 тестов и pip check также подтверждены независимым ревьюером. Снимок `/private/tmp/hackathon-review-20261113-ulnyt8hi` — временный локальный материал, не итоговая ветка.
+
+Важное ограничение: evidence/requirements_review пока не вызываются pipeline, 84 PASS не означают интегрированное E2E. Protected Docker этого кандидата не строился. Новых платных API-вызовов и чтения .env для аудита не было. Документ с критериями повторно прочитан локально; в нём технический отбор 100, отраслевой финал +30.
+
+Свежие подтверждённые находки: свободные comment/question пропускают выдуманные факты; проверки количества/symlink входов запаздывают; экспорт не атомарен; неправильная привязка ApprovalCheck и дубли в сохранённом approval могут дать confirmed. Удержание текстов LRU и непроверенные sentence/heading требуют внимания при веб-интеграции. [Подробности, строки, границы и измерения](reviews/release-audit-2026-11-13.md). [Назначения по рубрике](20-final-product-plan.md). Эти дефекты ещё не исправлены.
+
+Пакет ревью/ТЗ: repository check PASS — 858 файлов/685 Python; локальные ссылки изменённых Markdown PASS; git diff --check PASS. CSV содержит 17 технических подпунктов, сумма 100. Изменённые инструкции и график — план будущей реализации, не результат выполнения V3–V10/C1–C4/E5–E7.
+
+Интеграционная ветка опубликована, [draft PR #5](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/pull/5), пакет `25fcadc`. По поручению владельца создана [задача Вани #6](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/issues/6), назначена автору PR #4 `choiceaistartup-cloud`; включает полный кодовый пакет V3–V10 и ссылки на неизменяемый срез документов. Создание/назначение подтверждено GitHub. PR участников не сливались; их данные не заменяют фактическую приёмку общего runtime.
+
+## Два примера псевдонимизации для эксперта — 13 ноября
+
+Реальный локальный privacy_core обработал два полностью вымышленных мини-резюме: разработчик Python и аналитик данных. Команда: `data/private/certum-sandbox/core/.venv/bin/python data/private/expert-examples/anonymization/generate.py`. Использованы отдельная тестовая БД 127.0.0.1:55439 и существующие модели; значения конфигурации не выводились. Внешних API-вызовов 0. HTML/Markdown и точные входы/выходы сохранены локально в `data/private/expert-examples/anonymization/` и не входят в Git.
+
+В обоих случаях ФИО/телефон/email заменены ссылками, повторный scan прошёл. Обнаружена **избыточная замена профессиональных данных**: «Python-разработчик» в желаемой должности стал `контрагент#1`, Excel во втором резюме — `контрагент#2`. Опыт Python/SQL и продолжительность сохранились. Примеры показывают фактический вывод с явной пометкой дефекта; тексты после обработки вручную не исправлялись. Техническое завершение скрипта не означает сохранность всех полезных сведений или полную анонимность. До оценки качества общего пути C3 нужно проверить политику детекторов на должностях и названиях инструментов; не обходить защиту общим разрешением неизвестных сущностей.
+
+## Уточнение названия и распределения разработки — 13 ноября, 12:20 МСК
+
+По выбору владельца компонент в документации называется privacy_core; импорты внешнего пакета certum_core и команды загрузки моделей сохранены. Егору с Fable переданы кодовые задачи E3/E4: контекст доказательств и подтверждение состава требований; Codex подключает их к pipeline/CLI и ведёт защиту/сборку. Обновлены ТЗ, AGENTS/CLAUDE и Гант. Это изменение плана и документации, реализация E3/E4 ещё не выполнена.
+
+`scripts/check_repository.py` PASS (851 файл, 685 Python-файлов), ссылки обновлённых документов и `git diff --check` PASS. Код приложения, зависимости и секреты не менялись; повторные runtime/API-прогоны для переименования документации не выполнялись.
+
+## Общее ревью активного кода — 13 ноября, до консультации
+
+Проверенный код `351c44e`, ветка `codex/cli-integration-consultation`. Прочитаны все 9 модулей активного CLI, его тесты и инструменты запуска/упаковки; движок дополнительно проверил один независимый Sol-ревьюер. Импортированные services/platform и services/hharon не проходили новый полный построчный аудит: учтён прежний отчёт. [Находки и границы ревью](reviews/full-review-2026-11-13.md), [задачи каждому участнику](18-next-actions.md).
+
+```sh
+.venv/bin/python -m unittest discover -s prototype/tests -q
+.venv/bin/python -m unittest discover -s tests -q
+.venv/bin/python docs/reviews/egor_review_repro.py
+.venv/bin/python docs/reviews/full_review_repro.py
+```
+
+Фактически 36 + 10 тестов PASS. Новый repro на синтетике подтверждает: ошибочное отклонение настоящих refs после JSON с LF/TAB, пропущенное обязательное требование при complete=true, потерю колонтитула/вложенной таблицы DOCX, запись установщика через symlink вне проекта. `true` в его JSON означает наличие проблемы. SDK debug отдельно воспроизведён ревьюером на реальном SDK с MockTransport без сети. Исправления этих находок ещё не внесены; зелёные исходные тесты их не опровергают.
+
+В этом ревью не выполнялись платные запросы, чтение .env, работа с реальными CV или изменения инфраструктуры. Опубликованная работа Вани пока не найдена; это не вывод об отсутствии работы на его компьютере. Уточнение владельца о Certum внесено в архитектуру и ТЗ: нужен локальный core, не чужое приложение/сервис/личная база. Предыдущие live и smoke ниже остаются отдельными проверками, не общим защищённым E2E.
+
+После подготовки ТЗ: `.venv/bin/python scripts/check_repository.py` PASS — 851 файл/685 Python; ссылки новых документов и `git diff --check` PASS. Повторная проверка GitHub в 11:23 МСК: PR #1/#2 и четыре прежние ветки, поставка Вани ещё не опубликована в этом репозитории.
+
+## Интеграция после ревью Егора и настоящие проверки — 13 ноября 2026
+
+Ветка `codex/cli-integration-consultation`. Чужие изменения MULTIAGENT_OPTIONS.md, READY.md, scripts/doctor.py, tmp/ сохранены. PR Егора #2 (head b6aeff41bb5358666f3031289268b1a9a6a2ae3d) прочитан через GitHub; три файла docs/reviews перенесены без изменения текста, сам PR не сливался. GitHub на момент проверки показывает ветки main, codex/team-repository, codex/cli-recruiter-prototype и egor/product-review; PR Вани и ветки парсинга не найдены. Это не утверждение об отсутствии его локальной работы.
+
+### Исправления и локальные проверки
+
+- Структурная привязка mandatory_quote к quote, минимум 8 символов; точные дубли text+quote отклоняются. Исходные примеры п. 1 Егора больше не проходят.
+- Отчёт содержит конкретные сильные стороны/несоответствия/неизвестное, первые вакансии, цитаты обязательности и сводку порядка. При incomplete результат явно предварительный; стадия сбоя сохраняется. Ошибка facts даёт пустой отчёт без невалидных фактов.
+- Действие clarify при всех необязательных fail не выдумывает unknown/partial. Формула не менялась.
+- `.venv/bin/python -m unittest discover -s prototype/tests -q`: **36 PASS**; тесты инструментов `-s tests -q`: **10 PASS**. `git diff --check`: PASS. Новый тест ветки clarify сначала FAIL, после исправления PASS. Первые регрессии по ревью также наблюдались красными до исправлений.
+- `.venv/bin/python docs/reviews/egor_review_repro.py`: исходные п. 1/4/5 и точные дубли не воспроизводятся; п. 2/3 и дополнительный спорный порядок остаются. Однословные/нерелевантные доказательства и широкий mandatory_quote через раздел «Желательно» — известные смысловые ограничения. Пункт 1 не закрыт в общем случае.
+- Независимое ревью предыдущего изменения выявило дефекты Docker-контекста и действия clarify; исправлены. Сводный блок вопросов пока отложен, вопросы присутствуют в строках требований. Подробности решений — docs/reviews/integration-followup.md.
+
+### Первый live OpenAI — действительно выполнен
+
+Официальные [модель](https://developers.openai.com/api/docs/models/gpt-6-luna) и [тариф](https://developers.openai.com/api/docs/pricing) сверены 13 ноября: стандартные $0.10/$0.50 за миллион входных/выходных токенов. Локальный процесс загрузил только OPENAI_API_KEY из .env; значение не выводилось и не включалось в контекст чата. SDK logging отключён. Только фиксированный вымышленный текст demo_inputs, без реальных CV.
+
+Первая попытка в сетевой песочнице: exit 2, APIConnectionError на facts, usage пустой, отчёт 0/3 incomplete `20261112T233046Z-ba71dcc4`; локальный резерв $0.0047175, не счёт. DNS-сбой подтверждён отдельно. После разрешённого запуска вне песочницы TLS с certifi прошёл; проверку сертификатов не отключали. Следующему процессу выделен оставшийся лимит **$0.995**, сумма лимитов/резерва не превышает $1.
+
+Эквивалент успешной команды при ключе в окружении:
+
+```sh
+.venv/bin/python -m prototype demo --live --model gpt-6-luna --budget 0.995
+```
+
+Фактически **exit 0**, live_synthetic, **3/3**, review_top, **7 API-запросов**, 3893 input + 875 output tokens. Стандартная расчётная стоимость **$0.0008268**, резерв приложения $0.0332668; биллинг аккаунта отдельно не проверялся. Отчёт `data/private/prototype-runs/20261112T233159Z-1d7c12e4` прочитан: job-001 full L/H=100/100; job-002 unknown 0/100; job-003 fail 0/0, требование SQL 3 года против указанного 1 года. Это один пример, не оценка общей точности. Certum в этом прогоне не участвовал. Sol и повторный платный прогон не выполнялись.
+
+### Docker — действительно проверен
+
+OrbStack запущен вне песочницы; Docker Server 29.4.0. Предыдущий вывод kLSNoExecutableErr оказался ограничением запуска приложения из песочницы, а не доказательством поломки установки.
+
+`docker build -t recruiter-cli:local .`: PASS, Linux arm64; внутри сборки 8 core-тестов PASS. База Python 3.13 закреплена digest e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90. Первая фактическая проверка состава обнаружила, что отрицание директорий в .dockerignore возвращает лишние файлы; исправлены порядок исключений и COPY. Повторная проверка внутри образа подтвердила точный список: 9 модулей, requirements.lock.txt, tests/test_core.py. Секреты/данные в образ не включены.
+
+Оба `docker run --rm --network none --user "$(id -u):$(id -g)" --mount "type=bind,src=$(pwd)/data/private/prototype-runs,dst=/app/data/private/prototype-runs" recruiter-cli:local demo` и вариант `demo --scenario disputed`: PASS. Отчёты на хосте `20261112T233622Z-667daec8` (review_top) и `20261112T233623Z-680c2cf3` (clarify), complete=true, synthetic_replay_NOT_model_output. Docker не содержит Certum. Второй компьютер не проверен.
+
+### Настоящий Certum — локальный smoke пройден
+
+Изолированная копия core, CPython 3.12.16, зависимости по uv.lock, отдельный PostgreSQL на 127.0.0.1:55439, новые tenant/vault и секреты. Миграции и создание tenant PASS; NER Slovnet/Navec скачаны штатным downloader с проверкой хешей. Личная инфраструктура Certum не использовалась.
+
+```sh
+data/private/certum-sandbox/core/.venv/bin/python scripts/certum_smoke.py \
+  --env-file data/private/certum-sandbox/core/.env \
+  --tenant-file data/private/certum-sandbox/tenant-id \
+  --models-dir data/private/certum-sandbox/models
+```
+
+**exit 0**, real_certum=true, synthetic_only=true, redaction=pass, outbound_scan=pass, untrusted_reference_block=pass, openai_calls=0. Проверены вымышленные ФИО, телефон, email; реальный NER, база и сейф использованы. Не доказывает полной анонимности. Инструкция/остановка: docs/17-certum-local-setup.md.
+
+Финальный Sol-ревьюер выявил два недостатка самого smoke: разрешён произвольный DSN и любой RuntimeError принимался за доказательство блокировки ссылки. Исправлено: допускается только 127.0.0.1:55439/certum без query overrides, проверяется точный сигнал privacy_untrusted_reference, минимум три ссылки и сохранность профессионального текста. Три регрессии сначала FAIL, после исправлений PASS; реальный smoke повторён с тем же успешным результатом. Повторного ревью не запускали.
+
+**Ещё не подтверждено:** общий Certum → OpenAI в одном запуске; единое окружение (SDK core 3.29.0 против CLI 2.54.0), полнота защиты и смысловая точность, результаты Вани/второй компьютер, Docker защищённого пути, права/доступ жюри к core, ответы консультации и окончательная формула. Прежние записи ниже — исторические, не текущие блокеры.
+
 ## Проверка CLI и командного пакета — 12 ноября 2026
 
 Ветка: codex/cli-recruiter-prototype. Среда: macOS arm64, Python 3.13.5, отдельное .venv. Точные версии библиотек — prototype/requirements.lock.txt. Перед передачей ветки на GitHub повторно выполнены все 22 локальных теста; проходят. Реальные API/Certum при этом не запускались.
@@ -69,3 +164,306 @@
 - Не выполнялись: установка зависимостей приложения, его pytest, Docker/миграции, вызовы HH/LLM и оценка качества скоринга. Отсутствующие сервисы и дефекты доступа перечислены в документации.
 
 Зелёный CI этого этапа означает только прохождение проверок репозитория. Секрет-сканер эвристический; он не гарантирует отсутствие любых секретов.
+
+## Интеграция к консультации — 12 ноября 2026
+
+Ветка `codex/cli-integration-consultation`, база `e801e0459a1c508f8a49c25d86b8e5f2cc2e60da` (`codex/cli-recruiter-prototype`). Прежние локальные изменения MULTIAGENT_OPTIONS.md, READY.md, scripts/doctor.py и tmp/ сохранены; параллельно появившийся docs/16-work-gantt.md не редактировался. Парсинг Вани и формула скоринга не изменялись. Новых ответов эксперта и результатов Егора/Вани на момент проверки нет; бриф не менялся без новых фактов.
+
+Команды из корня проекта, окружение `.venv` Python 3.13.5:
+
+```sh
+.venv/bin/python -m unittest discover -s prototype/tests -v
+.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m pip check
+.venv/bin/python scripts/check_repository.py
+.venv/bin/python -m prototype demo
+.venv/bin/python -m prototype demo --scenario disputed
+git diff --check
+```
+
+Фактически: 25 тестов прототипа PASS (22 исходных + 3 новых), 10 тестов инструментов PASS, pip check без конфликтов, repository check PASS (835 файлов/680 Python на момент запуска), diff check PASS. Три новые проверки сначала воспроизвели отсутствие спорного сценария/счётчика/объяснения; после правок проходят.
+
+| Пример | Фактический результат |
+|---|---|
+| Успешный replay | exit 0; обработано 3/3, `review_top`; job-001 100–100, job-002 0–100 (`unknown`), job-003 0–0 (`fail`, обязательное нарушено) |
+| Спорный replay | exit 0; обработано 3/3, `clarify`; job-001 50–50 (`partial`, обязательное требует уточнения), далее неизвестный Java и явное несоответствие стажа SQL |
+| Ошибка второй вакансии, тест | Первая оценка сохранена; `incomplete`; Markdown показывает 1/3 и job-002/job-003 как неоценённые; текст исключения не выводится |
+
+Отчёты: `data/private/prototype-runs/20261112T154257Z-1527cf5a` (успешный), `data/private/prototype-runs/20261112T154257Z-b92d50fa` (спорный). JSON/CSV/MD созданы; Markdown прочитан при проверке. Оба — **рукописный synthetic replay, не ответ модели**, сеть не вызывалась, расходы API $0. Четыре статуса показаны суммарно в двух примерах. Partial составного требования Python+Go — иллюстрация черновой политики, не обещание поведения live-модели.
+
+В Markdown добавлены правило сортировки и ничьих, значения четырёх статусов, формула/веса, явная полнота и список неоценённых позиций. JSON дополнительно сохраняет `demo_scenario`.
+
+### Live и Certum: фактические блокеры
+
+`OPENAI_API_KEY` отсутствует в окружении процесса. Значения секретов не читались/не выводились, платный прогон не выполнялся. После добавления ключа в окружение отдельный разрешённый запуск:
+
+```sh
+.venv/bin/python -m prototype demo --live --model gpt-6-luna --budget 1
+```
+
+Это только встроенные синтетические данные; Sol отдельно не запускался. `$1` — резерв приложения, не подтверждённый счёт провайдера; текущие тарифы и доступ модели надо сверить перед фактическим live. Реальные CV во внешний API не отправлялись.
+
+Core найден локально в `~/Работа/certum-demo/vendor/certum-assistant/core`; его pyproject требует `>=3.12,<3.13`. В текущем `.venv` Python 3.13 core не установлен. `python3.12` и `uv` отсутствуют в PATH. Переменные CERTUM_DATABASE_URL, CERTUM_MASTER_KEY, CERTUM_TENANT_ID и CERTUM_DETECTORS_MODELS_DIR отсутствуют. Docker CLI установлен, но сокет OrbStack не существует, daemon недоступен. Доступность отдельной тестовой PostgreSQL/tenant/vault не подтверждена; личная база Certum не использовалась.
+
+Read-only проверка core дополнительно установила: Python 3.12 не найден в проверенных стандартных установках (Homebrew, Python.framework, MacPorts, pyenv), готового venv у core нет. В стандартном `~/.cache/certum/models` отсутствуют `slovnet_ner_news_v1.tar` и `navec_news_v1_1B_250K_300d_100q.tar`; модели обязательны для warmup. Поэтому отдельное Python 3.12 окружение **не создано**, импорт/warmup/tenant/vault не проверены. Наличие исходников не означает доступность рабочего core. Ничего не устанавливалось в личную инфраструктуру Certum, обход защиты не добавлен.
+
+Остаётся до заявления о live: установить Python 3.12, собрать отдельное окружение по core/uv.lock, загрузить модели штатным downloader с проверкой хешей, подготовить отдельную PostgreSQL и tenant/vault, проверить реальный адаптер; затем разрешённый synthetic live Luna. До этого консультационное демо — только явно помеченный replay. Sol, реальные CV, качество LLM, ноутбуки команды и Docker-сборка не проверены. Docker требуется к 14 ноября 23:59 МСК.
+
+Дополнительно: `compileall -q prototype` PASS. Локальный smoke через CLI `execute` с тестовой ошибкой второй вакансии вернул exit 2, сохранил первую оценку (1/3) и `incomplete`; подменён только replay в памяти, сетевых вызовов не было, временный отчёт удалён вместе с TemporaryDirectory.
+
+Независимое ревью (Sol, один запуск): 25 тестов PASS, регрессий обработки/приватности в изменённых файлах не обнаружено. Найдена неточная фраза о ничьих: одинаковый L даёт одинаковое место только внутри одной группы по нарушению обязательных требований. Исправлена, уточнён знаменатель H; проверка сначала FAIL, затем весь набор 25/25 PASS. Формула не менялась. Финальные демо с исправленным текстом: `data/private/prototype-runs/20261112T154512Z-3fd17bfc` (success) и `data/private/prototype-runs/20261112T154512Z-f7100036` (disputed), оба exit 0. Повторного ревью не запускали.
+
+
+### 13 ноября, C1 — исходящий JSON и диагностика зависимостей
+
+На базе 8741b0b воспроизведены ложный отказ выданного ref после LF/TAB и утечка синтетического маркера при OPENAI_LOG=debug. Проверка теперь получает декодированные строки/ключи до сериализации и после разбора ответа. Диагностика openai/httpx/httpcore/core/DB очищается до обработчиков журналов, включая traceback.
+
+`.venv/bin/python -m unittest discover -s prototype/tests -q` — 40 PASS. Новые регрессии: LF/TAB/кавычки/backslash в обе стороны, чужие refs во вложенных ключах/значениях, остаточный scan, отдельный процесс с настоящим SDK и локальным MockTransport. Оба `.venv/bin/python -m prototype demo --scenario success|disputed` — exit 0. Сеть/платный API не использованы; это не protected live.
+
+
+### 13 ноября, 18:50 МСК — C1/C4, presentation и runtime после независимого ревью
+
+Код интегратора: application/errors/presentation, preflight всех файлов/лимита 20 и out до модели, стабильные id по тексту и локальный manifest, атомарный комплект с правами 700/600. Явные ошибки output-validation позволяют проверить другие вакансии, fatal/privacy/budget прекращают новые запросы. Deadline/cancel/progress и отдельные reserved/usage estimates. Лимиты ответа 2048–16000 не считаются доказанной оптимизацией latency/полноты. presentation содержит цитаты/шаблонные вопросы; сырой комментарий модели не является проверенным brief. E3/E4 пока не интегрированы; final_allowed всегда false.
+
+Независимый Sol нашёл пять существенных краёв. PDF warning с синтетическим операндом действительно попадал в stderr; защита журналов теперь включается до парсинга и включает pdfminer/pdfplumber/docx. Отмена внутри scan могла начать запрос — checkpoint добавлен перед reserve/SDK. Async-вход в privacy теперь ограничен дедлайном; синхронный parser/NER warmup не объявлен принудительно прерываемым. Публикация перенесена после успешного выхода/коммита privacy context, cleanup ограничен отдельными 30 с. Все четыре воспроизведения сначала падали, затем прошли. Экспериментальный HR-фильтр удалён после настоящих NER-примеров работодателя/подрядчика: исправлять false-positive ценой раскрытия сущностей нельзя.
+
+Дополнительно: metadata не может подменить verification/ranking, регрессия RED→GREEN. setup_agents.py проверяет symlink всех назначений до первой записи; четыре варианта в tempdirs RED→GREEN, текущие настройки владельца не менялись.
+
+Фактические проверки итогового кода:
+
+- `.venv/bin/python -m unittest discover -s prototype/tests -v` — **59 PASS** (Python 3.13).
+- `data/private/certum-sandbox/core/.venv/bin/python -m unittest discover -s prototype/tests -q` — **59 PASS** (Python 3.12.16, SDK 3.29.0).
+- `.venv/bin/python -m unittest discover -s tests -q` — **10 PASS**.
+- `.venv/bin/python scripts/check_repository.py` — PASS: 869 файлов / 693 Python на срезе до этой записи. Это статическая эвристика, не полный security scan.
+- `git diff --check` — PASS.
+- `.venv/bin/python -m prototype demo --scenario success` и `--scenario disputed` — exit 0; локальные каталоги `20261113T154949Z-7b35ff25de024e85bfab14a841b5f0c6` и `20261113T154949Z-b4126a69bd30485b827af2e02b6c37d4`.
+- `docker build -t recruiter-cli:integration .` — PASS. Итоговый image manifest list `sha256:c2c23718b793ebae50524b6a9915bb5d1bfb92b4efb5821f07775ee5173fe141`; standalone Linux arm64, не protected Docker.
+- `docker run --rm --network none recruiter-cli:integration demo --scenario success` и `--scenario disputed` — оба exit 0. В /app/prototype 12 runtime-модулей, в /app нет .env.
+- Настоящий core smoke — PASS: редактирование/повторный scan/запрет чужих refs; network OpenAI calls=0. Missing models — exit 2 до SDK.
+- Полный настоящий core + SDK + локальный MockTransport — **exit 2**, один mock-запрос, facts/privacy_residual_findings. OpenAI network calls=0. Причина: NER трактует SQL в профессиональном факте как company. Защита не обойдена.
+
+[Состав окружения, wheel и точные блокеры C3](23-protected-runtime-status.md). Нового платного live не было. Кеш/параллелизм, интеграция незаконченного handoff Егора, HTTP run registry и protected Docker/чистая установка остаются неподтверждёнными. Транскрипт консультации не получен. Чужие dirty MULTIAGENT_OPTIONS.md/READY.md/scripts/doctor.py/tmp не включаются в поставку.
+
+## 13 ноября 2026, 20:05 МСК — PR №3, PR №4 и собственный privacy_core
+
+Решение владельца «Свой модуль без certum_core» заменяет прежний runtime. Из PR №3 перенесены пять коммитов Егора (исходный head 7c34177) с сохранением авторства; подключены E3/E4. Из PR №4 (469dbe4) приняты documents.py и 13 тестов; README интегрирован отдельно. Scoring.py не менялся параллельно; структурно непривязанные mandatory исключаются из жёсткой группы/веса 3 с явным score_review. Числовая формула остаётся draft.
+
+Исправлено после одного независимого ревью: mismatch vacancy_id, duplicate approval id, подмена сохранённого context, повторные цитаты под противоположными заголовками, глобальный LRU текстов, heading+bullet mandatory, ложная жёсткая обязательность; форматы адресов/дат/соцконтактов, пустой вход NER и поглощение профессионального предложения после email. Не закрыто автоматически: смысловая интерпретация и overredaction технологии Rust (ORG). Отчёт предупреждает о возможной потере профессиональных данных; подробности docs/24.
+
+Фактические проверки на Python 3.13/macOS:
+
+```sh
+.venv/bin/python -m unittest discover -s prototype/tests -q
+.venv/bin/python -m unittest discover -s tests -q
+.venv/bin/python scripts/check_repository.py
+.venv/bin/python -m pip check
+.venv/bin/python -m prototype demo
+.venv/bin/python -m prototype demo --scenario disputed
+.venv/bin/python scripts/privacy_smoke.py
+.venv/bin/python scripts/privacy_smoke.py --model-mock
+git diff --check
+```
+
+- **122 теста прототипа PASS**, включая реальные локальные NER-модели на синтетике; без них класс test_privacy_real явно skip, остальные тесты не доказывают готовность NER.
+- **10 репозиторных тестов PASS**; check_repository PASS (886 файлов/702 Python на момент проверки); pip check без конфликтов; diff check PASS.
+- Оба replay exit 0; 3/3 вакансии, success review_top, disputed clarify, четыре статуса присутствуют, требования не подтверждены автоматически.
+- Privacy smoke PASS. SDK/MockTransport PASS: 7 локальных запросов, 3/3 вакансии. В payload нет проверяемых вымышленных контактов, сетевых OpenAI-запросов 0. .env/настоящий API-ключ не читались. Это не новый live и не измерение качества модели.
+
+Docker, Linux arm64/OrbStack на Mac владельца:
+
+```sh
+.venv/bin/python -m prototype.privacy_core.prepare --from-dir data/private/privacy-models --dir runtime/privacy-models
+docker build --build-arg PRIVACY_MODEL_SOURCE=local -t recruiter-cli:privacy-local .
+docker run --rm --network none recruiter-cli:privacy-local demo
+docker run --rm --network none recruiter-cli:privacy-local demo --scenario disputed
+docker run --rm --network none --entrypoint python recruiter-cli:privacy-local \
+  scripts/privacy_smoke.py --models-dir /opt/privacy-models --model-mock
+```
+
+Сборка PASS, в build также 8 core-тестов и оба privacy smoke PASS. Оба runtime replay PASS без сети. Image manifest list: `sha256:9864f16eaf3e9db3f523d1f1258cfa376c5f837130fa25787bccf110b8fb380f`. Проверка состава: certum_core не установлен, .env и закрытый certum-sandbox отсутствуют; публичные модели проверены по SHA256.
+
+Прямая подготовка публичных моделей в текущей сети завершалась TimeoutError (две Docker-попытки); локальный импорт тех же двух публичных архивов проверен. Это конкретное ограничение доставки через CDN, не повод выключать TLS/NER. Другой компьютер и архитектура amd64 ещё не проверены. Исходный Certum не изменён. Новый protected live, разрешение внешней обработки реальных CV, полнота PII-detection и смысловое качество на реальном комплекте остаются неподтверждёнными.
+
+Ответы интервью внесены в docs/12 и consultation-answers; конкретные случаи не повышены до expert_confirmed. Новое ТЗ Егора опубликовано и назначено в issue #7; Ваня остаётся issue #6. Последующие профиль/условия/объяснение пары ещё не реализованы этой интеграцией.
+
+## 13 ноября, 23:35 МСК — первая ночная интеграция E5/E7/E8 и viewer
+
+Объединены E5/E7 (head 3b51426 включает dd5862c/1ccbabe), E8 (c5295c2 включает 57d3a31), E6 5da6e81, V5 2243843 с V3, V4 46f0150. Сохранено авторство/история веток. На объединённой базе e258f93: 266 Python и 27 Node тестов PASS до подключения новых модулей. Затем принят первый UI-срез Sol 118800e как b498862.
+
+Подключены profile/conditions через строгие расширенные ответы существующих вызовов, evidence-aware scoring v2, comparisons, review_queue/handoff. Спорный full не входит в положительные grounds менеджерской выжимки. Четыре новые интеграционные регрессии сначала FAIL, затем PASS: профиль/сравнение в реальном pipeline, отрицательный контекст однословной цитаты, условия с обеими цитатами, запрет выдуманного profile fact_id. Исторические v1-тесты используют явно созданную v1-проекцию, не требуют от нового pipeline старого поведения.
+
+Фактические команды и результаты:
+
+- `.venv/bin/python -m unittest discover -s prototype/tests -q` — **270 PASS**, локальные NER-веса доступны, skips нет.
+- `node --test prototype/tests/test_web_report.cjs prototype/tests/test_web_manager.cjs` — **30 PASS**.
+- `.venv/bin/python scripts/privacy_smoke.py --model-mock` — PASS, 7 локальных SDK/mock-запросов, 3/3 вакансии, внешних OpenAI-запросов 0. Профиль/условия не увеличили число вызовов.
+- `.venv/bin/python -m prototype demo --scenario success` и `--scenario disputed` — exit 0, каталоги `20261113T203242Z-cd28cb699e6f472fa009df1c1974da4d` / `20261113T203242Z-ff760cbbbb05420fbec5c3812909be1e` в data/private/prototype-runs.
+- Оба свежих JSON прошли настоящий `prototype/static/report.js:parseReport`: 3 вакансии, профиль structure_ok, режим synthetic_replay_NOT_model_output. Это не live и не доказательство смысловой точности.
+- `git diff --check` — PASS.
+
+UI Sol: карточки вакансий, цитаты/критерии, профиль/условия, диаграммы L/H и известности, print. Визуальные проверки браузером пока выполнены исполнителем, отдельно интегратором ещё не приняты. HTTP/run_store/сохранённые решения и новый Docker ещё впереди; наличие функций E8 не выдаётся за действующее серверное подтверждение. Новых платных API-вызовов/чтения .env нет. Ваня ночью недоступен; UI выполняет локальный Sol, Егор получает E9 (#20) для независимой приёмки и evaluator.
+
+## 14 ноября, 00:08 МСК — локальное приложение и аварийное восстановление
+
+Приняты UI-коммиты Sol до 244c5ad (интеграционные 8e92bf9/caaaf28) и E9a Егора e791ed2 (merge 503b7b2). Добавлены run_store, local_service, web_app, serve, загрузка байтов в памяти, однопроцессная очередь, private snapshots, HMAC, ревизии HR, повторное открытие, удаление и API-источник доверия для manager HTML. Пять находок E9 R1–R5 исправлены; expectedFailure удалены. Invalid profile явно скрыт, пригодный рейтинг сохранён; invalid conditions блокируют передачу, не теряют вакансию. Решение привязано к run_id до построения derived/hash.
+
+Независимое ревью Sol выявило и исправлениями подтверждено:
+- Linux fd-cursor: второй start пропускал новый каталог и повторял работу. Отдельный Python 3.13/Linux repro дал `[]`, `[]`, `['abc']`; теперь каждый scan открывает новое описание каталога. Docker-тест сначала FAIL, после фикса PASS.
+- Atomic staging создания и tombstone удаления; инъекция ошибки записи/прерывания cleanup больше не повреждает соседнюю историю. Второй процесс не захватывает store.
+- Загруженный сырой документ не попадает во временный файл; 22 inspect подряд не исчерпывают UI. При выключенном live исходные тексты не кешируются; live-cache ограничен и потребляется при запуске. Повтор create после рестарта находит сохранённый запрос без исходных байтов.
+- Повторная отметка handoff не создаёт новую ревизию; слишком большой для HTTP отчёт отклоняется до публикации; нативный bind ограничен loopback. Docker штатно публикуется только на 127.0.0.1.
+- Protected SDK mock disputed: NER считал Go организацией в рукописном комментарии; fixture переформулирована без ослабления детектора. Incomplete теперь возвращает невалидный schema response вместо исключения внутри transport, сохраняя следующие вакансии.
+
+Команды и факты до отдельной интеграции E9b:
+
+```sh
+.venv/bin/python -m unittest discover -s prototype/tests -q
+node --test prototype/tests/test_web_*.cjs
+.venv/bin/python -m unittest discover -s tests -q
+.venv/bin/python scripts/check_repository.py
+.venv/bin/python -m pip check
+git diff --check
+```
+
+**311 Python PASS**, skips/expected failures нет; **36 Node PASS**; **10 repo PASS**; repository check 947 файлов/725 Python PASS; pip check и diff check PASS. Protected mock через настоящий LocalService/NER/SDK: success 3/3, disputed 3/3, incomplete 2/3 с model_invalid у Java; внешних API-вызовов 0. Это не замер качества модели.
+
+Фактический Chromium retest на текущем root worktree поверх 503b7b2, свежий 8477/live off: TXT inspect → success → confirm → mark → скачанный trusted manager HTML revision 3 → reopen с сохранённым решением → delete. Повторная mark скрыта. Protected mock disputed 3/3; incomplete 2/3, передача заблокирована в API и UI. Нет JS exceptions/CSP violations. Временные процессы закрыты. Локальные артефакты: `/private/tmp/nanimai-root-retest-media/result.json`, `ranking-comparison.png`, `protected-mock-partial.png`; интегратор просмотрел screenshot сравнения. Это проверка фактических UI/API-действий, не только DOM fixture. Точный шрифт исходных SVG не установлен, используется близкий системный sans.
+
+Docker **linux/arm64**, OrbStack на этом Mac, PRIVACY_MODEL_SOURCE=local: build PASS, 8 core +28 интеграционных тестов и оба privacy smoke PASS. Image manifest list `sha256:d1ff7b85b5ceb4ced4c570cf643aa7493f5098a577d47964076b9c356983e391`. Под UID10001 с --network none: 23 store/service/HTTP tests PASS, включая три NER/mock-сценария. Реальный published HTTP на 127.0.0.1:8766: success3/3 → confirm → mark rev3 → **docker restart** → rev3/reviewed_for_handoff сохранились → delete PASS. Проверка состава: certum_core отсутствует, /app/.env отсутствует, UI присутствует, каталог runs700. Тестовые контейнер/том не являются итоговой поставкой.
+
+Новый amd64 build и независимый физический компьютер на этот момент ещё не подтверждены. Веса в локальной сборке — проверенные публичные архивы; прежний CDN timeout не скрыт. [Точные команды и матрица критериев](28-local-app-runbook.md). Реальные CV/API-ключ не читались/не отправлялись, новых платных прогонов нет. Новая wire-схема с настоящим OpenAI, полнота privacy на реальных CV и семантическое качество модели не подтверждены. E9b принят отдельным этапом с явными незакрытыми проверками runner, не добавлен к приведённому числу тестов задним числом.
+
+Дополнение 00:11 МСК: Docker linux/amd64 build PASS на эмуляции OrbStack на том же Mac: 8 core +28 интеграционных тестов, privacy smoke и SDK mock PASS. Manifest list `sha256:eb23d3c85f1b70cfdc3a00ebce7d1fcbca71cffcc9f50dcfd2c0e0d9edd4d2a3`. Это подтверждает сборку архитектуры, не второй компьютер. E9b 91c2554 принят: 28 evaluator tests PASS. На review дополнительно переданы Егору actual mock mode alias, quality_measured при отсутствии пригодных live-отчётов, отклонение duplicate IDs/invalid statuses/rank до расчёта метрик.
+
+00:13 МСК: полный набор с E9b — **339 Python PASS**. Первое объединённое выполнение нашло flaky assertion в test_privacy_real: цифры адреса «12» случайно совпали с частью непрозрачного nonce, хотя вся строка адреса была заменена. Теперь тест намеренно задаёт nonce с такими цифрами и проверяет отсутствие PII вне выданных этим экземпляром refs. Runtime/privacy-детектор не ослаблялись. Повтор полного набора339 PASS. Linux/amd64 runtime под UID10001 без сети — **23 tests PASS**. CI дополнен реальными Python/JS-тестами; предыдущий workflow проверял только репозиторные шаблоны. NER в GitHub без подготовленных весов явно skip, это не подтверждение NER. Новый CI ещё должен отработать на опубликованном SHA.
+
+
+00:20 МСК: приняты E9b-fix5c7afba и E9c5e75155. Рейтинг clarify, если спорная нижняя вакансия может догнать первое место; очередь содержит mandatory_partial/condition_unknown; R6 исправлен в Markdown и UI. Устаревшие INTEGRATED-флаги модулей синхронизированы с действительным pipeline/service. **347 Python PASS**, expected failures/skips нет; **36 Node PASS**. CI SHA60a9dc1: обе jobs SUCCESS ([run43508674871](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43508674871)); это предыдущий срез до E9c, следующую публикацию проверяем отдельно. Второй компьютер назначен Егору [#26](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/issues/26). Штатный download Docker не сразу упал: Slovnet подготовился за241с, Navec ещё скачивается — результата полной сборки пока нет.
+
+Около 00:22 МСК: опубликованный код `c1c1f4f87ef3e0778c4f9e489bacaf00c85ec76f`, CI [43509516123](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43509516123) SUCCESS. После E9c пересобраны точные теги `recruiter-prototype:c1c1f4f-arm64` (manifest list sha256:7672b5e4d21b9e4a00387592acef1eb5d8a3b509d5f142f9dbcf746c9cdb0c00) и `c1c1f4f-amd64` (sha256:8778be979bb5e696dcc004dbed04db3e4c5d57a8d2a2bd3ea2694bd655a8dcbd): build8+28tests/обаsmoke PASS. Обе архитектуры экспортированы в один Docker archive, `docker load` PASS, 9 service tests в загруженном amd64 image без сети PASS. Локальный пакет `data/private/release/c1c1f4f`: images260186253bytes SHA256098d9ee7241b4bb0d1828e0bd787722f926a1f328cdca58b8c2b702fe21c56f5; public models ZIP29020542bytes SHA2567bc60c6b4a7bff4392aec000c3568695fa811af0723ea4c0963fa7afe3323b15. Пакет содержит код и публичные веса, не CV/ключи/историю.
+
+Егор сообщил результат **второго физического Mac** в issue20 (не выдаётся за проверку интегратора): arm64/macOS26.5.1, Python3.14.7 и существующий venv, база4b36bed +E9b/c. Нативный success3/3, confirm→mark, incomplete2/3 и сохранение после рестарта PASS. Docker BLOCKED: `docker: not found`; Python3.13/NER/mock/export/delete/disputed пока не проверены. Задача #26 остаётся открытой, запросил закончить доступную нативную часть. Подпись неполного результата в viewer уточнена: «Часть вакансий не оценена» — пропуск одной вакансии не равен остановке всей обработки.
+
+Дополнительная сквозная регрессия 14 ноября: `test_uploaded_synthetic_files_reach_protected_pipeline_and_review_without_network` PASS. Проверяет именно ветку загруженных TXT/MD: inspect → непривычные хешированные job_id → настоящий NER → настоящий SDK с внедрённым **только тестом** MockTransport → store → confirm/mark. Сетевой socket.connect в тесте запрещён; 7 локальных запросов, вымышленный email/имя файла отсутствуют в payload/отчёте/сохранённых файлах, HR не добавляет модельных вызовов. Эта проверка не является live, временный отчёт теста не входит в демо/метрики качества. Runtime-код для теста не менялся.
+
+## 14 ноября, 00:40 МСК — опубликованная доставка и штатная загрузка весов
+
+Пакет [night-c1c1f4f](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-c1c1f4f) опубликован в командном репозитории: prerelease, **не draft**, target `c1c1f4f87ef3e0778c4f9e489bacaf00c85ec76f`. Четыре assets имеют state uploaded; серверные SHA256 совпали с локальными для Docker archive, публичных весов, README и SHA256SUMS.json. Архив образов 260186253 байта, SHA256 `098d9ee7241b4bb0d1828e0bd787722f926a1f328cdca58b8c2b702fe21c56f5`. Проверка `docker load` и runtime уже приведена выше. Пакет не содержит CV, .env, истории или закрытого Certum. Команды и ссылка переданы Егору в #26; отсутствие Docker на его машине остаётся конкретным ограничением приёмки.
+
+Предыдущая медленная штатная сборка `docker build --platform linux/arm64 -t recruiter-prototype:clean-download .` **завершилась PASS**. Стадия загрузки/проверки двух публичных весов заняла **1126,9 с**. Это снимает блокер данной попытки доставки; предыдущие timeout не стираются, скорость CDN не гарантируется. Эта первая download-сборка захватила более ранний код до E9c. Поэтому текущий опубликованный исходный срез `be04b157d7d771f8eaf8b9697dc4a4096c6b5742` дополнительно собран штатным способом с уже проверенным кешем весов:
+
+```sh
+docker build --platform linux/arm64 -t recruiter-prototype:be04b15-download .
+docker run --rm --network none --entrypoint python recruiter-prototype:be04b15-download -m unittest prototype.tests.test_local_service.LocalServiceTests.test_uploaded_synthetic_files_reach_protected_pipeline_and_review_without_network -q
+```
+
+Build: **8 core +29 интеграционных тестов PASS**, оба privacy smoke PASS, 7 локальных SDK/mock-запросов, внешних модельных запросов 0. Manifest list `sha256:b6efc85f6f04c72389e4b3305b09847c43cf72ed7c386da863eb62e0eb71eacd`. Runtime: новый uploaded-files test PASS под UID10001 без сети. Это локальный более свежий образ; release-архив остаётся явно привязан к c1c1f4f, его состав не приписывается новой версии.
+
+CI на **be04b15**: [43511485312](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43511485312), `static-check` и `prototype-tests` SUCCESS. Последний полный локальный suite до добавления одной регрессии — 347 Python без skips +36 Node +10 repo; после добавления — целевой LocalService 10 PASS и указанная Docker-проверка. В CI отсутствующие публичные NER-веса дают явные skips, это не замена фактической локальной/Docker-проверке NER.
+
+Визуальная приёмка дополнена [парой снимков в одинаковом viewport и настоящим zoom 200%](reviews/ui-nanimai-night.md): источник 1728×1181, реализация 1728×1181, клавиатурный выбор и чтение цитат. Интегратор просмотрел оба снимка. Отличия плотности/вертикального положения из-за добавленного dashboard и неизвестный исходный шрифт описаны; pixel-perfect совпадение не заявляется. Исходный снимок с брендингом/контактами остаётся локальным.
+
+Неподтверждённое к передаче: защищённый live новой wire-схемы, смысловое качество/полнота извлечения модели и полнота PII-detection на реальных CV, замер экономии времени HR, Docker на втором физическом компьютере. Unit/replay/mock и отсутствие единственного эталонного порядка не заменяют эти проверки. Решение об оценке дополнительных моделей зафиксировано в [плане продукта](20-final-product-plan.md): сначала измерить ошибки E6, новые платные прогоны сейчас не выполняются.
+
+## 14 ноября — V7: независимый Linux Docker CI
+
+В `09f358e0c7f5611899c4d3f64b34844de3717e36` добавлены два недостающих gate исходного V7. `scripts/check_cli_replays.py` запускает настоящую CLI-команду для success/disputed в отдельных временных каталогах: ровно один JSON и непустой Markdown на сценарий, 3/3 вакансии, явный replay, profile/derived, ожидаемая рекомендация и все четыре статуса. В обычном CI результат проходит настоящий UI-парсер. Python-only Docker проверяет те же артефакты с явным `ui_parser_checked: false`. Локальные обе команды PASS; проверка не является замером качества модели.
+
+Новый workflow `Docker acceptance` с чистого checkout на GitHub `ubuntu-latest` **SUCCESS**: [run43514649582](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43514649582). Фактически успешны четыре шага: штатный `docker build --platform linux/amd64`, оба CLI/artifact smoke, store/service/HTTP unittest и настоящий local NER + SDK MockTransport. Все runtime-команды выполнялись с `--network none` под штатным UID10001, без ключей и .env. Это независимый Linux CI runner, а не эмуляция на Mac интегратора; сценарий в браузере на втором Mac Егора остаётся отдельной незакрытой приёмкой #26.
+
+Два оставшихся пункта аудита: отдельный N-C3 privacy corpus/JSON+Markdown с пропусками и потерянными профессиональными фрагментами (существующих unit-проверок недостаточно) и визуальное сравнение overlay с источником. Найден PR #23 Вани: независимое ревью подтвердило 9 синтетических DOCX/PDF, но нашло ложноположительные результаты второго evaluator; принять документы отдельно, E9 оставить единственным runner. По новому поручению Григория создан E11 [#27](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/issues/27): Fable разрабатывает и проверяет scoring v3; постановка не означает фактический старт или готовую интеграцию.
+
+## 14 ноября — N-C3, документы V6 и точная геометрия диалогов
+
+N-C3 теперь отдельный воспроизводимый артефакт: [корпус, JSON/Markdown и команды](reviews/privacy-acceptance-2026-11-14.md). Закреплённый настоящий NER, **21/21 случай оценён, 19/19 идентификаторов замаскированы, 24/28 профессиональных фрагментов сохранены**, внешних вызовов 0. Команда `python -m evaluation.privacy_acceptance --out <новая папка>` вернула **1** из-за четырёх видимых потерь; они не исключаются из знаменателя. Контроль с отсутствующими весами вернул **2**, 0/21 и null-метрики. Результаты опубликованы только на вымышленных данных; полнота на реальных CV и анонимность не измерены.
+
+В `local-privacy-0.2` исправлено явное английское представление, включая инициалы и продолжение через and, без поглощения следующей профессиональной фразы. Независимое Sol-ревью нашло частично открытое имя с инициалом и ложный успех пустого корпуса; сначала регрессии FAIL, после фиксов 10 тестов N-C3 PASS. Блокировка при остаточном обнаружении проверена через настоящий LocalPrivacy/evaluate. SDK/mock после изменения backend PASS: 7 локальных запросов, 3/3 вакансии, OpenAI-сеть 0. Утрата Rust/английского заголовка/полных дат опыта остаётся явным ограничением.
+
+V6 принят выборочно из PR #23: девять DOCX/PDF + manifest, точный текст и хеши проверены текущим parser против E6. [Подробности, происхождение и непринятые дефекты evaluator](reviews/vanya-v6-acceptance.md). Второй evaluator не подключён, эталоном проверки сохранённых отчётов остаётся E9.
+
+Sol-поставка `01287c2` и поправка названий кадров `95c5b43`: диалоги удаления/HR сверены с реальными SVG-компонентами в desktop/mobile, геометрия 516×224 в (606,250), затемнение 50%, кнопки 120×48. Добавлена рабочая ×; Escape/Отмена/× возвращают фокус и не меняют решение. Реальное подтверждение меняет ревизию, удаление затрагивает только тестовый run. Интегратор просмотрел reference/реализацию, изменение JS использует прежний путь отмены и сбрасываемый returnValue. [Кадры и оговорённые отличия](reviews/ui-nanimai-night.md).
+
+Итоговые команды: `.venv/bin/python -m unittest discover -s prototype/tests -q` — exit 0, текущий набор **359 тестов**; `node --test prototype/tests/test_web_*.cjs` — **36/36 PASS**; `scripts/check_repository.py` — 974 файла/732 Python PASS; `git diff --check` PASS. Новых API-прогонов, чтения .env и отправки реальных CV не было. Docker/CI для этих новых runtime-изменений проверяются отдельно; старому release c1c1f4f они не приписываются.
+
+## 14 ноября — E10 принят; исправление штатной остановки
+
+Новый runtime-срез **7947ccb4e62fec15b9b03c9752506e5b5e2ebf74** прошёл [Repository CI43517855924](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43517855924) и независимый [Linux Docker CI43517843894](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43517843894). Обе локальные архитектуры также собраны: 8 core +29 integration и оба privacy smoke PASS; backend0.2. Архив 7947ccb реально экспортирован и загружен Docker load. После перезапуска нативного сервера без активных анализов API → protected mock disputed дал 3/3, clarify, backend0.2; только созданный проверкой запуск удалён, прежние два сохранены. Этот промежуточный архив ещё не опубликован: в финальный пакет включается следующий stop-fix.
+
+Принят финальный [E10 PR28](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/pull/28), head **1f85995**, merge **86ca5be**. [Отчёт и синтетические снимки](reviews/egor-e10-second-computer.md) подтверждают **второй физический Mac**: Docker на проверенном 48268b2 через fallback, protected success/disputed/incomplete, HR, manager HTML ревизии3, удаление одного запуска, restart и замена образа с сохранением тома. Прямая download-сборка там FAIL URLError на Navec; это не скрыто и не заменено обходом защиты. Новые privacy0.2/диалоги не приписываются его более раннему SHA.
+
+Егор обнаружил D1 P2: idle `docker stop` →137. Интегратор воспроизвёл на одноразовом 7947ccb контейнере после готовности HTTP. Добавлен `STOPSIGNAL SIGINT`, который сервер уже обрабатывает через KeyboardInterrupt/finally. Новая реальная проверка `python scripts/check_container_stop.py --image <образ>` сначала завершилась ошибкой `container_stop_exit_137` на старом образе, затем **PASS/exit0** на исправленном. Она проверяет готовый idle-сервер без сети/тома и удаляет только свой контейнер. Включена в Linux CI. Гарантия мгновенной остановки уже отправленного live-запроса не заявляется; Docker по-прежнему имеет свой grace period.
+
+E10 принят, Егору явно передан старт E11 #27; Docker stop исправляет интегратор, он не блокирует работу над скорингом. Создание задания не считается фактическим стартом Fable. Конечный пакет, stop-fix CI и точный SHA проверяются следующей публикацией.
+
+## 14 ноября — опубликован a49a06e; E11 остаётся на ревью
+
+[Release night-a49a06e](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-a49a06e), точный runtime SHA **a49a06e9cf3c6ee17b48f1ba6001e50329c66018**. Все четыре asset имеют `uploaded`, release не draft. Серверные SHA256 совпали с локальными: архив образов **ffc7a429e25b7f1a7f4ab2d62104764ae9ef303eee50c32815bfffb74b4a29a5** (260154023 байта); публичные веса **7bc60c6b4a7bff4392aec000c3568695fa811af0723ea4c0963fa7afe3323b15**; README **3770967f214f0400a3ea3540080ab041504ba066594748b6c11bd76cc26a69d7**; файл сумм **0374479ee95347267d9413c279fa6a97dfb063b318d2231cf1bf7670d075bb78**. Теги `recruiter-prototype:a49a06e-arm64` и `recruiter-prototype:a49a06e-amd64` существуют локально, обе конфигурации имеют SIGINT. Архив содержит код/публичные веса без `.env`, CV и истории.
+
+На этом точном SHA прошли [Repository CI43518874312](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43518874312) и [Docker CI43518867425](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43518867425). Проверены имена и исходы шагов: Linux amd64 build, реальные CLI-артефакты двух replay, store/service/HTTP, локальный NER + SDK MockTransport, новый `check_container_stop.py` — всё success. Это подтверждает исправление D1 на независимом Linux runner.
+
+В release остаётся v2. E11 PR #29 на ba3e014 **не принят**: независимое ревью воспроизвело ошибки округления, повторных требований, ничьей/ID, числа необходимых ответов и смешанных версий. [Адресные замечания отправлены Егору](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/pull/29#issuecomment-6866553471). Заявление автора «16/16» относится только к его dev-набору, не закрывает эти контрпримеры и не измеряет качество модели.
+
+Codex готовит совместимый UI для v3 отдельно: ссылки объяснения сверяются со строками/цитатами, свободный summary из импортированного JSON не принимается как проверенный вывод, HR-полномочий не добавлено. Новое поле шага `score.resolution` запрошено у владельца scorer, чтобы frontend не воспроизводил ошибочный расчёт по повторным строкам. До получения исправленной поставки браузерная/сквозная приёмка v3 не объявляется выполненной. Для проверки обновления создано отдельное синтетическое RunStore v2 с действительным решением HR ревизии 3; пользовательская история не менялась.
+
+Подготовка UI отдельно от включения v3: 39/39 Node PASS, синтаксис JS и `git diff --check` PASS, repository check 978 файлов/733 Python PASS. Независимый Sol нашёл противоречивые imported leader-состояния и метки v3 в legacy; регрессии добавлены, состояние/строки/версия/шаг проверяются до показа. Строгое поле `decisive` привязано к валидной решающей строке. Эти forward-compatible изменения не входят в замороженный a49a06e и ещё не доказывают работу полного v3 pipeline.
+
+## 14 ноября — E11 принят и проверен в полном приложении
+
+Финальный runtime **bffa94a13bd901b82c8a3491eed7676d66f9fcac**, [PR #29](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/pull/29) принят. Адресные контрпримеры ревью исправлены: точный расчёт/округление, повторы и конфликты статусов, перестановки/ID, маркеры обязательности, количество решающих ответов и смешанные версии. Интегратор подключил объяснение лидера к pipeline, валидируемый UI и согласованные MD/CSV/manager HTML; конфликтный повтор не становится уверенным плюсом/минусом. Старый v2 RunStore с HR revision 3 сохранил hash/score/revision и не приобрёл подтверждение v3.
+
+[Подробный протокол, команды, кадры и ограничения](reviews/night-bffa94a-acceptance.md): `.venv/bin/python -m unittest discover -s prototype/tests -q` — **404 PASS без пропусков**; `node --test prototype/tests/test_web_*.cjs` — **40 PASS**. Настоящие CLI success/disputed и 17 E11→pipeline→JS проекций PASS. 16/16 dev-ожиданий v3 против 10/16 v2 — проверка гипотез политики, не измерение качества модели/HR.
+
+Чистый тестовый Chromium проверил native и финальный Docker arm64: TXT inspect при выключенном live, success 3/3, HR→HTML revision 3, reopen/delete, protected mock disputed 3/3 и incomplete 2/3 с запретом передачи менеджеру. Desktop/mobile без горизонтального переполнения; 0 JS/CSP ошибок/предупреждений. Основной сервер 8765 обновлён: две старые v2-записи сохранены, новый v3/stable replay проверен и удалён только собственный тест.
+
+Docker arm64/amd64 bffa94a собраны: 8 core +30 integration и оба privacy smoke PASS на каждой архитектуре. Offline CLI replay и штатный stop exit0 PASS на обеих. Архив фактически экспортирован и загружен Docker load; [Linux Docker CI43524689571](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43524689571) и [Repository CI43524689576](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/actions/runs/43524689576) success на этом SHA. К этому результату не приписывается второй физический Mac Егора на 48268b2.
+
+Новые платные API-прогоны не выполнялись, `.env` не читался, реальные CV наружу не отправлялись. N-C3 сохраняет четыре известных потери профессионального текста; точность новой live-модели и согласие реальных HR не измерены. Следующий этап Егора — [E12 #31](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/issues/31), финальная продуктовая приёмка/демо; это постановка, не выполненная проверка. Интерактивный what-if из PR #30 пока вне этого runtime.
+
+
+## 14 ноября 02:22 МСК — финальный пакет bffa94a опубликован
+
+[Release night-bffa94a](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/releases/tag/night-bffa94a) не draft; target — **bffa94a13bd901b82c8a3491eed7676d66f9fcac**, published_at `2026-11-13T23:22:17Z`. Проверены все четыре asset в состоянии uploaded; размер и серверный SHA256 каждого совпали с локальным:
+
+| Файл | Байты | SHA256 |
+|---|---:|---|
+| recruiter-prototype-images.tar.gz | 260179696 | `4d07237d42af798289f60e563b6c3ad3f729893c40411bcc3b647ba5d87bcd0a` |
+| public-privacy-models.zip | 29020542 | `7bc60c6b4a7bff4392aec000c3568695fa811af0723ea4c0963fa7afe3323b15` |
+| README.txt | 1164 | `7ffce0f6fb5fc59f5f7d5dbccf7a46a40bf76359428eba8b9e42cd71fe53f2ff` |
+| SHA256SUMS.json | 419 | `bcef77e0e1887c6bb482639ffa656e7c5bf9d2d8509a40bce421270b9cc11fbd` |
+
+Runtime и оба тега сверены с manifest реального архива. Одноразовый тестовый Docker-контейнер и его собственный том удалены после приёмки; основной локальный сервер 8765 и пользовательская история сохранены. README/runbook/матрица 100 баллов/ночная координация/Гант обновлены по фактам. Repository check после документации — **989 файлов /736 Python PASS**; `git diff --check` PASS. Эта эвристическая проверка не заменяет полный аудит секретов. Дальнейшие коммиты документации не меняют runtime архива.
+
+
+## 14 ноября — исправление чтения DOCX с колонтитулами
+
+Пользователь воспроизвёл отказ `docx_header_footer` на штатном резюме кейса. Причина — запрет любого текста в колонтитуле. Теперь парсер читает абзацы/таблицы активных колонтитулов, основной текст и нижние колонтитулы; общие части учитываются один раз. Учитываются первая/чётная страницы и наследование между секциями. Неактивные варианты и исторические ссылки `sectPrChange` не становятся доказательствами кандидата. Неподдерживаемый текст в фигурах/объектах по-прежнему даёт явную ошибку; общий лимит 60 000 символов включает колонтитулы.
+
+Регрессия обычного колонтитула сначала FAIL, затем PASS. Независимый Sol-ревью выявил включение скрытых/исторических частей; отдельная регрессия сначала FAIL, после исправления PASS; адресная перепроверка — без блокеров. `prototype.tests.test_documents` — **33 PASS**. Совместный запуск `test_documents`, `test_local_service`, `test_web_app`, `test_integrated_analysis` — **51 PASS**. `git diff --check` PASS.
+
+Исходное резюме кейса проверено только локально через file/bytes parser: **5507 символов**, все **248** непустых текстовых фрагментов активных частей сохранены. Файл/текст/имя кандидата в Git и вывод не включены, внешних модельных вызовов 0. Фикс относится к исходникам и обновлённому локальному серверу; опубликованный ранее Docker-архив `night-bffa94a` остаётся неизменным и этой правки не содержит.
+
+
+После обновления основного локального сервера отдельно проверен **настоящий HTTP POST /api/inputs/inspect** с тем же локальным резюме кейса и тремя исходными DOCX-вакансиями: `ready=true`, четыре `status=ok`; резюме 5507, вакансии 2475/2193/1933 символа. Использован локальный endpoint с CSRF, анализ моделью не запускался, исходные данные в ответ проверки не выводились. Исправление runtime: **a6f55b9**. Активных анализов перед перезапуском не было; старые записи истории сохранены.
+
+
+## 14 ноября — включение live и первый новый защищённый прогон
+
+По прямому запросу владельца «включи чтобы модель работала» локальный сервер 8765 перезапущен с `--allow-live`. Ключ загружен в окружение процесса из локального файла без вывода значения; `privacy_core` обязателен. Автоматическая проверка безопасности отклонила попытку анализа документов кейса из-за прежнего запрета отправлять реальные CV наружу: эти документы в данном действии не отправлялись, запрошено отдельное согласие на payload/destination.
+
+Безопасная независимая проверка выполнена **только на встроенных синтетических текстах demo_inputs('success')** через настоящий HTTP inspect/create → privacy_core → OpenAI Luna. Run `153104ce4bdb409eb9ab8e92750ce28e`: `complete`, 3/3 вакансии, 7 настоящих запросов, 6269 input +1475 output tokens по ответам API, ошибок 0, unprocessed 0; лимит приложения $1. Режим отчёта `live_local_privacy`; происхождение данных этого конкретного теста — встроенная синтетика. Это подтверждает работу нового защищённого live-пути и схем, но не измеряет смысловое качество на независимой выборке или полноту обезличивания реальных CV. Отчёт хранится локально и не публикуется. Прежнее утверждение об отсутствии новых платных вызовов относится к ночной поставке до этого запроса.
+
+
+## 14 ноября — privacy_core 0.3: повторное обнаружение после маскирования
+
+Владелец явно разрешил один анализ резюме №2 и трёх вакансий после локального маскирования в OpenAI Luna, лимит приложения $1. Первая попытка завершилась `privacy_residual_findings` во время общего preflight **до первого вызова модели**. Локальная диагностика без вывода текста выявила новые ORG-находки после смены контекста NER при подстановке маркеров.
+
+Исправление 0.3: максимум три прохода маскирования; на каждом проверяются собственные маркеры, новые находки маскируются, пересечение с маркером вызывает отказ. Остатки после лимита и сбой детектора по-прежнему блокируют отправку. Проверка перед каждым вызовом SDK сохранена. Все четыре согласованных документа прошли локальные redact/check; исходники и содержимое в Git не добавлялись.
+
+Регрессии: обнаружение новой сущности после первого прохода (сначала FAIL), отсутствие сходимости и пересечение уже выданного маркера (модель не вызывается). **26 privacy tests PASS**, общий suite **413 PASS**; независимое адресное Sol-ревью — без блокеров. Оценщик N-C3 для успешного multipass теперь явно оставляет метрики неизмеренными: смещения следующих проходов относятся к изменённому тексту, поэтому первое сканирование не доказывает итоговое сохранение профессиональных фрагментов. Новая регрессия метрик сначала FAIL, затем PASS; прежние 19/19 и 24/28 не переносятся на новую политику как измеренный результат. Готовый Docker night-bffa94a остаётся прежним; фиксы публикуются в исходниках.
+
+
+### Фактический итог согласованного прогона кейса
+
+После установки privacy_core 0.3 run `90692577074f4ebf93c55d58b056067c` прошёл входное маскирование и получил **один настоящий ответ Luna**: 3565 input /3238 output tokens. Далее `Model.ask` отклонил возвращённые структурированные факты на `check_data(response.output_parsed)` с `privacy_residual_findings`. Итог **partial, 0/3 вакансии**, stage `facts`; оценок и ранжирования нет. Расчёт по тарифам приложения — **$0.0019755**, резерв $0.010174; баланс/счёт провайдера отдельно не проверялся. Вторых API-прогонов этих данных не выполнялось.
+
+Неполный отчёт открыт пользователю в UI: «0 из 3», причины остановки, без выдуманного рейтинга. Это **не успешный end-to-end на кейсе**. Следующий блокер — разбор повторного обнаружения сущностей в структурированном ответе модели; природа срабатывания на этом ответе не установлена. Входное исправление не отключает проверку модельного ответа или последующих исходящих payload. Содержимое документов/ответа не публикуется, исходный ответ не восстанавливается из отсутствующих логов.

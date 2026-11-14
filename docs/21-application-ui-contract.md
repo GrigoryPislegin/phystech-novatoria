@@ -1,0 +1,89 @@
+# Контракт между движком и локальным экраном
+
+**Обновление 13 ноября, 23:35 МСК:** E5/E7/E8 подключены к фактическому pipeline. Wire DTO: `ResumeAnalysis(Facts)` содержит `profile: CandidateProfile`; `VacancyAnalysis(Evaluation)` содержит `conditions: Conditions`. Это прежние 1+2N модельных вызовов. В отчёте `profile: ProfileCheck | null`, `profile_missing`, `ranking.jobs[].conditions: ConditionsCheck`, `comparisons` (первая вакансия против остальных), `review_queue`, `handoff`. Скоринг получает исходные requirements/evaluation и check_pair; `score.evidence_applied=true`. Производные поля пересобираются после добавления privacy metadata. `analysis_schema_version=analysis-0.2`, контейнер отчёта пока `schema_version=0.1`. Серверное сохранение решений/операции ниже ещё реализуются; наличие handoff не означает доступную кнопку подтверждения. Старые отметки о неподключённом E5 ниже заменяются этим уточнением.
+
+13 ноября 2026. **Проект контракта для параллельной разработки**, не описание уже существующих endpoints. Ваня реализует экран/транспорт, Codex — application service и связь с движком. Изменение формы ответа модели и скоринга остаётся у Егора/Codex; UI не рассчитывает собственный рейтинг.
+
+## Этап A: независимый просмотр готового результата
+
+Первая поставка работает офлайн: пользователь выбирает локальный report.json, страница читает его в браузере, без отправки на сервер/CDN. Поддерживает текущий `schema_version='0.1'`. Нужные поля уже существуют:
+
+- `mode`, `model`, `demo_scenario` — режим и источник;
+- `ranking.complete`, `ranking.recommendation`, `ranking.requires_human_review`;
+- `ranking.jobs[]`: job_id, rank, requirements.items, evaluation.rows, score;
+- `facts.items[]`: id, text, quote;
+- `errors[]`, `unprocessed_job_ids[]`;
+- `usage[]` и `reserved_usd_estimate` только если реально присутствуют.
+
+`prototype/web_report.py` и JS-адаптер принадлежат Ване: проверяют входную форму и превращают её в presentation model, не меняя исходный report. Локальное имя вакансии берётся только из принятого manifest; при его отсутствии показывается job-id. Никаких придуманных названий/стоимости/подтверждений.
+
+Число задач/балл/статус проверки не подменяют друг друга. Подпись complete: **«Обработано N/M вакансий»**. Если проверки требований нет, показать «Состав требований не подтверждён», а не «всё проверено». `full` — статус оценки; `structure_ok` — проверка структуры; `confirmed` — отдельное действие рекрутера. UI не должен делать из первого второе или третье.
+
+## Этап B: подключённые E3/E4 и будущие расширения
+
+На ea1369f фактически доступны (имена ниже заменяют старый проект полей):
+
+- `ranking.jobs[].evidence_check` — check_pair; rows/mandatory, контекст, needs_review/has_invalid;
+- `ranking.jobs[].requirements_draft` — исходный список/uncovered/hash;
+- `ranking.jobs[].requirements_review` — отдельная проверка E4;
+- верхнеуровневый `requirements_review` — сводка processing_complete/requirements_confirmed/unconfirmed/stale/invalid;
+- `score_review` внутри вакансии — исключённые из жёсткой обязательности id и версия правила;
+- `inputs.manifest.json` — отдельный закрытый локальный файл; пути/имена не передаются модели.
+
+`run_metadata` с полным набором версий, candidate_profile/conditions/comparison/what_if и операции ручного review ещё требуют поставки E5/E7/N-C/E8. Пока поле отсутствует, UI показывает отсутствие возможности. Нельзя использовать старые проектные имена evidence_checks/review_summary как будто они уже есть в отчёте.
+
+Контекст импортированного span не становится доверенным только из-за claimed hash: при серверной проверке нужен собственный snapshot. Неизвестная версия отчёта — явная ошибка, не угадывание формы.
+
+## Application service — ответственность Codex
+
+**Реализованный минимум 13 ноября:** `application.load_documents(resume_path, jobs_root, *, reader, control)` возвращает текст, `(job_id, text)` и локальный manifest. `await application.analyze(resume, jobs, *, model_factory, privacy, out, mode, control=None, manifest=None, metadata=None)` используется синтетическими режимами; `await application.analyze_protected(resume, jobs, *, privacy_context, model_factory, out, control=None, manifest=None)` сам управляет контекстом защиты и публикует только после его успешного закрытия. В protected-варианте `model_factory(privacy)` создаёт модель; в обычном `model_factory()` не принимает аргументов. Результат — `RunResult(report, path)`, `exit_code` 0/2.
+
+`RunControl(timeout_seconds=300, progress=callback)` и `.cancel()` управляют одним запуском. Callback получает только stage/job_id/elapsed_ms; отмена проверяется также после исходящего scan перед SDK. Прогресс не обещает процент/остаток времени. Дедлайн ограничивает асинхронные операции и проверяется между синхронными; один синхронный parser/NER warmup не прерывается принудительно. На закрытие контекста защиты даётся отдельное окно 30 с; его ошибка запрещает публикацию.
+
+В JSON 0.1 добавлены `verification`, `presentation`, `unprocessed`, `events`. `verification.final_allowed` пока всегда false: E3/E4 подключены, но CLI пока не принимает ручное подтверждение и не проверяет смысл автоматически. Для V3/V5 использовать `presentation.jobs[].rows` и `manager_brief`: там цитаты/шаблонные вопросы, без произвольного комментария модели. Статусы явно model_proposed; manager brief всегда draft_requires_review. Сырые `evaluation.comment/question` остаются неподтверждёнными данными для аудита. CSV также содержит столбец verification. Имена файлов только в закрытом локальном `inputs.manifest.json`, не в model payload.
+
+Следующая таблица описывает **пока не реализованные** transport/run-registry операции. `analyze` не является HTTP-сервером или готовыми create/get/delete endpoints; их не выдавать за подключённый UI.
+
+Публичный интерфейс в новом `prototype/application.py`, тонкий транспорт в `prototype/web_app.py`. Ниже договорённость о поведении; точные Python DTO/сигнатуры Codex фиксирует отдельным малым PR до подключения транспорта.
+
+| Операция | Вход / выход | Инвариант |
+|---|---|---|
+| inspect_input | Загруженные локальные файлы → результаты по каждому | Все ограничения до модели; не печатать содержимое/пути в лог |
+| create_run | Идентификаторы файлов этого запуска + разрешённый режим → opaque run_id | Не принимает произвольный путь; режим нельзя сделать live одной подменой UI |
+| get_run | run_id → стадия, processed/total, ошибки, состояние | Состояния queued/running/needs_review/complete/partial/failed/cancelled; complete процесса не подтверждает смысл |
+| get_report | run_id → опубликованный report | Только атомарно опубликованный комплект; иной run_id не открывает чужой/внешний файл |
+| confirm_requirements | run_id/job_id + hashes + явное действие → новый check | Hash проверяется сервером; stale → конфликт, модель не выставляет confirmed |
+| request_cancel | run_id → cancel_requested/final state | Остановить новые запросы, сохранить готовые оценки; текущий уже отправленный запрос может быть оплачен |
+| export_report | run_id + формат из whitelist → файл | Без аргумента пути; без скрытых неподтверждённых выводов |
+| delete_run | run_id + явное действие → результат удаления | Удалить файлы именно запуска и очистить его кеш; не удалять исходные файлы пользователя/данные провайдера и не обещать этого |
+
+Транспорт может использовать `/api/runs`, `/api/runs/{id}`, `/api/runs/{id}/report`, `/api/runs/{id}/confirm`, `/api/runs/{id}/cancel`, `/api/runs/{id}/export`. Это предложенные локальные маршруты, не разрешение строить публичный SaaS. Для первого живого UI достаточно create/get/report; остальные включаются по готовности service. Офлайн viewer не должен ждать этих endpoints.
+
+## Граница локального интерфейса
+
+- Сервер только loopback; из Docker порт публикуется как `127.0.0.1:…`. Режим внешнего доступа отсутствует.
+- Проверка Host/Origin; мутации — только с локальным случайным токеном сессии, не с OpenAI-ключом. Нет wildcard CORS и внешних CDN/аналитики.
+- Client filename — отображаемые данные. Сервер выдаёт собственное имя, отвергает traversal/symlink, ограничивает 1 CV + до 20 вакансий, 5 MB на файл и документированный суммарный предел. Предложение для веб-загрузки — 25 MB суммарно; проверяется потоково, это дополнительный лимит UI, не изменение формулы.
+- Пользовательские строки — только textContent/экранирование, никогда innerHTML. Имя/quote/comment/ошибка/manifest также недоверенны. Ошибка не раскрывает traceback, токен, DSN или исходник.
+- Нет автоматической отправки текста из viewer. Ключи используются только backend. При отсутствии полного protected runtime любые пользовательские документы остаются в локальном inspect, кнопка live не делает обход защиты.
+- Новый live выполняется только на разрешённых данных и бюджете; факт псевдонимизации сам по себе не является разрешением внешней обработки.
+
+## События и измерения
+
+Стадии: validating_inputs → parsing → privacy → facts → requirements/evaluation по job-id → export → готово. Событие не содержит сырой текст. UI показывает известное состояние и длительность; не рисует ложный процент готовности или придуманные секунды до конца. Полная ошибка одной вакансии и глобальный privacy/budget stop различаются. Повторное открытие отчёта, раскрытие цитаты и фильтры не вызывают LLM.
+
+## Контрактные проверки перед слиянием
+
+Один fixture на каждый режим: полный результат, неизвестное обязательное, partial, неполный запуск, needs_review, stale confirmation, ошибочный JSON. Fixture синтетический и подписан. Ваня тестирует UI и транспорт на fake application service без сети; Codex тем же контрактом проверяет реальный service. Кандидат принимается только после их совместного smoke на одном SHA. Производные данные не объявлять настоящим вызовом модели.
+
+## Подключённые поля E3/E4 — 13 ноября
+
+`ranking.jobs[].evidence_check` содержит rows/mandatory/needs_review/has_invalid. Каждая строка presentation имеет evidence_check, mandatory_check и mandatory_applied_to_score. `score_review.excluded_mandatory_ids` — маркеры с недоказанной структурной привязкой: они не создают жёсткую группу/вес 3; текущий расчёт использует обычный вес 1. Объяснение этой коррекции показывать рядом с баллом.
+
+`requirements_draft` содержит исходный обработанный список/хеши/uncovered, `requirements_review` вакансии — unconfirmed, сводка запуска учитывает все ожидаемые id. `final_allowed` сводки E4 касается только списка, а не смысла оценок. Общий verification.final_allowed остаётся false.
+
+При настоящей локальной защите `privacy` содержит backend, счётчики замен и предупреждение professional_information_may_be_hidden. Это не персональный журнал замен и не утверждение о полном обезличивании.
+
+Следующий DTO Егора, ещё не подключённый: профессиональная выжимка, стек, последняя роль/сфера/период, достижения с цитатами и конфликты условий CV ↔ вакансия. Не подменять их facts.text или свободным комментарием модели. До поставки отображать отсутствие данных.
+
+Ночные расширения service/review — план docs/25 и ТЗ N-C/E8/V11. Описанные операции не становятся реализованными от публикации ТЗ.

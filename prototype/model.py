@@ -1,6 +1,8 @@
 import json
 import os
 from decimal import Decimal
+from .privacy import check_data, protect_dependency_logs
+from .errors import BudgetLimit, ModelOutputError
 
 # USD / 1M tokens, official model pages checked 2026-11-12. Conservative reservation, not billing.
 RATES = {'gpt-6-luna': (Decimal('0.10'), Decimal('0.50')),
@@ -11,8 +13,19 @@ SYSTEM = '''Ты сопоставляешь профессиональные т�
 Не придумывай опыт. Цитаты копируй дословно из текста, сохраняй регистр и пробелы.
 requirements: извлеки отдельные проверяемые профессиональные требования, ids r1,r2...
 mandatory_quote только для явно обязательного требования (нужна дословная цитата обязательности), иначе null.
+mandatory_quote должна включать целиком quote этого требования и не быть короче 8 символов.
+Если обязательность задана заголовком, цитируй непрерывный фрагмент от заголовка до требования включительно.
+Не дублируй одно и то же требование разными ids. Наличие цитаты не доказывает её смысловую релевантность.
 facts: извлеки профессиональные факты резюме с дословной цитатой, ids f1,f2...
+Включи явно указанные условия работы, даты/роли, сферу, достижения и результаты в факты.
+В том же ответе заполни profile: summary, stack, last_position, achievements, missing.
+Каждое утверждение profile ссылается на fact_id и точную цитату этого факта; никаких личных полей.
+last_position только при наличии дат с годом в том же факте, что роль; иначе null и missing.
+Отсутствующие разделы перечисли в missing, не дополняй их догадками.
 evaluation: ровно одна строка на каждый requirement_id; fact_ids только из предоставленных фактов.
+В том же ответе conditions: условия work_mode/location/schedule/relocation/salary из фактов и vacancy_text.
+compatible/conflict только с цитатами обеих сторон; иначе unknown. Одно условие каждого вида максимум.
+Если обе стороны не упоминают условие, его можно пропустить; не придумывай согласие. Условия отдельно от оценки требований.
 full — факт подтверждает всё требование; partial — подтверждена лишь часть;
 fail — есть явный факт против требования (например, указан меньший стаж);
 unknown — сведений нет, fact_ids пустой. Отсутствие упоминания НЕ fail.
@@ -31,13 +44,14 @@ class Budget:
     def reserve(self, input_tokens, output_tokens):
         cost = (input_tokens*self.rates[0]+output_tokens*self.rates[1])/1_000_000
         if self.calls >= self.max_calls or self.reserved + cost > self.limit:
-            raise ValueError('budget_or_call_limit')
+            raise BudgetLimit('budget_or_call_limit')
         self.reserved += cost
         self.calls += 1
 
 
 class Model:
     def __init__(self, model, privacy, budget=1.0):
+        protect_dependency_logs()
         self.model, self.privacy = model, privacy
         self.budget = Budget(model, budget)
         self.usage = []
@@ -49,21 +63,37 @@ class Model:
     async def close(self):
         await self.client.close()
 
+    def set_run_control(self, control):
+        self.run_control = control
+
     async def ask(self, schema, task, payload):
+        protect_dependency_logs()
+        await check_data(self.privacy, payload)
+        if getattr(self, 'run_control', None) is not None:
+            self.run_control.checkpoint()
         text = json.dumps({'task':task, 'data':payload}, ensure_ascii=False)
-        # The complete dynamic payload is checked again, including prior model outputs.
-        await self.privacy.check(text)
         schema_text = json.dumps(schema.model_json_schema())
         upper_input = len((SYSTEM + text + schema_text).encode('utf-8')) + 4096
-        self.budget.reserve(upper_input, 8000)
-        response = await self.client.responses.parse(
-            model=self.model, store=False, max_output_tokens=8000,
-            input=[{'role':'system','content':SYSTEM}, {'role':'user','content':text}],
-            text_format=schema)
+        # Capacity is a ceiling, not permission to omit requirements. Truncated
+        # output is model_invalid and never becomes a complete evaluation.
+        if task == 'evaluation':
+            capacity = 512 * len(payload.get('requirements', {}).get('items', []))
+        else:
+            capacity = 1024 + 2 * len(payload.get('text', '').encode('utf-8'))
+        output_tokens = min(16000, max(2048, capacity))
+        self.budget.reserve(upper_input, output_tokens)
+        from pydantic import ValidationError
+        try:
+            response = await self.client.responses.parse(
+                model=self.model, store=False, max_output_tokens=output_tokens,
+                input=[{'role':'system','content':SYSTEM}, {'role':'user','content':text}],
+                text_format=schema)
+        except ValidationError:
+            raise ModelOutputError('model_invalid') from None
         if response.usage:
             self.usage.append({'input_tokens':response.usage.input_tokens,
                                'output_tokens':response.usage.output_tokens})
         if response.status != 'completed' or response.output_parsed is None:
-            raise ValueError('model_refusal_or_incomplete')
-        await self.privacy.check(response.output_parsed.model_dump_json())
+            raise ModelOutputError('model_refusal_or_incomplete')
+        await check_data(self.privacy, response.output_parsed.model_dump(mode='json'))
         return response.output_parsed

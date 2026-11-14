@@ -1,0 +1,2 @@
+# Independent privacy_core uses the same pinned runtime as the CLI.
+-r requirements.lock.txt

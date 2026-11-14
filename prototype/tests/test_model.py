@@ -36,9 +36,18 @@ class ModelBoundaryTests(unittest.TestCase):
         kwargs = model.client.responses.parse.call_args.kwargs
         self.assertFalse(kwargs['store'])
         self.assertEqual(kwargs['text_format'], Facts)
-        self.assertEqual(kwargs['max_output_tokens'], 8000)
+        self.assertGreaterEqual(kwargs['max_output_tokens'], 2048)
         self.assertEqual(json.loads(kwargs['input'][1]['content'])['data']['text'], 'fictional')
         self.assertEqual(check.await_count, 2)
+
+    def test_short_outputs_reserve_less_than_dense_requirements(self):
+        short = self.model(AsyncMock())
+        dense = self.model(AsyncMock())
+        asyncio.run(short.ask(Facts, 'facts', {'text':'Python 3 года'}))
+        asyncio.run(dense.ask(Facts, 'facts', {'text':'Подробное описание профессионального опыта. '*500}))
+        self.assertLess(short.client.responses.parse.call_args.kwargs['max_output_tokens'],
+                        dense.client.responses.parse.call_args.kwargs['max_output_tokens'])
+        self.assertLess(short.budget.reserved, dense.budget.reserved)
 
     def test_incomplete_response_not_accepted(self):
         model = self.model(AsyncMock())

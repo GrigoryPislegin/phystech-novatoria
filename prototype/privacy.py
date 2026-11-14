@@ -1,60 +1,64 @@
-"""Adapter for Gleb's actual core. No regex fallback and no external relay."""
+"""Privacy boundary and safe dependency diagnostics for the local application."""
 import os
-import re
-import uuid
+import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 
-# Matches core's reference grammar at reviewed revision 156c229.
-# This rejects untrusted references; it is NOT a replacement PII detector.
-REF_TOKEN = re.compile(r'[A-Za-zА-Яа-яЁё_]+#\d+')
 
 
-class CertumPrivacy:
-    def __init__(self, detectors, scope, source):
-        self.detectors, self.scope, self.source = detectors, scope, source
-        self.issued_refs = set()
+def protect_dependency_logs():
+    """Redact dependency diagnostics before handlers/formatters see their contents.
 
-    async def redact(self, text):
-        # Core treats references as protected spans. Raw inputs cannot claim that privilege.
-        if REF_TOKEN.search(text):
-            raise RuntimeError('privacy_untrusted_reference')
-        result = await self.detectors.redact(self.scope, text, source=self.source)
-        self.issued_refs.update(r.ref for r in result.replacements)
-        await self.check(result.text)
-        return result.text
+    Process-wide for this CLI/service: even late-created child loggers and exception
+    tracebacks must not expose payloads, response bodies or database credentials.
+    Application progress uses explicit safe events instead of dependency messages.
+    """
+    previous = logging.getLogRecordFactory()
+    if getattr(previous, '_prototype_private', False):
+        return
+    namespaces = ('openai', 'httpx', 'httpcore', 'httpx2', 'httpcore2', 'certum_core',
+                  'presidio-analyzer', 'presidio_analyzer', 'sqlalchemy', 'asyncpg', 'psycopg',
+                  'pdfminer', 'pdfplumber', 'docx', 'PIL', 'pypdfium2')
 
-    async def check(self, text):
-        if not set(REF_TOKEN.findall(text)) <= self.issued_refs:
-            raise RuntimeError('privacy_untrusted_reference')
-        # Stricter than core gateway's is_definite: NER-only findings also stop this prototype.
-        if await self.detectors.scan(self.scope, text):
-            raise RuntimeError('privacy_residual_findings')
+    def factory(name, level, pathname, lineno, msg, args, exc_info, func=None, sinfo=None, **kwargs):
+        if any(name == prefix or name.startswith(prefix + '.') for prefix in namespaces):
+            msg, args, exc_info, sinfo = '[dependency diagnostic suppressed]', (), None, None
+        return previous(name, level, pathname, lineno, msg, args, exc_info, func, sinfo, **kwargs)
+
+    factory._prototype_private = True
+    logging.setLogRecordFactory(factory)
+
+
+async def check_data(privacy, value):
+    """Check decoded JSON strings, including keys; escaping is transport syntax.
+
+    Separate fields by actual newlines, avoiding artificial concatenated reference
+    tokens while retaining the source context for the core's detectors.
+    """
+    def strings(item):
+        if isinstance(item, str):
+            yield item
+        elif isinstance(item, dict):
+            for key, child in item.items():
+                yield from strings(key)
+                yield from strings(child)
+        elif isinstance(item, (list, tuple)):
+            for child in item:
+                yield from strings(child)
+        elif item is not None:
+            yield str(item)
+    await privacy.check('\n\n'.join(strings(value)))
+
 
 
 @asynccontextmanager
-async def certum_privacy():
-    required = ('CERTUM_DATABASE_URL', 'CERTUM_MASTER_KEY', 'CERTUM_TENANT_ID')
-    if not all(os.environ.get(k) for k in required):
-        raise RuntimeError('certum_configuration_missing')
-    engine = None
+async def local_privacy():
+    protect_dependency_logs()
+    from .privacy_core import Detector, LocalPrivacy
+    from .privacy_core.models import load
+    directory = Path(os.environ.get('PRIVACY_MODELS_DIR', 'data/private/privacy-models'))
+    privacy = LocalPrivacy(Detector(load(directory)))
     try:
-        from certum_core.core.settings import Settings
-        from certum_core.core.types import Source
-        from certum_core.db import make_engine, tenant_scope
-        from certum_core.detectors import build_detectors
-        from certum_core.detectors.settings import DetectorSettings
-        from certum_core.entities import build_entities
-        from certum_core.vault import build_vault
-        settings = Settings(_env_file=None)
-        engine = make_engine(settings.database_url)
-        detectors = build_detectors(build_entities(build_vault(settings)),
-                                    settings=DetectorSettings(_env_file=None, ner=True))
-        detectors.warmup()
-        async with tenant_scope(engine, uuid.UUID(os.environ['CERTUM_TENANT_ID'])) as scope:
-            await scope.assert_tenant()
-            # Force tenant/vault readiness before network access even on documents with no findings.
-            await build_vault(settings).cipher(scope)
-            yield CertumPrivacy(detectors, scope, Source.file)
+        yield privacy
     finally:
-        if engine is not None:
-            await engine.dispose()
+        privacy.close()
