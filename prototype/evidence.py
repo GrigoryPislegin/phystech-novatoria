@@ -58,7 +58,9 @@ _GENERIC_WORDS = '''
 
 def _stem(word: str) -> str:
     word = word.lower().replace('ё', 'е')
-    return word[:5]
+    # A Latin-script term is a name and is compared whole: «Reactive» is not «React», «Excellent» is
+    # not «Excel», «scalability» is not «Scala». Russian words are cut to a stem for their endings.
+    return word if word.isascii() else word[:5]
 
 
 _GENERIC_STEMS = frozenset(map(_stem, _GENERIC_WORDS))
@@ -81,7 +83,7 @@ _REVERSING = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
     (?:прош[её]л|прошла|прохожу|проходил\w*|проходит|окончил\w*|закончил\w*|слушал\w*)\s+(?:[\w-]+\s+){0,2}курс\w*|
     на\s+курс(?:е|ах)|
     learning|learned|studying|studied|courses?|plan\s+to|want\s+to|would\s+like|
-    только|лишь|немного|чуть|поверхностн\w*|начинающ\w*|слаб(?:о|ый|ая|ое|ые)|теоретически|
+    только|лишь|немного|чуть|мало|маловато|недостаточно|интересу\w+|поверхностн\w*|начинающ\w*|слаб(?:о|ый|ая|ое|ые)|теоретически|
     (?:базов|начальн|теоретическ)\w+\s+(?:уров\w+|знани\w+|навык\w+|понимани\w+)|
     (?:как|уровне|уровень|уровня)\s+пользовател\w*|знаком(?:а|ы)?|
     basic|beginner|only|just|familiar
@@ -312,7 +314,8 @@ class MandatoryCheck(_Strict):
     context: str | None = None
 
 
-RULES_VERSION = 'evidence-0.4'  # 0.4: a full claim must cite the named terms of its requirement
+RULES_VERSION = 'evidence-0.5'  # 0.5: Latin terms compared whole, more reservation words, a short quote before a negation
+_RULES_04 = 'evidence-0.4'  # 0.4: a full claim must cite the named terms of its requirement
 _RULES_03 = 'evidence-0.3'  # 0.3: list layouts under requirement headings, obligation denied by heading or item
 
 
@@ -483,6 +486,15 @@ def _evidence_reasons(span: Span, quote: str, requirement_terms: set[str], fact_
                        if hidden else
                        _review('evidence_not_linked', 'В доказательстве нет ни одного термина требования.',
                                fact_id=fact_id, context=around))
+    # A one- or two-word quote says nothing by itself: a negation in the sentence right after it counts.
+    if status in ('full', 'partial') and len(_WORD.findall(cited)) <= 2:
+        following = next((s for s in lay.sentences if s.start >= span.end), None)
+        # ...unless that sentence names its own subject («Python знаю. Docker не использовал.»).
+        if (following is not None and _NEGATION.search(following.text.replace('ё', 'е'))
+                and not _REFERENCE.search(following.text)
+                and not any(w.isascii() and w.isalpha() and len(w) > 1 for w in _WORD.findall(following.text))):
+            reasons.append(_review('quote_is_fragment', 'Короткая цитата, а следующее предложение содержит отрицание; '
+                                   'проверьте оба.', fact_id=fact_id, context=f'{around} / {following.text}'))
     if span.heading and reverses(span.heading, heading=True):
         reasons.append(_review('heading_context', 'Пункт списка под заголовком с оговоркой; проверьте заголовок.',
                                fact_id=fact_id, context=f'{span.heading} → {around}'))

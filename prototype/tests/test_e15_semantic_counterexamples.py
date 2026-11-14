@@ -84,5 +84,46 @@ class NamedTermTests(unittest.TestCase):
         self.assertEqual((s['lower'], s['upper'], s['mandatory']), (100, 100, 'confirmed'))
 
 
+class ReleaseReviewTests(unittest.TestCase):
+    """Findings of the independent release review of main 8b13b77 that belong to evidence.py."""
+
+    def state(self, requirement, cv, quote=None, status='full'):
+        s, check = run(requirement, cv, quote or cv, status)
+        return check.state, codes(check), s['lower']
+
+    def test_latin_terms_are_compared_whole(self):
+        for requirement, cv in (('Опыт React.', 'Писал на Reactive Extensions.'),
+                                ('Знание Excel.', 'Excellent communication skills.'),
+                                ('Опыт Scala.', 'Отвечал за scalability сервиса.')):
+            state, reasons, lower = self.state(requirement, cv)
+            self.assertEqual((state, lower), ('needs_review', 0), requirement)
+            self.assertIn('evidence_not_linked', reasons)
+        for requirement, cv in (('Опыт React.', 'Писал на React 3 года.'), ('Опыт PostgreSQL.', 'Работал с PostgreSQL.'),
+                                ('Опыт Vue.js.', 'Писал на Vue.js.'), ('Знание C++.', 'Писал на C++ 5 лет.')):
+            self.assertEqual(self.state(requirement, cv)[0], 'structure_ok', requirement)
+
+    def test_more_reservations_around_a_one_word_quote(self):
+        for cv in ('Kafka. Не использовал в продакшене.', 'Опыта с Kafka пока мало.', 'Интересуюсь Kafka и Go.',
+                   'Kafka знаю недостаточно.'):
+            state, reasons, lower = self.state('Опыт Kafka.', cv, quote='Kafka')
+            self.assertEqual((state, lower), ('needs_review', 0), cv)
+            self.assertIn('quote_is_fragment', reasons)
+        # The next sentence is about something else: the short quote is still counted.
+        for cv in ('Kafka. Docker не использовал.', 'Kafka. Работал с ней 3 года.'):
+            self.assertEqual(self.state('Опыт Kafka.', cv, quote='Kafka')[0], 'structure_ok', cv)
+
+    def test_known_limits_stay_visible(self):
+        """Not fixed here, on purpose. A rule that disputed every link made of one ordinary Russian word
+        also disputed real matches («очереди сообщений» ↔ «использовал очереди RabbitMQ») and put the
+        right vacancy of the development set below a wrong one, so it was not shipped. These claims
+        are still counted when a model makes them; the structure check cannot judge their meaning."""
+        counted = (('Опыт управления командой от 5 человек.', 'Разрабатывал интерфейсы управления складом.'),
+                   ('Подтверждённое улучшение качества продукта.', 'Ответственный, качественно работаю.'),
+                   ('React от 5 лет.', 'Работал с React 1 год.'),          # numbers are not compared
+                   ('Опыт Kafka.', 'В проекте использовался Kafka.'))      # an impersonal form
+        for requirement, cv in counted:
+            self.assertEqual(self.state(requirement, cv)[0], 'structure_ok', requirement)
+
+
 if __name__ == '__main__':
     unittest.main()
