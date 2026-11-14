@@ -68,7 +68,7 @@ class Model:
 
     async def ask(self, schema, task, payload):
         protect_dependency_logs()
-        await check_data(self.privacy, payload)
+        await check_data(self.privacy, payload, prepared=True, stage=task, direction='outbound')
         if getattr(self, 'run_control', None) is not None:
             self.run_control.checkpoint()
         text = json.dumps({'task':task, 'data':payload}, ensure_ascii=False)
@@ -95,5 +95,6 @@ class Model:
                                'output_tokens':response.usage.output_tokens})
         if response.status != 'completed' or response.output_parsed is None:
             raise ModelOutputError('model_refusal_or_incomplete')
-        await check_data(self.privacy, response.output_parsed.model_dump(mode='json'))
+        await check_data(self.privacy, response.output_parsed.model_dump(mode='json'),
+                         prepared=True, stage=task, direction='response')
         return response.output_parsed

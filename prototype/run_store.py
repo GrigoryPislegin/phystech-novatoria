@@ -302,8 +302,12 @@ class RunStore:
             report = copy.deepcopy(report)
             report['run_id'] = rid
             record.update(report=report, sources=copy.deepcopy(sources), revision=1,
-                          state='complete' if report['ranking']['complete'] else 'partial',
+                          state=('complete' if report['ranking']['complete'] else
+                                 'partial' if report['ranking']['jobs'] else 'failed'),
                           stage='finished', processed=len(report['ranking']['jobs']), updated_at=_now())
+            if report.get('errors'):
+                terminal = next((e for e in report['errors'] if e['code'] != 'model_invalid'), report['errors'][0])
+                record.update(error=terminal['code'], stage=terminal['stage'])
             if any(e['code'] == 'cancelled' for e in report.get('errors', [])):
                 record.update(state='cancelled', error='cancelled')
             self._view(record)  # Reject a report the transport cannot serve before publication.
@@ -317,7 +321,7 @@ class RunStore:
             if record['state'] not in ACTIVE:
                 return
             record.update(state='cancelled' if code == 'cancelled' else 'failed',
-                          stage='finished', error=code, updated_at=_now())
+                          error=code, updated_at=_now())
             self._write(record)
 
     def _view(self, record):

@@ -38,6 +38,7 @@ prototype/static/**
 !prototype/tests/test_run_store.py
 !prototype/tests/test_local_service.py
 !prototype/tests/test_web_app.py
+!prototype/tests/test_c14_boundary.py
 !prototype/privacy_core/
 !prototype/privacy_core/__init__.py
 !prototype/privacy_core/models.py

@@ -64,7 +64,8 @@
     setText('run-mode', mode);
     setText('run-mode-detail', [modeDetail, scenario, report.model].filter(Boolean).join(' · '));
     setText('run-count', report.processed + ' из ' + report.total);
-    setText('run-progress', report.complete ? 'Все вакансии оценены' : 'Часть вакансий не оценена');
+    setText('run-progress', report.processed === 0 ? 'Анализ не выполнен' :
+      report.complete ? 'Все вакансии оценены' : 'Часть вакансий не оценена');
     setText('run-review', report.requirementsConfirmed ? 'Состав подтверждён' : 'Состав не подтверждён');
     setText('run-review-detail', report.finalAllowed ? 'Подтверждение записано в отчёте' : 'Оценки и цитаты требуют проверки');
     byId('privacy-note').hidden = !report.privacyWarning;
@@ -78,7 +79,7 @@
     skipped.hidden = report.unprocessed.length === 0;
     skipped.replaceChildren(...report.unprocessed.map(job => {
       const reason = Object.hasOwn(skipReasons, job.reason) ? skipReasons[job.reason] : 'Вакансия не оценена';
-      return element('li', null, job.title + ' — ' + reason);
+      return element('li', null, job.title + ' — ' + (job.diagnostic || reason));
     }));
   }
 
@@ -411,7 +412,8 @@
     };
     const names = jobs => jobs.map(job => job.title).join(', ');
     setText('leader-title', report.complete ? 'Что определяет первое место' : 'Предварительный выбор среди обработанных');
-    setText('leader-summary', names(leader.jobs) + ' · ' + states[leader.state]);
+    setText('leader-summary', names(leader.jobs) + ' · ' + (report.complete ? states[leader.state] :
+      'Предварительный выбор среди обработанных вакансий. Сравнение со всем набором не завершено.'));
     setText('leader-scope', (report.complete ? '' : 'Обработаны не все вакансии. ') +
       'Проверка по правилам отчёта охватывает спорные основания и не более двух ответов кандидата. Смысл цитат проверяет рекрутер.');
     const groups = [

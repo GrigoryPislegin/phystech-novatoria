@@ -181,6 +181,12 @@
       ? state + ' ' + progress
       : [state, stage, progress && 'Обработано ' + progress].filter(Boolean).join(' · ');
     content.append(title, status);
+    if (run.error) {
+      const failure = document.createElement('p');
+      failure.className = 'support error';
+      failure.textContent = window.NanimaiReport.describeFailure({code:run.error, stage:run.stage});
+      content.append(failure);
+    }
 
     const actions = document.createElement('div');
     actions.className = 'run-actions';

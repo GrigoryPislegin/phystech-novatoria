@@ -66,11 +66,34 @@
     const [mode, modeDetail] = Object.hasOwn(modes, report.mode)
       ? modes[report.mode] : ['Неизвестный режим', 'Тип запуска не распознан'];
     const scenario = Object.hasOwn(scenarios, report.scenario) ? scenarios[report.scenario] : null;
-    const recommendation = !report.complete
+    const recommendation = report.processed === 0
+      ? ['Анализ не выполнен', 'Ни одна вакансия не оценена. Устраните указанную причину и запустите анализ заново.']
+      : !report.complete
       ? ['Неполный рейтинг', 'Места предварительные. Ниже показаны только оценённые вакансии.']
       : Object.hasOwn(recommendations, report.recommendation)
         ? recommendations[report.recommendation] : null;
     return { mode, modeDetail, scenario, recommendation };
+  }
+
+  function describeFailure(error) {
+    const stages = {facts:'Извлечение фактов', requirements:'Извлечение требований',
+      evaluation:'Оценка соответствия', facts_validation:'Проверка фактов',
+      requirements_validation:'Проверка требований', evaluation_validation:'Проверка оценки',
+      privacy:'Защита документов', privacy_startup:'Запуск защиты', parsing:'Чтение документов'};
+    const reasons = {privacy_residual_findings:'Проверка защиты обнаружила возможные открытые данные; анализ остановлен.',
+      privacy_untrusted_reference:'Модель или документ содержит недействительную защищённую ссылку.',
+      privacy_models_missing_or_invalid:'Модели локальной защиты недоступны. Проверьте установку.',
+      privacy_detector_failed:'Сбой локальной защиты. Повторите запуск после проверки установки.',
+      privacy_scan_limit:'Достигнут предел проверки защиты. Сократите набор документов и повторите запуск.',
+      model_invalid:'Ответ модели не прошёл проверку структуры или цитат.',
+      model_refusal_or_incomplete:'Модель отказалась отвечать или не завершила ответ.',
+      budget_limit:'Достигнут лимит бюджета.', deadline_exceeded:'Истекло время обработки.',
+      cancelled:'Запуск отменён.', facts_failed:'Не удалось извлечь факты.',
+      requirements_failed:'Не удалось извлечь требования.', evaluation_failed:'Не удалось оценить соответствие.'};
+    const pick = (values, key) => typeof key === 'string' && Object.hasOwn(values, key) ? values[key] : '';
+    const direction = pick({response:'Ответ модели', outbound:'Перед отправкой модели'}, error?.privacy?.direction);
+    return [pick(stages, error?.stage), direction,
+      pick(reasons, error?.code) || 'Обработка остановлена из-за ошибки.'].filter(Boolean).join(' · ');
   }
 
   function requirementReviewLabel(state) {
@@ -347,9 +370,12 @@
     requireShape(ids.size === report.unprocessed_job_ids.length);
     const reasons = report.unprocessed == null ? new Map() : uniqueIndex(report.unprocessed, 'job_id');
     requireShape(Array.from(reasons.values()).every(entry => ids.has(entry.job_id) && isText(entry.reason)));
-    return Array.from(ids, (id, index) => ({
-      id, title: vacancyTitle(id, jobs.size + index), reason: reasons.get(id)?.reason || null
-    }));
+    return Array.from(ids, (id, index) => {
+      const errors = Array.isArray(report.errors) ? report.errors : [];
+      const error = errors.find(e => e?.job_id === id) || errors.find(e => e?.job_id === null);
+      return {id, title: vacancyTitle(id, jobs.size + index), reason: reasons.get(id)?.reason || null,
+        diagnostic: error ? describeFailure(error) : null};
+    });
   }
 
   function requirementReviewFrom(job) {
@@ -612,7 +638,7 @@
   }
 
   const api = {
-    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeDashboard, describeRun, describeFit, scoreRange, assessments,
+    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeDashboard, describeRun, describeFailure, describeFit, scoreRange, assessments,
     mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
   };
   if (typeof module === 'object' && module.exports) {

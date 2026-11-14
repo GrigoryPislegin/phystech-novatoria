@@ -5,6 +5,7 @@ WORKDIR /app
 COPY prototype/requirements.lock.txt /app/prototype/requirements.lock.txt
 RUN python -m pip install -r prototype/requirements.lock.txt && python -m pip check
 COPY prototype/__init__.py /app/prototype/__init__.py
+COPY prototype/errors.py /app/prototype/errors.py
 COPY prototype/privacy_core /app/prototype/privacy_core
 ENV PRIVACY_MODELS_DIR=/opt/privacy-models
 
@@ -25,8 +26,11 @@ COPY scripts/privacy_smoke.py /app/scripts/privacy_smoke.py
 COPY scripts/check_cli_replays.py /app/scripts/check_cli_replays.py
 COPY prototype/tests/test_core.py /app/prototype/tests/test_core.py
 COPY prototype/tests/test_integrated_analysis.py prototype/tests/test_run_store.py prototype/tests/test_local_service.py prototype/tests/test_web_app.py /app/prototype/tests/
+COPY prototype/tests/test_c14_boundary.py /app/prototype/tests/
 RUN python -m unittest discover -s prototype/tests -p 'test_core.py' -v \
     && python -m unittest prototype.tests.test_integrated_analysis prototype.tests.test_run_store prototype.tests.test_local_service prototype.tests.test_web_app -q \
+    && mkdir -p data/private && ln -s /opt/privacy-models data/private/privacy-models \
+    && python -m unittest prototype.tests.test_c14_boundary -q \
     && python scripts/privacy_smoke.py --models-dir /opt/privacy-models \
     && python scripts/privacy_smoke.py --models-dir /opt/privacy-models --model-mock \
     && mkdir -p /app/data/private/prototype-runs \

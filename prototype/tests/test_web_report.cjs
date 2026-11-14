@@ -4,6 +4,16 @@ const { join } = require('node:path');
 const test = require('node:test');
 
 const { parseReport, filterRows, statusCounts } = require('../static/report.js');
+const { describeFailure, describeRun } = require('../static/report.js');
+
+test('zero results and privacy failures have static actionable feedback', () => {
+  assert.equal(describeRun({ mode:'live_local_privacy', processed:0, complete:false }).recommendation[0],
+    'Анализ не выполнен');
+  assert.match(describeFailure({code:'privacy_residual_findings', stage:'facts',
+    privacy:{direction:'response'}}), /Извлечение фактов.*Ответ модели.*защит/);
+  assert.doesNotMatch(describeFailure({code:'private@example.org', stage:'/private/source',
+    privacy:{direction:'model-secret'}}), /private|model-secret/);
+});
 
 function example(name = 'disputed') {
   return JSON.parse(readFileSync(join(__dirname, 'fixtures', 'web', name + '.json'), 'utf8'));

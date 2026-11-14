@@ -4,13 +4,16 @@ Russian NER + structural detectors. This is not proof of anonymity: contextual
 identification, unsupported languages and detector misses require a human review.
 """
 from dataclasses import dataclass
+import asyncio
 import hashlib
 import hmac
 import re
 import secrets
 import unicodedata
+from collections import Counter
+from ..errors import PrivacyError
 
-POLICY_VERSION = 'local-privacy-0.3'
+POLICY_VERSION = 'local-privacy-0.4'
 REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
 RESERVED = '[[PRIV:'
 
@@ -20,6 +23,7 @@ class Finding:
     start: int
     end: int
     kind: str
+    method: str = 'rule'
 
 
 # Capture only values after identifying labels; retain useful headings.
@@ -70,7 +74,7 @@ class Detector:
         for span in self.ner(text).spans:
             if span.type not in {'PER', 'ORG', 'LOC'} or not 0 <= span.start < span.stop <= len(text):
                 raise RuntimeError('privacy_detector_failed')
-            found.append(Finding(span.start, span.stop, {'PER':'PERSON','ORG':'ORG','LOC':'LOCATION'}[span.type]))
+            found.append(Finding(span.start, span.stop, {'PER':'PERSON','ORG':'ORG','LOC':'LOCATION'}[span.type], 'ner'))
         return found
 
 
@@ -89,7 +93,12 @@ def _merge(findings, size):
 
 def normalized(text):
     # Both source quotes and findings use this same processed representation.
-    return ''.join(c for c in unicodedata.normalize('NFKC', text) if unicodedata.category(c) != 'Cf')
+    return unicodedata.normalize('NFKC', ''.join(c for c in unicodedata.normalize('NFKC', text)
+                                                if unicodedata.category(c) != 'Cf'))
+
+
+def _canonical(text):
+    return ' '.join(normalized(text).casefold().split())
 
 
 class LocalPrivacy:
@@ -104,6 +113,10 @@ class LocalPrivacy:
         self.issued_refs = set()
         self.closed = False
         self.counts = {}
+        self._hidden_lengths = set()
+        self._hidden_values = set()
+        self._safe_sources = []
+        self._contextual = Counter()
 
     def _ready(self):
         if self.closed:
@@ -119,6 +132,44 @@ class LocalPrivacy:
             raise RuntimeError('privacy_untrusted_reference')
         return clean
 
+    def _remember_hidden(self, text, finding):
+        value = _canonical(text[finding.start:finding.end])
+        values = {value}
+        if finding.kind in {'PERSON','IDENTITY'}:
+            # Labeled fields may swallow the rest of a sentence. Index the
+            # identity before its first punctuation separately, not every word
+            # of the swallowed professional prose. Unmerged NER findings below
+            # additionally preserve shorter entities nested within that field.
+            head = re.split(r'[,;.!?\n]', value, maxsplit=1)[0] if finding.kind == 'IDENTITY' else value
+            values.update(token for token in re.findall(r"[^\W\d_]+(?:[-'’][^\W\d_]+)*", head)[:4]
+                          if len(token) >= 2)
+            values.add(head)
+        for hidden in values - {''}:
+            self._hidden_lengths.add(len(hidden))
+            self._hidden_values.add(hmac.digest(self._key, hidden.encode(), 'sha256'))
+
+    def _mask(self, result, raw_findings):
+        findings = _merge(raw_findings, len(result))
+        references = list(REFERENCE.finditer(result))
+        for item in raw_findings:
+            self._remember_hidden(result, item)
+        parts, pos = [], 0
+        for item in findings:
+            if any(item.start < ref.end() and ref.start() < item.end for ref in references):
+                raise RuntimeError('privacy_residual_findings')
+            self.counts[item.kind] = self.counts.get(item.kind, 0) + 1
+            value = result[item.start:item.end]
+            digest = hmac.new(self._key, value.casefold().encode(), hashlib.sha256).digest()
+            self._remember_hidden(result, item)
+            if digest not in self._aliases:
+                self._aliases[digest] = f'[[PRIV:{self._nonce}:{len(self._aliases)+1}:{item.kind}]]'
+            ref = self._aliases[digest]
+            self.issued_refs.add(ref)
+            parts.extend((result[pos:item.start], ref))
+            pos = item.end
+        parts.append(result[pos:])
+        return ''.join(parts)
+
     async def redact(self, text):
         self._ready()
         text = normalized(text)
@@ -129,27 +180,37 @@ class LocalPrivacy:
         # Bound the number of passes; non-convergence still blocks all model calls.
         for _ in range(3):
             clean = self._without_refs(result)
-            findings = _merge(self.detector.scan(clean), len(result))
+            raw_findings = self.detector.scan(clean)
+            findings = _merge(raw_findings, len(result))
             if not findings:
+                self._safe_sources.append(clean.casefold())
                 return result
-            references = list(REFERENCE.finditer(result))
-            parts, pos = [], 0
-            for item in findings:
-                if any(item.start < ref.end() and ref.start() < item.end for ref in references):
-                    raise RuntimeError('privacy_residual_findings')
-                self.counts[item.kind] = self.counts.get(item.kind, 0) + 1
-                value = result[item.start:item.end]
-                digest = hmac.new(self._key, value.casefold().encode(), hashlib.sha256).digest()
-                if digest not in self._aliases:
-                    self._aliases[digest] = f'[[PRIV:{self._nonce}:{len(self._aliases)+1}:{item.kind}]]'
-                ref = self._aliases[digest]
-                self.issued_refs.add(ref)
-                parts.extend((result[pos:item.start], ref))
-                pos = item.end
-            parts.append(result[pos:])
-            result = ''.join(parts)
+            result = self._mask(result, raw_findings)
         await self.check(result)
+        self._safe_sources.append(self._without_refs(result).casefold())
         return result
+
+    async def finalize_sources(self, sources):
+        """Reconcile all protected sources against the final run-local index.
+
+        A later document may identify a value missed in an earlier context.
+        Rewrite sources before quotes/snapshots/model calls, never model quotes.
+        """
+        self._ready()
+        self._safe_sources.clear()
+        sources = list(sources)
+        for _ in range(4):
+            changed = False
+            for index, text in enumerate(sources):
+                clean = self._without_refs(text)
+                found = self.detector.scan(clean) + await self._known_findings(clean, list(REFERENCE.finditer(text)))
+                if found:
+                    sources[index] = self._mask(text, found)
+                    changed = True
+            if not changed:
+                self._safe_sources = [self._without_refs(s).casefold() for s in sources]
+                return sources
+        raise PrivacyError('privacy_residual_findings')
 
     async def check(self, text):
         self._ready()
@@ -157,9 +218,81 @@ class LocalPrivacy:
         if self.detector.scan(text):
             raise RuntimeError('privacy_residual_findings')
 
+    async def check_prepared(self, text):
+        """Check derived data without mutating quotes or globally exempting names.
+
+        NER runs on every call. A contextual NER hit must occur verbatim in a
+        fully scrubbed document from this session. Explicit identifiers and any
+        previously hidden value still block, even when NER now misses them.
+        Only successful source redaction grants provenance; responses never do.
+        """
+        self._ready()
+        protected = normalized(text)
+        text = self._without_refs(protected)
+        blocked, contextual = Counter(), Counter()
+        for item in self.detector.scan(text):
+            if not 0 <= item.start < item.end <= len(text):
+                raise RuntimeError('privacy_detector_failed')
+            value = text[item.start:item.end].casefold()
+            pattern = re.compile(r'(?<!\w)' + re.escape(value) + r'(?!\w)')
+            if item.method == 'ner' and any(pattern.search(source) for source in self._safe_sources):
+                contextual[item.kind] += 1
+            else:
+                blocked[item.kind] += 1
+        known = await self._known_findings(text, list(REFERENCE.finditer(protected)))
+        if known:
+            blocked['KNOWN_VALUE'] = len(known)
+        if blocked:
+            raise PrivacyError('privacy_residual_findings', dict(blocked))
+        self._contextual.update(contextual)
+
+    async def _known_findings(self, text, references=()):
+        # Canonical characters retain offsets into the normalized source. This
+        # permits consistent masking without retaining original hidden values.
+        chars, offsets, previous = [], [], 0
+        for token in re.finditer(r'\S+', text):
+            if chars:
+                chars.append(' ')
+                offsets.append((previous, token.start()))
+            for i in range(token.start(), token.end()):
+                for char in text[i].casefold():
+                    chars.append(char)
+                    offsets.append((i, i+1))
+            previous = token.end()
+        folded = ''.join(chars)
+        found = []
+        # Match at word boundaries, preserving short names without matching
+        # syllables inside ordinary words. Yield for cancellation and bound work
+        # before any SDK call; exceptionally dense inputs fail closed.
+        attempts = 0
+        starts = [i for i in range(len(folded)) if i == 0 or not (folded[i-1].isalnum() and folded[i].isalnum())]
+        for size in sorted(self._hidden_lengths):
+            for start in starts:
+                end = start + size
+                if end > len(folded):
+                    break
+                attempts += 1
+                if attempts > 250_000:
+                    raise PrivacyError('privacy_scan_limit')
+                if attempts % 2048 == 0:
+                    await asyncio.sleep(0)
+                if end < len(folded) and folded[end-1].isalnum() and folded[end].isalnum():
+                    continue
+                value = folded[start:end]
+                if value.isdecimal() and ((start >= 2 and folded[start-1] in './-' and folded[start-2].isdigit())
+                                          or (end+1 < len(folded) and folded[end] in './-' and folded[end+1].isdigit())):
+                    continue
+                digest = hmac.digest(self._key, value.encode(), 'sha256')
+                if digest in self._hidden_values:
+                    left, right = offsets[start][0], offsets[end-1][1]
+                    if not any(left < ref.end() and ref.start() < right for ref in references):
+                        found.append(Finding(left, right, 'KNOWN'))
+        return found
+
     def summary(self):
         return {'backend':POLICY_VERSION, 'kind':'pseudonymization_not_anonymity',
                 'redactions':dict(self.counts),
+                'contextual_findings':dict(self._contextual),
                 'professional_information_may_be_hidden':bool(self.counts.get('ORG')),
                 'requires_local_review':True}
 
@@ -167,5 +300,8 @@ class LocalPrivacy:
         # Best-effort lifetime control, not a claim of secure memory erasure.
         self._aliases.clear()
         self.issued_refs.clear()
+        self._hidden_lengths.clear()
+        self._hidden_values.clear()
+        self._safe_sources.clear()
         self._key = b''
         self.closed = True

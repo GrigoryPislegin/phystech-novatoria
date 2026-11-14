@@ -9,6 +9,18 @@ class ModelOutputError(ValueError):
     pass
 
 
+class PrivacyError(RuntimeError):
+    """Only static categories/counts; never text, paths or model-supplied keys."""
+    def __init__(self, code, findings=None):
+        self.code = code
+        allowed = {'EMAIL','LINK','HANDLE','PHONE','DATE','SECRET','IDENTITY','CONTACT',
+                   'PERSON','ORG','LOCATION','KNOWN_VALUE'}
+        self.diagnostic = {'stage':'privacy', 'direction':'outbound',
+                           'findings':{k:v for k,v in (findings or {}).items()
+                                       if k in allowed and type(v) is int and v > 0}}
+        super().__init__(code)
+
+
 class RunStopped(RuntimeError):
     def __init__(self, code):
         self.code = code
@@ -16,6 +28,8 @@ class RunStopped(RuntimeError):
 
 
 def error_code(exc, stage=''):
+    if isinstance(exc, PrivacyError):
+        return exc.code
     if isinstance(exc, RunStopped):
         return exc.code
     if isinstance(exc, BudgetLimit):

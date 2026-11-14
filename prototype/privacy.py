@@ -3,6 +3,7 @@ import os
 import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
+from .errors import PrivacyError
 
 
 
@@ -29,7 +30,7 @@ def protect_dependency_logs():
     logging.setLogRecordFactory(factory)
 
 
-async def check_data(privacy, value):
+async def check_data(privacy, value, *, prepared=False, stage='privacy', direction='outbound'):
     """Check decoded JSON strings, including keys; escaping is transport syntax.
 
     Separate fields by actual newlines, avoiding artificial concatenated reference
@@ -47,7 +48,18 @@ async def check_data(privacy, value):
                 yield from strings(child)
         elif item is not None:
             yield str(item)
-    await privacy.check('\n\n'.join(strings(value)))
+    try:
+        check = privacy.check_prepared if prepared and hasattr(privacy, 'check_prepared') else privacy.check
+        await check('\n\n'.join(strings(value)))
+    except RuntimeError as exc:
+        known = {'privacy_residual_findings','privacy_untrusted_reference','privacy_detector_failed','privacy_closed',
+                 'privacy_scan_limit'}
+        if isinstance(exc, PrivacyError) or (type(exc) is RuntimeError and str(exc) in known):
+            error = exc if isinstance(exc, PrivacyError) else PrivacyError(str(exc))
+            error.diagnostic['stage'] = stage if stage in {'facts','requirements','evaluation','privacy'} else 'privacy'
+            error.diagnostic['direction'] = direction if direction in {'outbound','response'} else 'outbound'
+            raise error from None
+        raise
 
 
 

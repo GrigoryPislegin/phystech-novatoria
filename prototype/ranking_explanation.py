@@ -393,7 +393,9 @@ def explain_leader(report: dict) -> LeaderExplanation | None:
     limits = sorted(limits, key=order)[:MAX_DECIDING]
 
     names = ', '.join(leader['job_ids'])
-    text = f'{names}: {_STATE_TEXT[leader["state"]]}'
+    state_text = (_STATE_TEXT[leader['state']] if ranking.get('complete', True) else
+                  'Предварительный выбор среди обработанных вакансий. Сравнение со всем набором не завершено.')
+    text = f'{names}: {state_text}'
     if factors and leader['state'] != 'none_fit':
         text += ' Решающие основания: ' + '; '.join(
             f'«{r.requirement_quote}» — {r.status}, {r.effect} п' for r in factors) + '.'

@@ -20,7 +20,7 @@ from .review_queue import build_review_queue
 from .review_policy import assess_handoff
 from .evidence import Source, check_pair
 from . import requirements_review as review
-from .errors import ModelOutputError, RunStopped, error_code
+from .errors import ModelOutputError, RunStopped, PrivacyError, error_code
 from .presentation import build_presentation, display_label, gap_question, EXPLANATIONS
 
 
@@ -68,6 +68,13 @@ def literal(value):
     return f'{fence} {text} {fence}'
 
 
+def failure(exc, stage, job_id=None):
+    result = {'job_id':job_id, 'code':error_code(exc, stage), 'stage':stage, 'type':type(exc).__name__}
+    if isinstance(exc, PrivacyError):
+        result['privacy'] = exc.diagnostic
+    return result
+
+
 def refresh_derived(report, decisions=()):
     """Deterministic presentation only; no model calls, no changes to model statuses."""
     ranked = report['ranking']['jobs']
@@ -91,6 +98,10 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
     safe_resume = await control.call(lambda: privacy.redact(resume), 'privacy')
     # Complete privacy preflight before the very first model call.
     safe_jobs = [(jid, await control.call(lambda: privacy.redact(text), 'privacy', jid)) for jid, text in jobs]
+    if hasattr(privacy, 'finalize_sources'):
+        sources = await control.call(lambda:privacy.finalize_sources([safe_resume, *(text for _,text in safe_jobs)]), 'privacy')
+        safe_resume = sources[0]
+        safe_jobs = [(jid, text) for (jid, _), text in zip(safe_jobs, sources[1:])]
     if source_sink is not None:
         source_sink({'resume':safe_resume, 'jobs':dict(safe_jobs)})
     cv_source = Source.of('cv', safe_resume)
@@ -128,7 +139,7 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
         profile_check = check_profile(extracted.profile, facts, cv_source)
         profile_missing = extracted.profile.missing
     except Exception as exc:
-        errors.append({'job_id':None, 'code':error_code(exc, stage), 'stage':stage, 'type':type(exc).__name__})
+        errors.append(failure(exc, stage))
         return finish(Facts(items=[]))
     for jid, text in safe_jobs:
         stage = 'requirements'
@@ -165,7 +176,7 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
         except Exception as exc:
             # Never serialize exception messages: upstream errors may contain text/keys/DSNs.
             code = error_code(exc, stage)
-            errors.append({'job_id':jid, 'code':code, 'stage':stage, 'type':type(exc).__name__})
+            errors.append(failure(exc, stage, jid))
             # Only known output-validation failures are recoverable, without retry.
             if code != 'model_invalid':
                 break

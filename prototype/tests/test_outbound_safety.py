@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock
 
 from prototype.contracts import Fact, Facts
 from prototype.model import Budget, Model
-from prototype.privacy_core import LocalPrivacy
+from prototype.privacy_core import Finding, LocalPrivacy
 
 
 class OutboundSafetyTests(unittest.TestCase):
@@ -45,7 +45,7 @@ class OutboundSafetyTests(unittest.TestCase):
 
     def test_residual_scan_stops_before_sdk(self):
         model, detector = self.make_model()
-        detector.scan.return_value = ['synthetic residual']
+        detector.scan.return_value = [Finding(0, 4, 'PERSON')]
         with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
             asyncio.run(model.ask(Facts, 'facts', {'text':'synthetic'}))
         self.assertEqual(model.budget.calls, 0)
