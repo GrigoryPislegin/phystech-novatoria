@@ -8,22 +8,11 @@
   <link rel="stylesheet" href="report.css">
   <script src="report.js" defer></script>
   <script src="manager-report.js" defer></script>
-  <script src="demo-report.js" defer></script>
   <script src="viewer.js" defer></script>
   <script src="run-api.js" defer></script>
   <script src="runs.js" defer></script>
 </head>
 <body>
-  <header class="masthead">
-    <div class="shell masthead-inner">
-      <span class="brand">AI-рекрутер</span>
-      <div class="masthead-actions">
-        <span class="local-label"><span aria-hidden="true"></span> Локальный просмотр</span>
-        <button class="button button-secondary" id="open-demo" type="button">Открыть демо</button>
-      </div>
-    </div>
-  </header>
-
   <main class="shell workspace">
     <header class="intro">
       <div class="intro-copy">
@@ -31,25 +20,14 @@
         <p>Сравнение вакансий по одному резюме</p>
       </div>
       <div class="intro-actions">
-        <button class="button button-secondary" id="show-inputs" type="button" aria-controls="input-center" aria-expanded="false" hidden>Документы</button>
-        <button class="button button-secondary" id="show-runs" type="button" aria-controls="run-center" aria-expanded="false" hidden>Запуски</button>
-        <label class="button button-primary upload">
-          <span class="icon-plus" aria-hidden="true">＋</span> Открыть отчёт
-          <input id="report-file" type="file" accept=".json,application/json" aria-label="Открыть отчёт">
-        </label>
+        <button class="button button-secondary" id="show-inputs" type="button" aria-controls="input-center" aria-expanded="false" hidden>Новый анализ</button>
+        <button class="button button-secondary" id="show-runs" type="button" aria-controls="run-center" aria-expanded="false" hidden>История</button>
+
       </div>
     </header>
     <p id="file-status" class="file-status" tabindex="-1" role="status" aria-live="polite" hidden></p>
 
-    <section id="welcome" class="welcome" aria-labelledby="welcome-title">
-      <h2 id="welcome-title">Откройте сохранённый отчёт</h2>
-      <p>Выберите <code>report.json</code> из папки запуска. Файл читается на этом устройстве.</p>
-      <details class="demo-help">
-        <summary>Как получить собственный отчёт</summary>
-        <p>Запустите синтетический сценарий из корня проекта. Путь к отчёту появится в выводе.</p>
-        <pre><code>python -m prototype demo --scenario disputed</code></pre>
-      </details>
-    </section>
+    <div id="welcome" hidden></div>
 
     <section id="input-center" class="view-panel run-center" aria-labelledby="inputs-title" hidden>
       <div class="requirements-heading">
@@ -63,34 +41,24 @@
         <label>Вакансии
           <input type="file" id="vacancies-input" accept=".pdf,.docx,.txt,.md" multiple>
         </label>
-        <button class="button button-primary" type="button" id="inspect-inputs">Проверить документы</button>
+        <button class="button button-primary" type="button" id="inspect-inputs">Запустить анализ</button>
       </div>
       <p id="inputs-message" class="support" role="status" aria-live="polite"></p>
       <ol id="inspected-files" class="saved-runs"></ol>
-      <button class="button button-primary protected-start" type="button" id="analyze-inputs" hidden>Live · Анализ через OpenAI</button>
+      <p class="support">Перед анализом защищаем персональные данные. Лимит одного запуска — $1.</p>
     </section>
-    <dialog id="confirm-live" class="confirm-dialog" aria-labelledby="live-dialog-title">
-      <h2 id="live-dialog-title">Запустить Live через OpenAI?</h2>
-      <p>После локальной защиты текст будет обработан внешней моделью. Лимит этого запуска — 1 доллар США.</p>
-      <div class="dialog-actions">
-        <button type="button" id="dismiss-live" class="button button-secondary" autofocus>Отмена</button>
-        <button type="button" id="submit-live" class="button button-primary">Запустить Live</button>
-      </div>
-    </dialog>
+    <section id="active-analysis" class="view-panel run-center" aria-labelledby="active-analysis-title" hidden>
+      <div class="requirements-heading"><h2 id="active-analysis-title">Анализируем документы</h2>
+        <button id="cancel-analysis" class="button button-secondary compact" type="button">Отменить</button></div>
+      <p id="active-analysis-stage" role="status" aria-live="polite"></p>
+      <progress id="analysis-progress" aria-label="Обработка вакансий"></progress>
+      <p id="active-analysis-detail" class="support"></p>
+    </section>
 
     <section id="run-center" class="view-panel run-center" aria-labelledby="runs-title" hidden>
       <div class="requirements-heading">
-        <h2 id="runs-title">Локальные запуски</h2>
+        <h2 id="runs-title">История анализов</h2>
         <button id="reload-runs" class="button button-secondary compact" type="button" hidden>Обновить</button>
-      </div>
-      <div id="start-run-form" class="run-form" hidden>
-        <label>Режим
-          <select id="run-type"></select>
-        </label>
-        <label>Сценарий
-          <select id="run-scenario"></select>
-        </label>
-        <button class="button button-primary" id="start-run" type="button">Запустить</button>
       </div>
       <p id="runs-message" class="support" role="status" aria-live="polite"></p>
       <ul id="saved-runs" class="saved-runs"></ul>

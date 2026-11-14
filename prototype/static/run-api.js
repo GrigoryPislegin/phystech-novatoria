@@ -9,6 +9,14 @@
     413: 'Данные превышают допустимый объём.',
     429: 'Слишком много запросов. Попробуйте позже.'
   };
+  const operationErrors = {
+    busy: 'Другой анализ ещё выполняется. Дождитесь результата или отмените его.',
+    input_not_found: 'Проверка файлов устарела. Нажмите «Запустить анализ» ещё раз.',
+    idempotency_conflict: 'Не удалось подтвердить запуск. Обновите страницу и проверьте историю.',
+    report_unavailable: 'Анализ ещё выполняется. Отчёт появится после завершения.',
+    run_active: 'Этот анализ ещё выполняется.',
+    stale_revision: 'Отчёт обновлён. Откройте его заново перед сохранением решения.'
+  };
 
   function pathFor(id) {
     if (typeof id !== 'string' || !/^[0-9a-f]{32}$/.test(id)) {
@@ -41,7 +49,10 @@
         error.status = result.status;
         try {
           const body = await result.json();
-          if (typeof body?.error === 'string' && /^[a-z0-9_]{1,64}$/.test(body.error)) error.code = body.error;
+          if (typeof body?.error === 'string' && /^[a-z0-9_]{1,64}$/.test(body.error)) {
+            error.code = body.error;
+            if (Object.hasOwn(operationErrors, error.code)) error.message = operationErrors[error.code];
+          }
         } catch {
           // The client always displays a fixed message for unexpected response bodies.
         }

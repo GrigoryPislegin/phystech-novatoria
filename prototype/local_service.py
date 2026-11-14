@@ -178,6 +178,14 @@ class LocalService:
                 self._expire_inputs()
                 cached = self._inputs.get(request['input_id'])
                 inputs = cached[1] if cached is not None else None
+                if inputs is None:
+                    # Another request with this key may have consumed the
+                    # input after the first lookup. Creation uses this same
+                    # service lock, so reconcile before declaring it missing.
+                    existing = self.store.lookup_request({k:v for k,v in request.items() if k != 'idempotency_key'},
+                                                         request['idempotency_key'])
+                    if existing is not None:
+                        return existing
             if inputs is None:
                 raise StoreError('input_not_found')
         elif mode in {'synthetic-replay','synthetic-protected-mock'}:

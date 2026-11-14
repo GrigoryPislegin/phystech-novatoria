@@ -81,3 +81,10 @@ test('local inspection keeps the upload body scoped to its dedicated endpoint', 
   assert.deepEqual(JSON.parse(calls[1][1].body), input);
   assert.equal(calls[1][1].headers['X-CSRF-Token'], 'fixture');
 });
+
+test('busy and expired inputs have actionable fixed feedback without backend prose', async () => {
+  for (const [code,status,expected] of [['busy',409,/Другой анализ/],['input_not_found',404,/Проверка файлов устарела/],['report_unavailable',409,/ещё выполняется/]]) {
+    const api=createRunApi(async()=>json({error:code,details:'PRIVATE_TEXT'},status));
+    await assert.rejects(()=>api.get(runId),error=>error.code===code && expected.test(error.message) && !error.message.includes('PRIVATE_TEXT'));
+  }
+});

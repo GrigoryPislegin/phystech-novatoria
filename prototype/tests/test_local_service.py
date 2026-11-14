@@ -157,6 +157,35 @@ class LocalServiceTests(unittest.TestCase):
         self.service = LocalService(Path(self.tmp.name), allow_live=True)
         self.assertEqual(self.service.create(request)['run_id'], first['run_id'])
 
+    def test_same_key_retry_reconciles_after_original_consumes_input(self):
+        import concurrent.futures
+        import threading
+        self.service.allow_live = True
+        file = lambda name:{'name':name,'content_base64':base64.b64encode(b'Python').decode()}
+        inspected = self.service.inspect({'resume':file('cv.txt'),'jobs':[file('job.txt')]})
+        request = {'mode':'protected-live','input_id':inspected['input_id'],'budget':1,'idempotency_key':'race-key'}
+        checked, release = threading.Event(), threading.Event()
+        original_lookup = self.service.store.lookup_request
+        def interleaved_lookup(*args):
+            result = original_lookup(*args)
+            if threading.current_thread().name.startswith('retry') and not checked.is_set():
+                self.assertIsNone(result)
+                checked.set()
+                self.assertTrue(release.wait(5))
+            return result
+        with patch.object(self.service.store, 'lookup_request', side_effect=interleaved_lookup), \
+             patch.object(self.service, '_execute', side_effect=lambda rid,*args:self.service.store.fail(rid,'synthetic_test')) as execute, \
+             concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix='retry') as pool:
+            retry = pool.submit(self.service.create, request)
+            try:
+                self.assertTrue(checked.wait(5))
+                first = self.service.create(request)
+                self.service.wait(first['run_id'])
+            finally:
+                release.set()
+            self.assertEqual(retry.result(5)['run_id'], first['run_id'])
+            self.assertEqual(execute.call_count, 1)
+
     @unittest.skipUnless((Path(os.environ.get('PRIVACY_MODELS_DIR', 'data/private/privacy-models')) /
                           'slovnet_ner_news_v1.tar').is_file(), 'Local NER weights unavailable')
     def test_protected_mock_matrix_keeps_privacy_and_partial_recovery(self):

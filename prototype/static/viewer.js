@@ -7,7 +7,6 @@
   } = window.NanimaiReport;
   const { renderManagerReport } = window.NanimaiManagerReport;
   const byId = id => document.getElementById(id);
-  const input = byId('report-file');
   const search = byId('requirement-search');
   const managerButton = byId('manager-report');
   const views = Array.from(byId('report-views').querySelectorAll('button'));
@@ -654,33 +653,6 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function loadFile(file) {
-    const sequence = ++loadSequence;
-    const prefix = report ? 'Сейчас открыт предыдущий отчёт. ' : '';
-    setFileStatus('Читаем отчёт…');
-    if (file.size > MAX_REPORT_BYTES) {
-      setFileStatus(prefix + 'Отчёт больше 25 МБ. Выберите файл меньшего размера.', true);
-      return;
-    }
-    let source;
-    try {
-      source = await file.text();
-    } catch {
-      if (sequence === loadSequence) setFileStatus(prefix + 'Файл недоступен. Выберите его ещё раз.', true);
-      return;
-    }
-    if (sequence !== loadSequence) return;
-
-    let next;
-    try {
-      next = parseReport(source);
-    } catch (error) {
-      setFileStatus(prefix + error.message, true);
-      return;
-    }
-    openReport(next, 'Открыт ' + file.name);
-  }
-
   function clearReportData() {
     displayText = createDisplayText();
     search.value = '';
@@ -708,13 +680,23 @@
   }
 
   window.RecruiterViewer = {
+    beginAnalysis() {
+      ++loadSequence;
+      runContext = null;
+      report = null;
+      activeJob = null;
+      clearReportData();
+      byId('report-workspace').hidden = true;
+      byId('welcome').hidden = true;
+      setFileStatus('');
+    },
     beginLoad: () => ++loadSequence,
     isLatest: sequence => sequence === loadSequence,
     getContext: () => runContext,
     openServerReport(next, context) {
       const staysOpen = runContext?.id === context.id;
       const view = staysOpen ? views.find(button => button.getAttribute('aria-pressed') === 'true').dataset.view : 'overview';
-      openReport(next, 'Открыт отчёт локального запуска', context, staysOpen ? activeJob?.id : null, view);
+      openReport(next, 'Результат анализа', context, staysOpen ? activeJob?.id : null, view);
     },
     closeServerReport(id) {
       if (runContext?.id !== id) return;
@@ -725,26 +707,13 @@
       clearReportData();
       byId('report-workspace').hidden = true;
       byId('welcome').hidden = false;
-      setFileStatus('Локальный запуск удалён.');
+      setFileStatus('Анализ удалён из истории.');
     }
   };
 
-  byId('open-demo').addEventListener('click', () => {
-    ++loadSequence;
-    try {
-      openReport(parseReport(window.RecruiterDemoReport), 'Открыт синтетический пример');
-    } catch (error) {
-      setFileStatus(error.message, true);
-    }
-  });
   for (const button of views) {
     button.addEventListener('click', () => selectView(button.dataset.view));
   }
-  input.addEventListener('change', () => {
-    const [file] = input.files;
-    input.value = '';
-    if (file) loadFile(file);
-  });
   byId('comparison-job').addEventListener('change', event => {
     if (!activeJob) return;
     const matches = report.comparisons.filter(item => item.a === activeJob || item.b === activeJob);
