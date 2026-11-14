@@ -1,4 +1,4 @@
-# Nanimai · объяснимый рейтинг вакансий
+# AI-рекрутер · объяснимый рейтинг вакансий
 
 **Одно резюме + до 30 вакансий → рейтинг, основания и вопросы кандидату.** Загрузите PDF с текстовым слоем, DOCX, TXT или MD и нажмите «Запустить анализ». История находится отдельно; результат открывается автоматически. Основная продуктовая модель — OpenAI `gpt-6-luna`.
 
@@ -7,29 +7,29 @@
 Нужны Docker Engine/Desktop и ключ OpenAI с доступом к Luna. Сборка скачивает Python-зависимости и два открытых NER-артефакта с проверкой SHA-256; исходные документы и ключ в образ не попадают.
 
 ```sh
-docker build -t nanimai:local .
+docker build -t recruiter:local .
 ```
 
 Для сборки из поставки с уже приложенными публичными весами:
 
 ```sh
-docker build --build-arg PRIVACY_MODEL_SOURCE=local -t nanimai:local .
+docker build --build-arg PRIVACY_MODEL_SOURCE=local -t recruiter:local .
 ```
 
 Создайте локальный файл `model.env` с единственной строкой `OPENAI_API_KEY=ваш_ключ`. Не добавляйте его в Git. На macOS/Linux ограничьте права: `chmod 600 model.env`.
 
 ```sh
-docker run -d --name nanimai \
+docker run -d --name recruiter \
   -p 127.0.0.1:8765:8765 \
   --env-file model.env \
-  -v nanimai-data:/app/data \
-  nanimai:local serve --host 0.0.0.0 --port 8765 \
+  -v recruiter-data:/app/data \
+  recruiter:local serve --host 0.0.0.0 --port 8765 \
   --state-dir /app/data/private/local-app --allow-live
 ```
 
 Откройте **http://127.0.0.1:8765**. Выберите резюме и вакансии, нажмите одну кнопку. Платный запрос начинается только после запуска пользователем. Лимит одного запуска в UI — $1; оценка стоимости зависит от учтённых токенов, это не выписка провайдера.
 
-Остановка: `docker stop nanimai`. Повторный запуск: `docker start nanimai`. Удаление контейнера: `docker rm -f nanimai`; именованный том с историей сохраняется. Для публичного доступа нужен HTTPS-прокси с аутентификацией и `--public-origin https://ваш-адрес`; не публикуйте порт приложения напрямую. Инструкция сервера — в [runbook](docs/28-local-app-runbook.md).
+Остановка: `docker stop recruiter`. Повторный запуск: `docker start recruiter`. Удаление контейнера: `docker rm -f recruiter`; именованный том с историей сохраняется. Для публичного доступа нужен HTTPS-прокси с аутентификацией и `--public-origin https://ваш-адрес`; не публикуйте порт приложения напрямую. Инструкция сервера — в [runbook](docs/28-local-app-runbook.md).
 
 ## Что находится в отчёте
 
@@ -57,8 +57,8 @@ docker run -d --name nanimai \
 Они проверяют расчёт и обработку неопределённости; **это заранее подготовленные ответы, не оценка качества Luna**.
 
 ```sh
-docker run --rm --network none nanimai:local demo --scenario success
-docker run --rm --network none nanimai:local demo --scenario disputed
+docker run --rm --network none recruiter:local demo --scenario success
+docker run --rm --network none recruiter:local demo --scenario disputed
 ```
 
 1. **Подходящая вакансия:** встроенное резюме с Python/SQL и три вакансии. Ожидается 3/3, первая вакансия подтверждает Python/SQL, неизвестный Java отличается от явно недостаточного стажа SQL.

@@ -1,8 +1,0 @@
-from . import service as service
-from .service import OperationService as OperationService
-from .service import OperationServiceCandidateNotFoundError as OperationServiceCandidateNotFoundError
-from .service import OperationServiceError as OperationServiceError
-from .service import OperationServiceInvalidDataError as OperationServiceInvalidDataError
-from .service import OperationServiceOperationNotFoundError as OperationServiceOperationNotFoundError
-from .service import OperationServiceProjectNotFoundError as OperationServiceProjectNotFoundError
-from .service import OperationServiceVacancyNotFoundError as OperationServiceVacancyNotFoundError

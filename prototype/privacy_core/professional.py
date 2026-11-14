@@ -21,7 +21,8 @@ _TERMS = ('Vue.js', 'Vue', 'NoSQL', 'SQL', 'Git', 'TypeScript', 'JavaScript',
           'WordPress', 'WooCommerce', 'Elementor', 'ACF', 'Yoast SEO', '1С-Битрикс',
           'React.js', 'Next.js', 'Redux', 'Angular', 'RxJS', 'Storybook', 'Cypress',
           'Playwright', 'ESLint', 'Prettier', 'pnpm', 'GraphQL', 'WebSocket',
-          'Monaco Editor', 'SPA', 'Nuxt Router', 'CMS', 'Bitrix', 'JS')
+          'Monaco Editor', 'SPA', 'Nuxt Router', 'CMS', 'Bitrix', 'JS',
+          'Garbage Collection')
 _TECH = re.compile(r'(?:' + '|'.join(re.escape(t) for t in sorted(_TERMS, key=len, reverse=True))
                    + r')(?!(?:[\w+-]|\.[\w]))', re.IGNORECASE)
 _START = r'(?:^|(?<=[.!?;]))[ \t]*(?:[-•*—–][ \t]+)?'

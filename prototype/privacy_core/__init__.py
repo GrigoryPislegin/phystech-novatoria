@@ -372,20 +372,26 @@ class LocalPrivacy:
         # Match at word boundaries, preserving short names without matching
         # syllables inside ordinary words. Yield for cancellation and bound work
         # before any SDK call; exceptionally dense inputs fail closed.
-        attempts = 0
+        attempts, iterations = 0, 0
         starts = [i for i in range(len(folded)) if i == 0 or not (folded[i-1].isalnum() and folded[i].isalnum())]
         for size in sorted(self._hidden_lengths):
             for start in starts:
                 end = start + size
                 if end > len(folded):
                     break
-                attempts += 1
-                if attempts > 250_000:
+                iterations += 1
+                if iterations > 2_000_000:
                     raise PrivacyError('privacy_scan_limit')
-                if attempts % 2048 == 0:
+                if iterations % 2048 == 0:
                     await asyncio.sleep(0)
                 if end < len(folded) and folded[end-1].isalnum() and folded[end].isalnum():
                     continue
+                # Only complete word-boundary candidates require a keyed
+                # lookup. Counting rejected mid-word endpoints exhausted the
+                # budget on ordinary multi-vacancy payloads before any work.
+                attempts += 1
+                if attempts > 250_000:
+                    raise PrivacyError('privacy_scan_limit')
                 value = folded[start:end]
                 if value.isdecimal() and ((start >= 2 and folded[start-1] in './-' and folded[start-2].isdigit())
                                           or (end+1 < len(folded) and folded[end] in './-' and folded[end+1].isdigit())):

@@ -32,9 +32,10 @@ COPY prototype/tests/test_c14_boundary.py /app/prototype/tests/
 COPY prototype/tests/test_professional_context.py /app/prototype/tests/
 COPY prototype/tests/test_e13_case_acceptance.py prototype/tests/test_e13_support.py prototype/tests/test_e13_failures.py /app/prototype/tests/
 COPY prototype/tests/test_e14_evidence_fidelity.py prototype/tests/test_e14_competency_axes.py prototype/tests/test_e14_professional_fidelity.py /app/prototype/tests/
-COPY prototype/tests/test_e15_mandatory_marker.py prototype/tests/test_e15_leader_confidence.py /app/prototype/tests/
+COPY prototype/tests/test_e15_mandatory_marker.py prototype/tests/test_e15_leader_confidence.py prototype/tests/test_scoring_v3.py prototype/tests/test_scoring_policy.py /app/prototype/tests/
 COPY evaluation/fixtures/integration/egor-e13-minimal.json evaluation/fixtures/integration/egor-e13-finance.json evaluation/fixtures/integration/egor-e13-analytics.json evaluation/fixtures/integration/egor-e13-development.json /app/evaluation/fixtures/integration/
 COPY evaluation/expectations/egor/e13-cases.json /app/evaluation/expectations/egor/
+COPY evaluation/expectations/egor/e11-policy-cases.json /app/evaluation/expectations/egor/
 COPY evaluation/policy_compare.py /app/evaluation/policy_compare.py
 RUN python -m unittest discover -s prototype/tests -p 'test_core.py' -v \
     && python -m unittest prototype.tests.test_model prototype.tests.test_runtime_safety -q \

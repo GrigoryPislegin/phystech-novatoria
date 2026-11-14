@@ -1,1 +1,0 @@
-from hharon.adapters.hh_suggestions.hh_api.adapter import HHSuggestionsAdapter as HHSuggestionsAdapter

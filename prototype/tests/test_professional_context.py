@@ -378,12 +378,14 @@ class RealProfessionalContextTests(unittest.TestCase):
         async def run():
             privacy = LocalPrivacy(self.detector)
             try:
-                source = 'Навыки | TypeScript  Adaptive Design  Figma  Vuex  Pinia'
+                source = ('Навыки | TypeScript  Adaptive Design  Figma  Vuex  Pinia\n'
+                          'Понимание механизмов управления памятью и Garbage Collection.')
                 safe = (await privacy.finalize_sources([await privacy.redact(source)]))[0]
                 self.assertEqual(safe, source)
                 await check_data(privacy, {'items':[
                     {'text':'Vuex  Pinia', 'quote':'Vuex  Pinia'},
-                    {'text':'Adaptive Design  Figma', 'quote':'Adaptive Design  Figma'}]}, prepared=True)
+                    {'text':'Adaptive Design  Figma', 'quote':'Adaptive Design  Figma'},
+                    {'text':'Garbage Collection.', 'quote':'Garbage Collection.'}]}, prepared=True)
                 # The same words explicitly identified as a name still win.
                 identity = await privacy.redact('ФИО: Adaptive Design')
                 await privacy.finalize_sources([safe, identity])

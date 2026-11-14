@@ -1,9 +1,0 @@
-from . import operation as operation
-from .operation import BaseOperation as BaseOperation
-from .operation import GenerateAnalysisOperation as GenerateAnalysisOperation
-from .operation import Operation as Operation
-from .operation import OperationKind as OperationKind
-from .operation import OperationStatus as OperationStatus
-from .operation import OperationUsageReport as OperationUsageReport
-from .operation import ParseCandidateOperation as ParseCandidateOperation
-from .operation import ParseVacancyOperation as ParseVacancyOperation

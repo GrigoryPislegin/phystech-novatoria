@@ -19,9 +19,8 @@ def main():
     stamp = int(git('show', '-s', '--format=%ct', 'HEAD'))
     # Read blobs from the commit, never the worktree's untracked/private files.
     paths = git('ls-tree', '-r', '--name-only', '-z', head, '--',
-                'prototype', 'evaluation', 'docs', 'scripts/privacy_smoke.py',
-                'scripts/check_cli_replays.py', 'scripts/package_release.py',
-                'README.md', 'Dockerfile', '.dockerignore', 'THIRD_PARTY_NOTICES.md').decode().split('\0')
+                'prototype', 'evaluation', 'docs', 'scripts', 'tests',
+                'README.md', 'Dockerfile', '.dockerignore', '.gitignore', 'THIRD_PARTY_NOTICES.md').decode().split('\0')
     files = {}
     for path in filter(None, paths):
         parts = Path(path).parts
@@ -32,7 +31,7 @@ def main():
     for name in MODELS:
         path = verify(root/'runtime/privacy-models'/name, name)
         files['runtime/privacy-models/'+name] = path.read_bytes()
-    manifest = {'commit':head, 'format':'nanimai-source-v1',
+    manifest = {'commit':head, 'format':'recruiter-source-v1',
                 'files':{name:hashlib.sha256(data).hexdigest() for name, data in sorted(files.items())}}
     files['RELEASE.json'] = json.dumps(manifest, ensure_ascii=False, indent=2).encode()
     args.out.parent.mkdir(parents=True, exist_ok=True)

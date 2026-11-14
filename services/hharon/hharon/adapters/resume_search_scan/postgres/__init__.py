@@ -1,1 +1,0 @@
-from .adapter import PostgresResumeSearchScanRepositoryAdapter as PostgresResumeSearchScanRepositoryAdapter

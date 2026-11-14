@@ -51,6 +51,8 @@ prototype/static/**
 !prototype/tests/test_e14_professional_fidelity.py
 !prototype/tests/test_e15_mandatory_marker.py
 !prototype/tests/test_e15_leader_confidence.py
+!prototype/tests/test_scoring_v3.py
+!prototype/tests/test_scoring_policy.py
 !evaluation/
 evaluation/**
 !evaluation/policy_compare.py
@@ -67,6 +69,7 @@ evaluation/expectations/**
 !evaluation/expectations/egor/
 evaluation/expectations/egor/**
 !evaluation/expectations/egor/e13-cases.json
+!evaluation/expectations/egor/e11-policy-cases.json
 !prototype/privacy_core/
 !prototype/privacy_core/__init__.py
 !prototype/privacy_core/professional.py

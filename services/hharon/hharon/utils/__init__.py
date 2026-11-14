@@ -1,1 +1,0 @@
-from hharon.utils.grpc_error_handler import handle_grpc_errors as handle_grpc_errors

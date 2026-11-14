@@ -564,6 +564,8 @@ class C14BoundaryTests(unittest.TestCase):
             privacy = LocalPrivacy(Detector(lambda text:SimpleNamespace(spans=[])))
             await privacy.redact('\n'.join('ФИО: ' + 'z'*i for i in range(10,90)))
             text = 'Обычный профессиональный текст. '*1900
+            await privacy.check_prepared(text)
+            text *= 5
             with self.assertRaisesRegex(RuntimeError, 'privacy_scan_limit'):
                 await privacy.check_prepared(text)
             pending = asyncio.create_task(privacy.check_prepared(text))

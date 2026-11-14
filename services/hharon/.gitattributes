@@ -1,6 +1,0 @@
-# Ignore generated files in git diff
-hharon/pkg/** -diff linguist-generated=true
-hharon_api -diff linguist-generated=true
-
-# If you need to force review of these files, use:
-# git diff --diff-filter=d --find-renames --no-index -- :!hharon/pkg/** HEAD

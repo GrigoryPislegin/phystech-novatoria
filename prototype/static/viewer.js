@@ -463,6 +463,7 @@
       });
       const place = report.complete ? 'Место ' : 'Предварительное место ';
       heading.append(element('h3', null, job.title), element('span', 'support', place + job.rank), button);
+      heading.append(tag(...mandatoryStates[report.jobs[index].score.mandatory]));
 
       const bounds = element('div', 'overview-metric');
       bounds.append(element('p', null, 'Баллы соответствия'),

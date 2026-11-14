@@ -372,7 +372,10 @@
       radarReady: Boolean(validAxes && axes.radar_ready === true && axes.axes.length >= 4 && axes.axes.filter(axis => axis.score !== null).length >= 3),
       strengths: rows.filter(row => accepted.has(row.id) && ['full','partial'].includes(row.status) &&
         row.evidence?.state === 'structure_ok').slice(0,2).map(row => ({ text:row.label, status:row.status })),
-      questions: rows.filter(row => row.status === 'unknown').slice(0,2).map(row => row.question || row.label)
+      questions: rows.filter(row => row.status === 'unknown')
+        .sort((a, b) => Number(Boolean(b.mandatoryQuote && !b.mandatoryExcluded)) -
+          Number(Boolean(a.mandatoryQuote && !a.mandatoryExcluded)))
+        .slice(0,2).map(row => row.question || row.label)
     };
   }
 
