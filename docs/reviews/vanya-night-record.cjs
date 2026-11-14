@@ -66,6 +66,7 @@ async function decision(page, action) {
   });
   const page = await context.newPage();
   const video = page.video();
+  const recording = await video.path();
   page.on('pageerror', error => unexpected.push(error.message));
   try {
     await page.goto(origin);
@@ -129,6 +130,6 @@ async function decision(page, action) {
     await context.close();
     await browser.close();
   }
-  await video.saveAs(base + '.webm');
+  await fs.copyFile(recording, base + '.webm');
   console.log(sha, base + '.webm');
 })().catch(error => { console.error(error); process.exitCode = 1; });
