@@ -14,6 +14,8 @@ SYSTEM = '''Ты сопоставляешь профессиональные т�
 Метки [[PRIV:...]] — скрытые значения. Сохраняй метки дословно, не угадывай и не восстанавливай их содержимое.
 Не придумывай опыт. Цитаты копируй дословно из текста, сохраняй регистр и пробелы.
 requirements: извлеки отдельные проверяемые профессиональные требования, ids r1,r2...
+В том же ответе factors.items отнеси каждое требование к одной группе: stack (инструменты и технологии), relevant_experience (профильный опыт и стаж), domain (сфера), education (образование), management (руководство и взаимодействие), language (языки), conditions (условия работы), other (остальное).
+В factors используй только существующие requirement_id, без повторов. Группы описывают требования вакансии, а не качества кандидата; не выдумывай отсутствующие компетенции ради диаграммы. Группировка не меняет веса и итоговый скоринг.
 mandatory_quote только для явно обязательного требования (нужна дословная цитата обязательности), иначе null.
 mandatory_quote должна включать целиком quote этого требования и не быть короче 8 символов.
 Если обязательность задана заголовком, цитируй непрерывный фрагмент от заголовка до требования включительно.
@@ -187,6 +189,14 @@ class Model:
         if response.status != 'completed' or response.output_parsed is None:
             raise ModelOutputError('model_refusal_or_incomplete')
         result = response.output_parsed
+        from .analysis_contracts import RequirementsAnalysis
+        if isinstance(result, RequirementsAnalysis) and result.factors is not None:
+            # Validate optional references before any local degradation. A
+            # forged/unknown ID must not disappear with the display labels.
+            try:
+                result.factors.validate_requirements(result)
+            except ValueError:
+                raise ModelOutputError('model_invalid') from None
         try:
             await check_data(self.privacy, result.model_dump(mode='json'),
                              prepared=True, stage=task, direction='response')
@@ -200,8 +210,23 @@ class Model:
             grounded = _evidence_only_response(result, payload)
             if grounded is None:
                 raise
-            await check_data(self.privacy, grounded.model_dump(mode='json'),
-                             prepared=True, stage=task, direction='response')
+            try:
+                await check_data(self.privacy, grounded.model_dump(mode='json'),
+                                 prepared=True, stage=task, direction='response')
+            except PrivacyError as grounded_error:
+                if (grounded_error.code != 'privacy_residual_findings'
+                        or not isinstance(grounded, RequirementsAnalysis) or grounded.factors is None):
+                    raise
+                # A fixed grouping enum may collide with a hidden company
+                # name (e.g. Stack). Drop optional chart labels locally, then
+                # recheck the complete remaining DTO, including every core ID.
+                # Never exempt a hidden value from the privacy boundary.
+                grounded = grounded.model_copy(update={'factors':None})
+                await check_data(self.privacy, grounded.model_dump(mode='json'),
+                                 prepared=True, stage=task, direction='response')
+                if not hasattr(self, 'response_normalizations'):
+                    self.response_normalizations = []
+                self.response_normalizations.append({'stage':task, 'action':'optional_competency_labels_removed'})
             result = grounded
             if not hasattr(self, 'response_normalizations'):
                 self.response_normalizations = []

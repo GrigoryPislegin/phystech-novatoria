@@ -12,11 +12,11 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
-from .contracts import Facts, Requirements, Evaluation, validate_pair
+from .contracts import Facts, Requirements, RequirementFactors, Evaluation, validate_pair
 from .scoring import score, rank, POLICY_VERSION
-from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
+from .analysis_contracts import ResumeAnalysis, RequirementsAnalysis, VacancyAnalysis
 from .candidate_profile import check_profile, check_conditions
-from .ranking_explanation import compare, explain_leader
+from .ranking_explanation import compare, explain_leader, competency_axes
 from .review_queue import build_review_queue
 from .review_policy import assess_handoff
 from .evidence import Source, check_pair
@@ -152,6 +152,25 @@ def refresh_derived(report, decisions=()):
     report['handoff'] = [assess_handoff(report, list(decisions), job['job_id']).model_dump()
                          for job in ranked]
     report['presentation'] = build_presentation(report)
+    for job in ranked:
+        labels = job.get('requirement_factors')
+        factors = RequirementFactors.model_validate(labels) if labels is not None else None
+        if factors is not None:
+            factors.validate_requirements(Requirements.model_validate(job['requirements']))
+        grouped = {item.requirement_id:item.factor for item in factors.items} if factors is not None else None
+        if grouped is not None:
+            # A scoring unit may merge normalized duplicate requirements. No
+            # first-ID choice: contradictory or incomplete labels leave the
+            # entire unit outside the chart while its score stays unchanged.
+            for unit in job['score'].get('units', []):
+                if len({grouped.get(rid) for rid in unit['ids']}) != 1:
+                    for rid in unit['ids']:
+                        grouped.pop(rid, None)
+        # Legacy v3 scores have no additive shares/breakdown. Keep them readable
+        # without silently changing their saved calculation or inventing labels.
+        axes = (competency_axes(job, grouped)
+                if 'shares' in job['score'] and 'breakdown' in job['score'] else None)
+        job['competency_axes'] = axes.model_dump() if axes is not None else None
     return report
 
 
@@ -210,9 +229,12 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
     for jid, text in safe_jobs:
         stage = 'requirements'
         try:
-            requirements = await control.call(lambda: model.ask(Requirements, 'requirements', {'text':text}), stage, jid)
+            extracted_requirements = await control.call(
+                lambda: model.ask(RequirementsAnalysis, 'requirements', {'text':text}), stage, jid)
             stage = 'requirements_validation'
-            requirements.validate_source(text)
+            extracted_requirements = RequirementsAnalysis.model_validate(extracted_requirements.model_dump())
+            extracted_requirements.validate_source(text)
+            requirements = Requirements(items=extracted_requirements.items)
             stage = 'evaluation'
             assessed = await control.call(lambda: model.ask(VacancyAnalysis, 'evaluation', {
                 'requirements':requirements.model_dump(), 'facts':facts.model_dump(),
@@ -230,6 +252,8 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
             review_checks[jid] = review.check(None, jid, text, requirements)
             computed_score = score(requirements, evaluation, evidence)
             results.append({'job_id':jid, 'requirements':requirements.model_dump(),
+                            'requirement_factors':(extracted_requirements.factors.model_dump()
+                                                   if extracted_requirements.factors is not None else None),
                             'evidence_check':evidence.model_dump(),
                             'requirements_draft':review.draft(jid, text, requirements).model_dump(),
                             'requirements_review':review_checks[jid].model_dump(),

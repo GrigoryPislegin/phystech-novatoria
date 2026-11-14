@@ -61,6 +61,54 @@ class C14BoundaryTests(unittest.TestCase):
                 privacy.close()
         return asyncio.run(run())
 
+    def test_hidden_company_equal_to_category_drops_only_optional_labels(self):
+        def mutate(task, payload, value):
+            if task == 'requirements':
+                value['factors'] = {'items':[{'requirement_id':r['id'], 'factor':'education'} for r in value['items']]}
+        report, requests, _, _ = self.run_fixture(mutate, '\nРаботал в компании Education.')
+        self.assertEqual(report['errors'], [])
+        self.assertEqual(len(requests), 7)
+        self.assertEqual(len(report['ranking']['jobs']), 3)
+        self.assertTrue(all(j['requirement_factors'] is None for j in report['ranking']['jobs']))
+        self.assertNotIn('Education', json.dumps(requests, ensure_ascii=False))
+
+    def test_optional_labels_do_not_hide_forged_or_private_core_ids(self):
+        for core_id in (False, True):
+            def mutate(task, payload, value):
+                if task == 'requirements':
+                    value['factors'] = {'items':[{'requirement_id':'Education', 'factor':'education'}]}
+                    if core_id:
+                        value['items'][0]['id'] = 'Education'
+            report, requests, _, _ = self.run_fixture(mutate, '\nРаботал в компании Education.')
+            self.assertEqual(report['ranking']['jobs'], [])
+            expected = 'privacy_residual_findings' if core_id else 'model_invalid'
+            self.assertTrue(all(e['code'] == expected for e in report['errors']))
+            self.assertFalse(any(r['task'] == 'evaluation' for r in requests))
+
+    def test_stack_enum_collision_on_requirements_does_not_whitelist_hidden_value(self):
+        from prototype.analysis_contracts import RequirementsAnalysis
+
+        def mutate(task, payload, value):
+            value['factors'] = {'items':[{'requirement_id':r['id'], 'factor':'stack'} for r in value['items']]}
+
+        async def run():
+            privacy = LocalPrivacy(self.detector)
+            model = FixtureSDK(privacy, mutate)
+            try:
+                cv = await privacy.redact('Работал в компании Stack.')
+                vacancy = await privacy.redact('Python обязателен. SQL желателен.')
+                _, vacancy = await privacy.finalize_sources([cv, vacancy])
+                result = await model.ask(RequirementsAnalysis, 'requirements', {'text':vacancy})
+                self.assertIsNone(result.factors)
+                self.assertEqual(len(result.items), 2)
+                self.assertEqual(len(model.requests), 1)
+                with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+                    await privacy.check_prepared('Stack')
+            finally:
+                await model.close()
+                privacy.close()
+        asyncio.run(run())
+
     def test_known_value_in_fact_prose_uses_checked_evidence_without_repeating_network(self):
         def mutate(task, payload, value):
             if task == 'facts':

@@ -43,6 +43,9 @@ prototype/static/**
 !prototype/tests/test_e13_case_acceptance.py
 !prototype/tests/test_e13_support.py
 !prototype/tests/test_e13_failures.py
+!prototype/tests/test_e14_evidence_fidelity.py
+!prototype/tests/test_e14_competency_axes.py
+!prototype/tests/test_e14_professional_fidelity.py
 !evaluation/
 evaluation/**
 !evaluation/fixtures/

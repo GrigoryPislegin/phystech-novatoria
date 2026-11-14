@@ -19,6 +19,38 @@ class ProfessionalContextTests(unittest.TestCase):
                 SimpleNamespace(start=start, stop=start+len(value), type=kind)])
         return Detector(ner)
 
+    def test_residence_labels_mask_complete_address_without_ner_help(self):
+        async def run(label, separator, address):
+            privacy = LocalPrivacy(Detector(lambda _: SimpleNamespace(spans=[])))
+            try:
+                source = label + separator + address + '\nСтек: SQL.'
+                result = (await privacy.finalize_sources([await privacy.redact(source)]))[0]
+                self.assertNotIn('Лесная', result)
+                self.assertNotIn('д. 12', result)
+                self.assertIn('Стек: SQL.', result)
+                await privacy.check_prepared(result)
+                with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+                    await privacy.check_prepared(address)
+            finally:
+                privacy.close()
+        for label in ('Проживаю', '- Проживаю', 'Проживает', 'Зарегистрирован', 'Зарегистрирована', 'Место жительства', 'Адрес', 'Регистрация'):
+            for separator in (': ', ':\n', ' — '):
+                with self.subTest(label=label, separator=separator):
+                    asyncio.run(run(label, separator, 'Казань, ул. Лесная, д. 12.'))
+                    asyncio.run(run(label, separator, 'Казань\nул. Лесная, д. 12.'))
+                    asyncio.run(run(label, separator, 'Казань\nул. Лесная\nд. 12.'))
+                    asyncio.run(run(label, separator, 'Казань; ул. Лесная, д. 12.'))
+        asyncio.run(run('Зарегистрирован по адресу', ' ', 'Казань, ул. Лесная, д. 12.'))
+        privacy = LocalPrivacy(Detector(lambda _: SimpleNamespace(spans=[])))
+        try:
+            achievement = 'Зарегистрирован патент на алгоритм обработки данных.'
+            self.assertEqual(asyncio.run(privacy.redact(achievement)), achievement)
+            result = asyncio.run(privacy.redact('Проживаю в Казани, ул. Лесная, д. 12. Сейчас аналитик.'))
+            self.assertIn('Сейчас аналитик.', result)
+            self.assertNotIn('Лесная', result)
+        finally:
+            privacy.close()
+
     def test_experience_heading_and_role_are_not_personal_identity(self):
         for text, value in [('Опыт работы: 2 года 5 месяцев', 'Опыт'),
                             ('Full Stack Developer', 'Full Stack Developer')]:
@@ -40,6 +72,33 @@ class ProfessionalContextTests(unittest.TestCase):
             asyncio.run(privacy.check_prepared(text))
             privacy.close()
 
+    def test_analytics_and_skill_lists_preserve_only_exact_professional_hits(self):
+        examples = [
+            ('Работал с PostgreSQL, Docker и Kafka.', 'Kafka'),
+            ('— Опыт работы со Spark.', 'Spark'),
+            ('Опыта работы со Spark нет.', 'Spark'),
+            ('Обязателен опыт работы с Vue.js от 2 лет.', 'Vue.js'),
+            ('Готовил еженедельные отчёты для отдела продаж в Excel.', 'Excel'),
+            ('Строил дашборды в Power BI и Tableau.', 'Power BI'),
+            ('Построил дашборды удержания и воронки в Tableau.', 'Tableau'),
+            ('Настроил сквозную аналитику событий в Amplitude.', 'Amplitude'),
+            ('Вёл учёт в 1С:Бухгалтерия и Excel, знаю МСФО.', 'МСФО'),
+            ('Airflow использовал только как пользователь готовых пайплайнов, сам пайплайны не писал.', 'Airflow'),
+            ('Навыки:\n- Vue.js\n- TypeScript\n- Figma', 'TypeScript'),
+            ('Сократил время загрузки страницы с 4 до 1,5 секунды.', 'Сократил'),
+        ]
+        async def run(text, term):
+            privacy = LocalPrivacy(self.detector(term, 'ORG'))
+            try:
+                result = (await privacy.finalize_sources([await privacy.redact(text)]))[0]
+                self.assertEqual(result, text)
+                await privacy.check_prepared(result)
+            finally:
+                privacy.close()
+        for text, term in examples:
+            with self.subTest(source=text):
+                asyncio.run(run(text, term))
+
     def test_identity_and_employer_contexts_keep_masking(self):
         examples = [
             ('Имя: Опыт', 'Опыт', 'PER'),
@@ -56,6 +115,16 @@ class ProfessionalContextTests(unittest.TestCase):
             ('Знание Figma.', 'Figma', 'PER'),
             ('Знание Figma.', 'Figma', 'LOC'),
             ('TypeScript', 'TypeScript', 'ORG'),
+            ('Навыки:\n- SQL Partners\n- TypeScript', 'SQL', 'ORG'),
+            ('Навыки:\n- Kafka\n- TypeScript', 'Kafka', 'PER'),
+            ('Строил дашборды в Tableau, где работал бухгалтером.', 'Tableau', 'ORG'),
+            ('Работал с Kafka, у них в штате.', 'Kafka', 'ORG'),
+            ('Знание DAX Company.', 'DAX', 'ORG'),
+            ('Работал в Kafka, работал с Vue.js.', 'Kafka', 'ORG'),
+            ('Клиенты:\n— Работал с Tableau.', 'Tableau', 'ORG'),
+            ('Среди клиентов — несколько компаний, работал с Tableau и Amplitude.', 'Tableau', 'ORG'),
+            ('Сократил', 'Сократил', 'ORG'),
+            ('Сократил время загрузки страницы с 4 до 1,5 секунды.', 'Сократил', 'PER'),
         ]
         for text, term, kind in examples:
             with self.subTest(source=text):
@@ -131,6 +200,11 @@ class RealProfessionalContextTests(unittest.TestCase):
         from prototype.pipeline import run_pipeline
         from prototype.tests.test_c14_boundary import FixtureSDK
         examples = [('Работал с Figma, где я работал аналитиком.', 'Figma'),
+                    ('Клиенты:\n— Работал с Tableau.', 'Tableau'),
+                    ('Среди клиентов — несколько компаний, работал с Tableau и Amplitude.', 'Amplitude'),
+                    ('- Проживаю: Казань, ул. Лесная, д. 12.', 'Лесная'),
+                    ('Проживаю:\nКазань\nул. Лесная, д. 12.', 'Лесная'),
+                    ('Место жительства: Казань; ул. Лесная, д. 12.', 'Лесная'),
                     ('Работала с Figma, когда была их бухгалтером.', 'Figma'),
                     ('Работал с Figma, у них в штате.', 'Figma'),
                     ('Дополнительно. макеты Figma как сотрудник.', 'Figma'),
