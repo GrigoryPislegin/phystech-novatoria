@@ -10,6 +10,18 @@ on:
       - scripts/privacy_smoke.py
       - scripts/check_cli_replays.py
       - scripts/check_container_stop.py
+      - .github/scripts/check-docker-boundaries.sh
+      - .github/workflows/docker-smoke.yml
+  pull_request:
+    branches: [main, codex/cli-recruiter-prototype, codex/cli-integration-consultation]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - prototype/**
+      - scripts/privacy_smoke.py
+      - scripts/check_cli_replays.py
+      - scripts/check_container_stop.py
+      - .github/scripts/check-docker-boundaries.sh
       - .github/workflows/docker-smoke.yml
 permissions:
   contents: read
@@ -21,10 +33,18 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Record checkout and Docker versions
+        run: |
+          git rev-parse HEAD
+          cat /etc/os-release | sed -n 's/^PRETTY_NAME=//p'
+          uname -sm
+          docker version --format 'Docker client {{.Client.Version}}, server {{.Server.Version}}'
+          docker compose version || echo 'Compose is optional for this acceptance check.'
       # Public pinned dependencies/weights only. Runtime checks have no network;
       # there are no API keys, real CVs, private models or production services.
       - run: docker build --platform linux/amd64 -t recruiter-ci .
       - run: docker run --rm --network none --entrypoint python recruiter-ci scripts/check_cli_replays.py --without-ui
       - run: docker run --rm --network none --entrypoint python recruiter-ci -m unittest prototype.tests.test_run_store prototype.tests.test_local_service prototype.tests.test_web_app -q
       - run: docker run --rm --network none --entrypoint python recruiter-ci scripts/privacy_smoke.py --models-dir /opt/privacy-models --model-mock
+      - run: bash .github/scripts/check-docker-boundaries.sh recruiter-ci
       - run: python3 scripts/check_container_stop.py --image recruiter-ci

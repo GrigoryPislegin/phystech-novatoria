@@ -30,6 +30,7 @@ jobs:
           python-version: '3.13'
       - run: python -m pip install -r prototype/requirements.lock.txt
       - run: python -m pip check
+      - run: python --version && uname -sm
       # No secrets or paid model calls. NER acceptance tests explicitly skip if
       # public weights are absent; local/Docker checks cover the real NER path.
       - run: python -m unittest discover -s prototype/tests -v

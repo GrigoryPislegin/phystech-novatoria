@@ -2,15 +2,18 @@
 statuses are written by hand below, never read from the expectations. Synthetic data only."""
 import asyncio
 import copy
+import io
 import json
 import shutil
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from evaluation.runner import RunnerError, load_cases, main, run
 from prototype.contracts import Fact, Requirement, Requirements, Row
 from prototype.demo import SyntheticPrivacy
+from prototype.evidence import Source, locate, sha256_text
 from prototype.pipeline import run_pipeline
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,6 +52,15 @@ PLANS = {
     'E6-FA-02': {'facts': ['Январь 2021 — декабрь 2022: бухгалтер по учёту ОС на заводе.',
                            'Работаю в 1С:Бухгалтерия.'],
                  'jobs': {'job-fa': [('partial', ['f1']), ('full', ['f2']), ('unknown', [])]}},
+    'E6-FA-04': {'facts': ['Бухгалтер по учёту основных средств, 5 лет.', 'Работаю в 1С:Бухгалтерия.',
+                           'Рассматриваю только удалённую работу.'],
+                 'jobs': {'job-fa': [('full', ['f1']), ('full', ['f2']), ('unknown', [])], 'job-fe': UNKNOWN},
+                 'conditions': {'job-fa': [{'kind': 'work_mode', 'state': 'conflict',
+                                            'cv': {'fact_id': 'f3', 'quote': 'Рассматриваю только удалённую работу.'},
+                                            'vacancy_quote': 'Формат работы: офис в Долгопрудном.', 'note': 'Для HR.'}],
+                                'job-fe': [{'kind': 'work_mode', 'state': 'compatible',
+                                            'cv': {'fact_id': 'f3', 'quote': 'Рассматриваю только удалённую работу.'},
+                                            'vacancy_quote': 'Формат работы: удалённо.', 'note': 'Обе стороны — удалённо.'}]}},
     'E6-ED-04': {'facts': ['Куратор учебных групп в вузе, 2020–2023.', 'Высшее образование.'],
                  'jobs': {'job-ed': [('full', ['f2']), ('partial', ['f1']), ('unknown', [])], 'job-fe': None}},
 }
@@ -83,10 +95,12 @@ class Scripted:
                                       'conditions': {'items': self.plan.get('conditions', {}).get(job, [])}})
 
 
-def make_report(case_id, plan=None, mode='synthetic_replay'):
+def make_report(case_id, plan=None, mode='synthetic_replay', *, hashed_vacancy_ids=False):
     case = CASES[case_id]
     texts = {v['job_id']: v['text'] for v in case['vacancies']}
-    report = asyncio.run(run_pipeline(case['cv_text'], list(texts.items()), Scripted(plan or PLANS[case_id], texts),
+    jobs = [(f'job-{sha256_text(text)[:24]}-{index}', text) if hashed_vacancy_ids else (jid, text)
+            for index, (jid, text) in enumerate(texts.items(), 1)]
+    report = asyncio.run(run_pipeline(case['cv_text'], jobs, Scripted(plan or PLANS[case_id], texts),
                                       SyntheticPrivacy()))
     report['mode'] = mode
     return {k: v for k, v in report.items() if k != 'events'}
@@ -126,6 +140,15 @@ class GoodReportTests(unittest.TestCase):
         self.assertEqual((summary['results'][0]['setup'], summary['row_outcomes']), ('ok', {'pass': 3}))
         self.assertEqual(summary['results'][0]['recommendation'], {'actual': 'incomplete', 'outcome': 'pass'})
 
+    def test_cli_vacancy_ids_preserve_conditions_and_processing_failures(self):
+        reports = {case_id: make_report(case_id, hashed_vacancy_ids=True) for case_id in ('E6-FA-04', 'E6-ED-04')}
+        for check in evaluate(reports)['metrics']:
+            with self.subTest(check['metric']):
+                self.assertEqual(check['failures'], [])
+        reports['E6-ED-04']['errors'] = []
+        result, = evaluate({'E6-ED-04': reports['E6-ED-04']})['results']
+        self.assertEqual(result['setup'], 'expected_failure_not_reproduced')
+
 
 class FalsePerfectTests(unittest.TestCase):
     def test_one_forbidden_status_fails(self):
@@ -140,6 +163,41 @@ class FalsePerfectTests(unittest.TestCase):
         plan['conditions']['job-fe'][0]['state'] = 'conflict'
         summary = evaluate({'E6-FE-01': make_report('E6-FE-01', plan)})
         self.assertEqual(metric(summary, 'conditions')['failures'], ['E6-FE-01'])
+
+    def test_modern_condition_requires_a_present_state_and_current_source_span(self):
+        base = make_report('E6-FA-04')
+        self.assertEqual(metric(evaluate({'E6-FA-04': base}), 'conditions')['numerator'], 2)
+        for change in ('missing', 'position'):
+            with self.subTest(change=change):
+                report = copy.deepcopy(base)
+                job = next(j for j in report['ranking']['jobs'] if j['job_id'] == 'job-fa')
+                if change == 'missing':
+                    del job['conditions']
+                else:
+                    job['conditions']['items'][0]['vacancy_span']['start'] += 1
+                self.assertEqual(metric(evaluate({'E6-FA-04': report}), 'conditions')['failures'], ['E6-FA-04'])
+
+    def test_legacy_report_without_conditions_keeps_unmeasured_state(self):
+        report = make_report('E6-FA-04')
+        del report['analysis_schema_version']
+        del report['ranking']['jobs'][0]['conditions']
+        check = metric(evaluate({'E6-FA-04': report}), 'conditions')
+        self.assertEqual(check['unmeasured'], ['E6-FA-04:not_run'])
+        self.assertEqual(check['failures'], [])
+
+    def test_profile_and_summary_must_be_bound_to_the_source(self):
+        report = make_report('E6-FE-01')
+        source = Source.of('cv', CASES['E6-FE-01']['cv_text'])
+        quote = PLANS['E6-FE-01']['facts'][0]
+        report['profile']['spans']['summary[0]'] = [locate(source, quote).span.model_dump()]
+        report['profile']['display']['summary[0]'] = quote
+        self.assertEqual(metric(evaluate({'E6-FE-01': report}), 'references_valid')['numerator'], 1)
+        report['profile']['display']['summary[0]'] = 'React использует 15 лет.'
+        self.assertEqual(metric(evaluate({'E6-FE-01': report}), 'references_valid')['failures'], ['E6-FE-01'])
+        report['profile']['display']['summary[0]'] = quote
+        report['safe_resume_sha256'] = '0' * 64
+        result = evaluate({'E6-FE-01': report})['results'][0]
+        self.assertEqual(result['setup'], 'resume_source_mismatch')
 
     def test_swapped_mandatory_pair_fails(self):
         plan = copy.deepcopy(PLANS['E6-FE-01'])
@@ -246,6 +304,14 @@ class FalsePerfectTests(unittest.TestCase):
         summary = evaluate({'E6-FE-04': report})
         self.assertEqual(metric(summary, 'mandatory_marking')['failures'], ['E6-FE-04'])
 
+    def test_mandatory_quote_must_cite_the_right_requirement(self):
+        for text in ('Обязательная сертификация на Марсе', 'Желательно:\n- Next.js'):
+            with self.subTest(text):
+                report = make_report('E6-FE-04')
+                report['ranking']['jobs'][0]['requirements']['items'][0]['mandatory_quote'] = text
+                summary = evaluate({'E6-FE-04': report})
+                self.assertEqual(metric(summary, 'mandatory_marking')['failures'], ['E6-FE-04'])
+
     def test_unreproduced_failure_is_a_setup_error(self):
         plan = copy.deepcopy(PLANS['E6-ED-04'])
         plan['jobs']['job-fe'] = UNKNOWN  # job-fe processed although the case expects it to fail
@@ -293,6 +359,63 @@ class CommandTests(unittest.TestCase):
         data = json.loads((self.dir / 'out' / 'evaluation.json').read_text(encoding='utf-8'))
         self.assertEqual(metric(data, 'cases_evaluated')['numerator'], 1)
         self.assertIn('не измерено', (self.dir / 'out' / 'evaluation.md').read_text(encoding='utf-8'))
+
+    def test_check_mode_rejects_wrong_evidence_with_summary(self):
+        plan = copy.deepcopy(PLANS['E6-FE-01'])
+        plan['jobs']['job-fe'][0] = ('full', ['f2'])
+        subset = self.dir / 'expectations.json'
+        subset.write_text(json.dumps({'cases': [CASES['E6-FE-01']]}), encoding='utf-8')
+        for name, expected, report in (('good', 0, make_report('E6-FE-01')),
+                                        ('irrelevant_quote', 1, make_report('E6-FE-01', plan))):
+            with self.subTest(name):
+                self.write('synthetic_replay', {'E6-FE-01': report})
+                with redirect_stdout(io.StringIO()):
+                    code = main(['--reports', str(self.dir / 'r'), '--expectations', str(subset),
+                                 '--out', str(self.dir / 'out'), '--check'])
+                self.assertEqual(code, expected)
+                summary = json.loads((self.dir / 'out' / 'evaluation.json').read_text())
+                self.assertEqual(summary['row_outcomes'].get('wrong_evidence', 0), expected)
+
+    def test_output_symlink_does_not_overwrite_existing_target(self):
+        self.write('synthetic_replay', {})
+        outputs = self.dir / 'out'
+        outputs.mkdir()
+        target = self.dir / 'unchanged.json'
+        target.write_text('keep', encoding='utf-8')
+        (outputs / 'evaluation.json').symlink_to(target)
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(self.cli(), 2)
+        self.assertEqual(target.read_text(encoding='utf-8'), 'keep')
+        self.assertFalse((outputs / 'evaluation.md').exists())
+
+    def test_check_mode_rejects_unmeasured_expected_conditions_in_legacy_report(self):
+        report = make_report('E6-FA-04')
+        del report['analysis_schema_version']
+        del report['ranking']['jobs'][0]['conditions']
+        self.write('synthetic_replay', {'E6-FA-04': report})
+        subset = self.dir / 'expectations.json'
+        subset.write_text(json.dumps({'cases': [CASES['E6-FA-04']]}), encoding='utf-8')
+        with redirect_stdout(io.StringIO()):
+            code = main(['--reports', str(self.dir / 'r'), '--expectations', str(subset),
+                         '--out', str(self.dir / 'out'), '--check'])
+        self.assertEqual(code, 1)
+
+    def test_manifest_symlink_outside_input_directory_is_refused(self):
+        self.write('synthetic_replay', {})
+        manifest = self.dir / 'r' / 'manifest.json'
+        target = self.dir / 'manifest.json'
+        manifest.rename(target)
+        manifest.symlink_to(target)
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(self.cli(), 2)
+
+    def test_two_paths_to_one_report_are_refused(self):
+        self.write('synthetic_replay', {'E6-FE-01': make_report('E6-FE-01')})
+        manifest = self.dir / 'r' / 'manifest.json'
+        manifest.write_text(json.dumps({'mode': 'synthetic_replay', 'reports': {
+            'E6-FE-01': 'E6-FE-01.json', 'E6-FE-02': './E6-FE-01.json'}}), encoding='utf-8')
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(self.cli(), 2)
 
     def test_mixed_modes_are_refused(self):
         self.write('synthetic_replay', {'E6-FE-01': make_report('E6-FE-01', mode='live')})
