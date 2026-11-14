@@ -369,7 +369,11 @@ def explain_leader(report: dict) -> LeaderExplanation | None:
         raise ValueError('incomplete_report') from None
     again = rank([{'job_id': j.id, 'score': j.score} for j in jobs.values()], len(jobs))
     leader = again['leader']
-    if leader != ranking['leader'] or {j['job_id']: j['rank'] for j in again['jobs']} != {
+    # A v3 report saved before `comparable` existed is the same calculation: only that additive key may be
+    # absent. Every other difference still means the stored block is not what the policy computes.
+    stored = ranking['leader'] if isinstance(ranking['leader'], dict) else {}
+    stored = {**({} if 'comparable' in stored else {'comparable': leader['comparable']}), **stored}
+    if leader != stored or {j['job_id']: j['rank'] for j in again['jobs']} != {
             j.id: j.rank for j in jobs.values()}:
         raise ValueError('score_not_reproducible')
 

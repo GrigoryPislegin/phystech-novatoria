@@ -5,11 +5,13 @@ shown with coverage 0 and the interval 0–100. The row was a model proposal wit
 the structure check refused every quote that was a part of a sentence or a bullet of a list — the
 two ordinary ways to cite a skill. Synthetic texts only; nothing here measures a model.
 """
+import json
 import unittest
 
 from prototype.contracts import Evaluation, Fact, Facts, Requirement, Requirements, Row
 from prototype.evidence import RULES_VERSION, Source, check_pair, reverses
-from prototype.ranking_explanation import explain_leader
+from prototype.ranking_explanation import compare, explain_leader
+from prototype.review_queue import build_review_queue
 from prototype.scoring import rank, score
 
 REF = '[[PRIV:0123456789abcdef:{}:ORG]]'.format
@@ -121,12 +123,13 @@ class InventedEvidenceTests(unittest.TestCase):
                    'Готовила управленческую отчётность в', 'Разрабатывал пользовательские интерфейсы на',
                    'Самостоятельно разработал сервис на', 'Собирал витрины данных в', 'Опыт: машинное обучение,',
                    'Обучал стажёров работе с', 'Изучение рынка и аналитика в', 'Планирование спринтов в',
-                   'Готов к переезду', 'Минимальное время ответа', 'Базовый оклад', 'Базы данных:',
+                   'Курс валют считал в', 'Вела курсы в', 'Минимальное время ответа', 'Базовый оклад', 'Базы данных:',
                    'Plan-fact analysis in', 'Знакомство клиентов с продуктом', 'Теория вероятностей,', 'Основные навыки:')
         self.assertEqual([t for t in neutral if reverses(t)], [])
         self.assertTrue(all(map(reverses, ('не работал', 'Нет опыта', 'без опыта', "don't use", 'ещё изучаю',
                                             'прошёл курс', 'планирую освоить', 'базовый уровень', 'только читал',
-                                            'как пользователь', 'знаком по документации', 'would like to try'))))
+                                            'как пользователь', 'знаком по документации', 'would like to try',
+                                            'готов работать', 'проходил учебный курс', 'учусь на курсах'))))
         # A real match next to such a phrase is counted.
         for cv in ('Готовила управленческую отчётность в Excel и Vue.js-панели.',
                    'Разрабатывал пользовательские интерфейсы на Vue.js.'):
@@ -137,6 +140,68 @@ class InventedEvidenceTests(unittest.TestCase):
         for heading in ('Интересы:', 'Хобби:', 'Планы:', 'Желаемые технологии:'):
             with self.subTest(heading):
                 self.refused(f'{heading}\n- Vue.js', 'Vue.js', 'heading_context')
+
+
+class ReviewOf7901bfaTests(unittest.TestCase):
+    """Defects the integrator's read-only review found in 7901bfa."""
+
+    def test_a_negation_inside_a_quote_offered_as_support_is_not_counted(self):
+        cv = 'Python не использовал. SQL применял.'
+        s, check, _ = one_of_eight(cv, 'Опыт с Python обязателен.', cv, text='Python', mandatory=True)
+        self.assertEqual((check.state, codes(check)), ('needs_review', {'reservation_in_quote'}))
+        self.assertEqual((s['lower'], s['mandatory'], s['shares']['disputed']), (0, 'clarify', 75))  # the mandatory group
+        # One negating sentence quoted whole as `full`: the same.
+        s, check, _ = one_of_eight('С Vue.js не работал.', 'Опыт работы с Vue.js.', 'С Vue.js не работал.')
+        self.assertEqual((check.state, s['coverage']), ('needs_review', 0))
+
+    def test_an_intent_is_not_experience(self):
+        for cv in ('Готов работать с Vue.js.', 'Готова освоить Vue.js.', 'Буду рад работать с Vue.js.'):
+            for quote in ('Vue.js', cv):
+                s, check, _ = one_of_eight(cv, 'Опыт работы с Vue.js.', quote)
+                self.assertEqual((check.state, s['coverage']), ('needs_review', 0), (cv, quote))
+
+    def test_partial_tolerates_a_limitation_inside_the_quote_but_not_a_negation(self):
+        s, check, _ = one_of_eight('TypeScript изучаю самостоятельно.', 'Знание TypeScript.',
+                                   'TypeScript изучаю самостоятельно.', status='partial', text='TypeScript')
+        self.assertEqual((check.state, s['lower']), ('structure_ok', 6.25))  # that is what partial means
+        s, check, _ = one_of_eight('TypeScript не использовал.', 'Знание TypeScript.', 'TypeScript не использовал.',
+                                   status='partial', text='TypeScript')
+        self.assertEqual((check.state, codes(check), s['lower']), ('needs_review', {'reservation_in_quote'}, 0))
+        # A stated absence quoted for a fail is sound evidence of the fail.
+        s, check, _ = one_of_eight('TypeScript не использовал.', 'Знание TypeScript.', 'TypeScript не использовал.',
+                                   status='fail', text='TypeScript')
+        self.assertEqual(check.state, 'structure_ok')
+
+    def test_the_link_must_be_inside_the_quote_not_next_to_it(self):
+        cv = 'Использовал SQL, коллеги писали на Python.'
+        s, check, _ = one_of_eight(cv, 'Опыт разработки на Python.', 'Использовал SQL', text='Python')
+        self.assertEqual((check.state, codes(check), s['coverage']), ('needs_review', {'evidence_not_linked'}, 0))
+        # The same with hidden values: another reference in the same sentence is not a link.
+        cv = f'Использовал {REF(1)}, коллеги писали на {REF(2)}.'
+        s, check, _ = one_of_eight(cv, f'Опыт разработки на {REF(2)}.', f'Использовал {REF(1)}', text='Язык')
+        self.assertEqual((check.state, codes(check), s['coverage']), ('needs_review', {'link_hidden_by_mask'}, 0))
+        s, check, _ = one_of_eight(cv, f'Опыт разработки на {REF(2)}.', f'коллеги писали на {REF(2)}', text='Язык')
+        self.assertEqual(check.state, 'structure_ok')  # the exact reference inside the quote links
+
+    def test_a_v3_report_saved_before_the_new_fields_is_reopened(self):
+        real = one_of_eight('Навыки: Vue.js, TypeScript, Git.', 'Опыт работы с Vue.js.', 'Vue.js')
+        report = InsufficientDataTests().ranking(real, real)
+        old = json.loads(json.dumps(report))  # as stored by b2e0e5f: no comparable, shares, breakdown, rules_version
+        del old['ranking']['leader']['comparable']
+        for job in old['ranking']['jobs']:
+            del job['score']['shares'], job['score']['breakdown'], job['evidence_check']['rules_version']
+        text = explain_leader(old)
+        self.assertEqual((text.state, text.job_ids), (report['ranking']['leader']['state'], ['job-1', 'job-2']))
+        self.assertEqual(compare(old, 'job-1', 'job-2').outcome, 'tie')
+        build_review_queue({**old, 'safe_resume_sha256': 'cv'})
+        tampered = json.loads(json.dumps(old))
+        tampered['ranking']['leader']['state'] = 'stable'  # any other difference is still refused
+        with self.assertRaisesRegex(ValueError, 'score_not_reproducible'):
+            explain_leader(tampered)
+        hidden = json.loads(json.dumps(report))
+        hidden['ranking']['leader']['comparable'] = False  # a present but wrong value is refused too
+        with self.assertRaisesRegex(ValueError, 'score_not_reproducible'):
+            explain_leader(hidden)
 
 
 class MaskedTermTests(unittest.TestCase):
