@@ -111,8 +111,12 @@ class Handler(BaseHTTPRequestHandler):
         origins = self.headers.get_all('Origin', [])
         if origins and origins != [expected_origin]:
             raise StoreError('origin_rejected')
+        document_entry = (not mutate and self.command == 'GET' and self.path == '/'
+                          and self.headers.get_all('Sec-Fetch-Mode', []) == ['navigate']
+                          and self.headers.get_all('Sec-Fetch-Dest', []) == ['document'])
         if ('cross-site' in self.headers.get_all('Sec-Fetch-Site', [])
-                and (self.server.public_origin is not None or self.path.startswith('/api/'))):
+                and (self.server.public_origin is not None or self.path.startswith('/api/'))
+                and not document_entry):
             raise StoreError('origin_rejected')
         if mutate:
             tokens = self.headers.get_all('X-CSRF-Token', [])

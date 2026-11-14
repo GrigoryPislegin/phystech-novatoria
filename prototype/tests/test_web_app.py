@@ -135,7 +135,8 @@ class PublicOriginTests(unittest.TestCase):
                 connection.putheader('Content-Length', str(len(raw)))
             connection.endheaders(raw)
             response = connection.getresponse()
-            return response.status, json.loads(response.read())
+            raw = response.read()
+            return response.status, (json.loads(raw) if response.getheader('Content-Type','').startswith('application/json') else raw)
         finally:
             connection.close()
 
@@ -159,6 +160,19 @@ class PublicOriginTests(unittest.TestCase):
         rid = 'a' * 32
         self.assertEqual(self.request('GET',f'/api/runs/{rid}/display-data',
             [host,('Sec-Fetch-Site','cross-site')])[0], 403)
+
+    def test_shared_link_allows_only_top_level_document_entry(self):
+        headers = [('Host',self.host), ('Sec-Fetch-Site','cross-site'),
+                   ('Sec-Fetch-Mode','navigate'), ('Sec-Fetch-Dest','document')]
+        status, page = self.request('GET','/',headers)
+        self.assertEqual(status, 200)
+        self.assertIn(b'<!', page)
+        for path in ('/api/session','/api/runs','/report.js'):
+            self.assertEqual(self.request('GET',path,headers)[0], 403)
+        for extra in ([('Origin','https://attacker.example')], [('Sec-Fetch-Mode','cors')]):
+            self.assertEqual(self.request('GET','/',[*headers,*extra])[0], 403)
+        self.assertEqual(self.request('GET','/',headers[:-1])[0], 403)
+        self.assertEqual(self.request('POST','/',headers,{})[0], 403)
 
     def test_configured_origin_still_requires_csrf_for_mutations(self):
         headers = [('Host',self.host), ('Origin',self.origin)]
