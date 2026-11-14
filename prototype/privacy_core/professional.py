@@ -16,7 +16,12 @@ _TERMS = ('Vue.js', 'Vue', 'NoSQL', 'SQL', 'Git', 'TypeScript', 'JavaScript',
           'ClickHouse', 'Amplitude', 'Airflow', 'Spark', 'DAX', 'МСФО', '1С:Бухгалтерия',
           'VueJS', 'Nuxt', 'Vue Router', 'Composition API', 'VueUse', 'vue-i18n',
           'Sass', 'CSS Modules', 'Tailwind CSS', 'PUG', 'Adaptive Design', 'npm',
-          'Vite', 'Jest', 'Agile', 'Scrum', 'Code Review', 'Pixel Perfect', 'Service Desk')
+          'Vite', 'Jest', 'Agile', 'Scrum', 'Code Review', 'Pixel Perfect', 'Service Desk',
+          'Pinia', 'Vuex', 'Vitest', 'Webpack', 'Nuxt.js', 'SSR', 'SSG', 'SCSS',
+          'WordPress', 'WooCommerce', 'Elementor', 'ACF', 'Yoast SEO', '1С-Битрикс',
+          'React.js', 'Next.js', 'Redux', 'Angular', 'RxJS', 'Storybook', 'Cypress',
+          'Playwright', 'ESLint', 'Prettier', 'pnpm', 'GraphQL', 'WebSocket',
+          'Monaco Editor', 'SPA', 'Nuxt Router', 'CMS', 'Bitrix', 'JS')
 _TECH = re.compile(r'(?:' + '|'.join(re.escape(t) for t in sorted(_TERMS, key=len, reverse=True))
                    + r')(?!(?:[\w+-]|\.[\w]))', re.IGNORECASE)
 _START = r'(?:^|(?<=[.!?;]))[ \t]*(?:[-•*—–][ \t]+)?'
@@ -76,6 +81,49 @@ _SKILL_ROW = re.compile(r'^[ \t]*(?:ключевые[ \t]+)?навыки[ \t]*\|
 _PROFESSIONAL_CONCEPT = re.compile(
     r'\b(?:адаптивная[ \t]+)?в[её]рстка[ \t]+(?P<pixel>Pixel Perfect)(?!\w)|'
     r'\bтехподдержки[ \t]+\((?P<support>Service Desk)\)', re.IGNORECASE)
+_VERSION = re.compile(r'(?:[ \t]*\d+(?:\.\d+)*(?:/\d+(?:\.\d+)*)?)?(?:[ \t]*\([^\n()]{1,60}\))?')
+_TECH_CONTEXT = re.compile(r'(?i)стек|навык|технолог|опыт|разработ|фронтенд|frontend|backend|'
+    r'тестирован|тестами|фреймворк|библиотек|интегр|миграци|переход|сборк|'
+    r'стилиз|макет|работаю[ \t]+с|работал[аи]?[ \t]+с|использ|владени|знани|понимание')
+_ENTITY_PREFIX = re.compile(r'(?i)(?:фио|имя|фамилия|компани\w*|организаци\w*|'
+    r'работодател\w*|подрядчик\w*|клиент\w*|заказчик\w*|ооо|зао|пао|'
+    r'company|employer|client|customer|для|студии|агентстве|работ\w*[ \t]+в)[ \t:«"—–(\-]*$')
+_ENTITY_SUFFIX = re.compile(r'(?i)^[ \t]*(?:Partners\b|Company\b|Ltd\b|Inc\b|'
+    r'[, ]+[ \t]*(?:где[ \t]+(?:я[ \t]+)?работ|у[ \t]+них|'
+    r'как[ \t]+(?:с[ \t]+)?(?:подрядчик|сотрудник)))')
+
+
+def _technical_usage_spans(text):
+    """Exact public tools in professional prose, including versioned stacks.
+
+    Employer/name fields and client-list contexts retain entity detection.
+    This only filters ORG NER spans, never contacts or explicit identities.
+    """
+    spans = []
+    for match in _TECH.finditer(text):
+        if match.start() and (text[match.start()-1].isalnum() or text[match.start()-1] == '_'):
+            continue
+        start = text.rfind('\n', 0, match.start()) + 1
+        prefix = text[start:match.start()]
+        previous = text[:start].rstrip().split('\n')[-1] if start else ''
+        line_end = text.find('\n', match.end())
+        suffix = text[match.end():line_end if line_end >= 0 else len(text)]
+        if _ENTITY_PREFIX.search(prefix) or _ENTITY_SUFFIX.search(suffix):
+            continue
+        if re.search(r'(?i)\b(?:как[ \t]+(?:с[ \t]+)?(?:подрядчик|сотрудник)|'
+                     r'когда[ \t]+(?:был[аи]?[ \t]+)?их\b|в[ \t]+штате\b)', suffix):
+            continue
+        # Client/identity lists must not turn into technical contexts merely
+        # because a following line mentions a tool-use predicate.
+        integration = re.search(r'(?i)интеграц\w*[ \t]+в[ \t]+(?:CMS[ \t(,]*)?$', prefix)
+        if _relationship_context(text, match.start()) and not integration:
+            continue
+        explicit_heading = re.fullmatch(r'(?i)[ \t]*(?:(?:основной|технологический|ключевые)[ \t]+)?'
+                                        r'(?:стек|технологии|навыки)[ \t]*:[ \t]*', previous)
+        context = prefix if prefix.strip() else previous if explicit_heading else ''
+        if _TECH_CONTEXT.search(context):
+            spans.append(match.span())
+    return spans
 _ACHIEVEMENT = re.compile(
     _START + r'(?P<verb>сократил[аи]?)[ \t]+(?:время|длительность)[ \t]+'
     r'(?:загрузки[ \t]+страницы|выполнения[ \t]+запроса|обработки[ \t]+данных)[ \t]+'
@@ -125,7 +173,7 @@ def _table_terms(value):
         term = _TECH.match(value, pos)
         if term:
             terms.append(term.span())
-            pos = term.end()
+            pos = _VERSION.match(value, term.end()).end()
             continue
         # A masked technology prefix can leave a literal extension behind.
         # It creates no exempt span; NER findings on it are still checked.
@@ -137,7 +185,7 @@ def _table_terms(value):
     return terms
 
 
-def source_spans(text):
+def source_spans(text, *, include_usage=True):
     """Return exact professional spans and separately complete role headings."""
     roles = []
     for match in _ROLE.finditer(text):
@@ -188,10 +236,10 @@ def source_spans(text):
             continue
         for item in re.finditer(r'[^,;]+', line):
             value = item.group().strip()
-            term = _TECH.fullmatch(value)
-            if term:
+            term = _TECH.match(value)
+            if term and _VERSION.fullmatch(value, term.end()):
                 start = stack.end()+item.start()+len(item.group())-len(item.group().lstrip())
-                spans.append((start, start+len(value)))
+                spans.append((start, start+term.end()))
     for listing in _SKILL_LIST.finditer(text):
         for item in re.finditer(r'^[ \t]*[-•*—–][ \t]+(?P<value>[^\n]+)', listing['items'], re.MULTILINE):
             value = item['value'].strip().removesuffix('.')
@@ -221,14 +269,27 @@ def source_spans(text):
     spans = [(start, end) for start, end in spans if not _relationship_context(text, start)]
     roles = [(start, end) for start, end in roles if not _relationship_context(text, start)]
     headings = [(start, end) for start, end in headings if not _relationship_context(text, start)]
+    if include_usage:
+        spans.extend(_technical_usage_spans(text))
+    # NER can merge an entire technical list ("Vue Router / Nuxt Router")
+    # into one ORG. Join only already eligible spans separated by punctuation.
+    combined = []
+    for start, end in sorted(spans):
+        if combined and (start <= combined[-1][1] or
+                         re.fullmatch(r'[ \t,/()]+', text[combined[-1][1]:start])):
+            combined[-1] = (combined[-1][0], max(combined[-1][1], end))
+        else:
+            combined.append((start, end))
+    spans.extend(combined)
     return spans, roles, headings
 
 
 def source_findings(text, findings):
     spans, roles, headings = source_spans(text)
+    strict_spans = source_spans(text, include_usage=False)[0]
     return [item for item in findings if not (
         item.method in {'ner', 'name_header'} and any(
             start <= item.start < item.end <= end
-            for start, end in (spans if item.method == 'name_header' else
+            for start, end in (strict_spans if item.method == 'name_header' else
                                spans if item.kind == 'ORG' else
                                headings if item.kind == 'PERSON' else [])))]

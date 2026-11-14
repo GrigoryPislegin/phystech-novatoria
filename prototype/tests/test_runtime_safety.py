@@ -14,8 +14,8 @@ from prototype.pipeline import run_pipeline, write_report
 
 
 class RuntimeSafetyTests(unittest.TestCase):
-    def test_thirty_job_pool_waits_for_privacy_and_facts_and_caps_inflight_at_three(self):
-        async def scenario():
+    def test_small_and_large_job_pools_wait_for_privacy_and_facts_and_cap_inflight_at_three(self):
+        async def scenario(size):
             from prototype.pipeline import RunControl
             ready, all_started = False, asyncio.Event()
             active, peak, facts_calls = 0, 0, 0
@@ -23,7 +23,7 @@ class RuntimeSafetyTests(unittest.TestCase):
                 async def finalize_sources(self, sources):
                     nonlocal ready
                     self_count = len(sources)
-                    self_outer.assertEqual(self_count, 31)
+                    self_outer.assertEqual(self_count, size+1)
                     ready = True
                     return sources
             class Model(ReplayModel):
@@ -46,15 +46,17 @@ class RuntimeSafetyTests(unittest.TestCase):
                         active -= 1
             self_outer = self
             resume, examples = demo_inputs()
-            jobs = [(f'job-{i:02}', examples[0][1]) for i in range(30)]
+            jobs = [(f'job-{i:02}', examples[0][1]) for i in range(size)]
             model, control = Model(), RunControl()
             report = await run_pipeline(resume, jobs, model, Privacy(), control=control)
             self.assertTrue(report['ranking']['complete'])
-            self.assertEqual(len(report['ranking']['jobs']), 30)
-            self.assertEqual((facts_calls, peak, active, model.calls), (1, 3, 0, 61))
+            self.assertEqual(len(report['ranking']['jobs']), size)
+            self.assertEqual((facts_calls, peak, active, model.calls), (1, 3, 0, 1+2*size))
             self.assertEqual([job['job_id'] for job in report['ranking']['jobs']], [jid for jid,_ in jobs])
             self.assertFalse(control._pending)
-        asyncio.run(scenario())
+        for size in (3, 30):
+            with self.subTest(size=size):
+                asyncio.run(scenario(size))
 
     def test_pool_fatal_error_keeps_completed_job_and_drains_other_requests(self):
         async def scenario():
@@ -299,7 +301,7 @@ class RuntimeSafetyTests(unittest.TestCase):
                     raise RuntimeError('privacy_untrusted_reference')
                 return await super().ask(schema, task, payload)
         model = FatalSecond()
-        report = asyncio.run(run_pipeline(*demo_inputs(), model, SyntheticPrivacy()))
+        report = asyncio.run(run_pipeline(*demo_inputs(), model, SyntheticPrivacy(), max_concurrency=1))
         self.assertEqual(model.calls, 3)
         self.assertEqual(report['unprocessed_job_ids'], ['job-002','job-003'])
         self.assertEqual(report['unprocessed'][1]['reason'], 'stopped_after_error')
@@ -313,7 +315,7 @@ class RuntimeSafetyTests(unittest.TestCase):
                 return await super().ask(schema, task, payload)
         events=[]
         control = RunControl(timeout_seconds=0.03, progress=events.append)
-        report = asyncio.run(run_pipeline(*demo_inputs(), SlowSecond(), SyntheticPrivacy(), control=control))
+        report = asyncio.run(run_pipeline(*demo_inputs(), SlowSecond(), SyntheticPrivacy(), control=control, max_concurrency=1))
         self.assertEqual(len(report['ranking']['jobs']), 1)
         self.assertEqual(report['errors'][0]['code'], 'deadline_exceeded')
         self.assertNotIn('Python', json.dumps(events))
@@ -325,7 +327,7 @@ class RuntimeSafetyTests(unittest.TestCase):
             if event['stage']=='requirements' and event['job_id']=='job-002': control.cancel()
         control.progress = progress
         model = ReplayModel()
-        report = asyncio.run(run_pipeline(*demo_inputs(), model, SyntheticPrivacy(), control=control))
+        report = asyncio.run(run_pipeline(*demo_inputs(), model, SyntheticPrivacy(), control=control, max_concurrency=1))
         self.assertEqual(model.calls, 3)
         self.assertEqual(report['errors'][0]['code'], 'cancelled')
 
@@ -347,7 +349,7 @@ class RuntimeSafetyTests(unittest.TestCase):
                     return await super().ask(schema, task, payload)
 
             model, control = PendingSecond(), RunControl()
-            analysis = asyncio.create_task(run_pipeline(*demo_inputs(), model, SyntheticPrivacy(), control=control))
+            analysis = asyncio.create_task(run_pipeline(*demo_inputs(), model, SyntheticPrivacy(), control=control, max_concurrency=1))
             await asyncio.wait_for(started.wait(), timeout=1)
             await asyncio.to_thread(control.cancel)
             report = await asyncio.wait_for(analysis, timeout=1)
@@ -451,7 +453,7 @@ class RuntimeSafetyTests(unittest.TestCase):
                 if task == 'requirements' and 'Java' in payload['text']:
                     raise BudgetLimit('budget_or_call_limit')
                 return await super().ask(schema, task, payload)
-        report = asyncio.run(run_pipeline(*demo_inputs(), Limited(), SyntheticPrivacy()))
+        report = asyncio.run(run_pipeline(*demo_inputs(), Limited(), SyntheticPrivacy(), max_concurrency=1))
         self.assertEqual(report['errors'][0]['code'], 'budget_limit')
         self.assertEqual(len(report['ranking']['jobs']), 1)
 

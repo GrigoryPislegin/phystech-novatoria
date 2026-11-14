@@ -59,7 +59,7 @@ class ReviewFixTests(unittest.TestCase):
                     raise RuntimeError('private-message')
                 return await super().ask(schema, task, payload)
         model = Broken()
-        report = asyncio.run(run_pipeline(*demo_inputs(), model, SyntheticPrivacy()))
+        report = asyncio.run(run_pipeline(*demo_inputs(), model, SyntheticPrivacy(), max_concurrency=1))
         self.assertEqual(model.tasks, ['facts', 'requirements'])
         self.assertEqual(report['errors'][0]['stage'], 'requirements')
         self.assertEqual(report['errors'][0]['code'], 'requirements_failed')

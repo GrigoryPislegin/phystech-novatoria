@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import asyncio
 from decimal import Decimal
 from .documents import MAX_JOBS
 from .privacy import check_data, protect_dependency_logs
@@ -30,10 +31,12 @@ mandatory_quote должна включать целиком quote этого т
 facts: извлеки профессиональные факты резюме с дословной цитатой, ids f1,f2...
 Покрой каждый явно описанный навык, инструмент, рабочую задачу, результат и ограничение; не заменяй весь опыт коротким общим пересказом.
 Один факт — одна проверяемая мысль. Для сопоставления навыков бери короткую непрерывную цитату одного предложения или пункта.
+Не дублируй один навык при его повторении в списке стека и описании той же работы. Отдельный факт нужен, если он добавляет стаж, уровень, контекст применения, достижение или ограничение.
 Не объединяй соседние предложения и разные проекты в одну цитату; при необходимости создай несколько фактов.
 Сохраняй стаж, уровни, отрицания, степень самостоятельности и контекст применения технологии; упоминание инструмента не равно опыту сложной разработки.
 Включи явно указанные условия работы, даты/роли, сферу, достижения и результаты в факты.
 В том же ответе заполни profile: summary, stack, last_position, achievements, missing.
+Профиль краткий: до 3 утверждений summary, до 12 ключевых навыков stack, до 3 achievements. Это ограничения краткого профиля, не полноты списка facts.
 Каждое утверждение profile ссылается на fact_id и точную цитату этого факта; никаких личных полей.
 last_position только при наличии дат с годом в том же факте, что роль; иначе null и missing.
 Отсутствующие разделы перечисли в missing, не дополняй их догадками.
@@ -48,7 +51,7 @@ full — факт подтверждает всё требование; partial 
 fail — есть явный факт против требования (например, указан меньший стаж);
 unknown — сведений нет, fact_ids пустой. Отсутствие упоминания НЕ fail.
 Не выводи числовую оценку. Для каждого non-full дай конкретный вопрос кандидату.
-comment объясняет связь фактов с требованием, а не добавляет новые сведения.'''
+comment кратко объясняет связь фактов с требованием, а не добавляет новые сведения. Достаточно 1–2 предложений; не переписывай в comment цитаты, они уже связаны через fact_ids.'''
 
 
 def _evidence_only_response(value, payload):
@@ -161,6 +164,27 @@ class Budget:
         if not self.limit.is_finite() or not 0 < self.limit <= 5:
             raise ValueError('budget_must_be_between_0_and_5')
         self.max_calls, self.calls, self.reserved = max_calls, 0, Decimal(0)
+        self._pending = {}
+        self._changed = asyncio.Event()
+
+    async def acquire(self, input_tokens, output_tokens):
+        cost = (input_tokens*self.rates[0]+output_tokens*self.rates[1])/1_000_000
+        while True:
+            self._changed.clear()
+            try:
+                return self.reserve(input_tokens, output_tokens)
+            except BudgetLimit:
+                committed = self.reserved-sum(self._pending.values())
+                if not self._pending or self.calls >= self.max_calls or committed+cost > self.limit:
+                    raise
+                # Temporary capacity belongs to dispatched requests. Waiting
+                # is cancellable by the same run deadline as the provider call.
+                await self._changed.wait()
+
+    def retain(self, reservation):
+        """Unmeasured completed/failed calls keep their full cost, not a waitable lease."""
+        self._pending.pop(reservation)
+        self._changed.set()
 
     def reserve(self, input_tokens, output_tokens):
         cost = (input_tokens*self.rates[0]+output_tokens*self.rates[1])/1_000_000
@@ -168,6 +192,24 @@ class Budget:
             raise BudgetLimit('budget_or_call_limit')
         self.reserved += cost
         self.calls += 1
+        self._pending[self.calls] = cost
+        return self.calls
+
+    def settle(self, reservation, input_tokens, output_tokens):
+        """Release unused capacity only when this dispatched call has usage.
+
+        Missing usage retains the entire reservation; parallel calls keep their
+        own reservations, so settlement cannot lend the same budget twice.
+        """
+        if any(type(n) is not int or n < 0 for n in (input_tokens, output_tokens)):
+            self.retain(reservation)
+            return
+        held = self._pending.pop(reservation)
+        actual = (input_tokens*self.rates[0] + output_tokens*self.rates[1])/1_000_000
+        self.reserved += actual-held
+        self._changed.set()
+        if self.reserved > self.limit:
+            raise BudgetLimit('budget_or_call_limit')
 
 
 class Model:
@@ -235,8 +277,14 @@ class Model:
         await check_data(self.privacy, payload, prepared=True, stage=task, direction='outbound')
         if getattr(self, 'run_control', None) is not None:
             self.run_control.checkpoint()
-        references = ModelReferences(payload)
-        text = json.dumps({'task':task, 'data':references.encode(payload)}, ensure_ascii=False)
+        wire_payload = payload
+        if task == 'evaluation':
+            # Exact quotes carry the evidence. Repeating their generated
+            # paraphrases for every vacancy adds tokens but no source facts.
+            wire_payload = {**payload, 'facts':{'items':[
+                {'id':fact['id'], 'quote':fact['quote']} for fact in payload['facts']['items']]}}
+        references = ModelReferences(wire_payload)
+        text = json.dumps({'task':task, 'data':references.encode(wire_payload)}, ensure_ascii=False)
         schema_text = json.dumps(schema.model_json_schema())
         system = SYSTEM + f'\nМетки этого запроса имеют вид [[{references.prefix}1]]. Копируй их целиком, включая скобки и номер.'
         system += ('\nПредыдущий ответ не прошёл проверку формата, служебных меток или цитат. '
@@ -251,7 +299,7 @@ class Model:
         else:
             capacity = 1024 + 2 * len(payload.get('text', '').encode('utf-8'))
         output_tokens = min(16000, max(2048, capacity))
-        self.budget.reserve(upper_input, output_tokens)
+        reservation = await self.budget.acquire(upper_input, output_tokens)
         from pydantic import ValidationError
         try:
             response = await self.client.responses.parse(
@@ -263,17 +311,21 @@ class Model:
             # still covers this call; do not present the remaining usage as a
             # complete cost estimate after a successful retry.
             self.usage_complete = False
+            self.budget.retain(reservation)
             raise ModelOutputError('model_invalid') from None
         except BaseException:
             # A dispatched request can be billed even if its transport fails
             # or a peer failure cancels it before usage becomes available.
             self.usage_complete = False
+            self.budget.retain(reservation)
             raise
         if response.usage:
             self.usage.append({'input_tokens':response.usage.input_tokens,
                                'output_tokens':response.usage.output_tokens})
+            self.budget.settle(reservation, response.usage.input_tokens, response.usage.output_tokens)
         else:
             self.usage_complete = False
+            self.budget.retain(reservation)
         if response.status != 'completed' or response.output_parsed is None:
             raise ModelOutputError('model_refusal_or_incomplete')
         try:

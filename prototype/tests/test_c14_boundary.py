@@ -183,8 +183,9 @@ class C14BoundaryTests(unittest.TestCase):
             report, requests, _, _ = self.run_fixture(mutate, '\nФИО: zqxprivate')
             self.assertEqual(report['ranking']['jobs'], [])
             self.assertEqual(report['errors'][0]['code'], error)
-            self.assertEqual([r['task'] for r in requests], ['facts','requirements'] +
-                             (['requirements'] if error == 'privacy_untrusted_reference' else []))
+            expected_requests = 6 if error == 'privacy_untrusted_reference' else 3
+            self.assertEqual(sum(r['task'] == 'requirements' for r in requests), expected_requests)
+            self.assertFalse(any(r['task'] == 'evaluation' for r in requests))
 
     def test_optional_labels_do_not_hide_forged_or_private_core_ids(self):
         for core_id in (False, True):
@@ -282,7 +283,9 @@ class C14BoundaryTests(unittest.TestCase):
         self.assertEqual(len(report['ranking']['jobs']), 3)
         self.assertEqual(len(requests), 7)
         self.assertEqual(report['facts']['items'][-1]['quote'], 'Использовал Excel 1 год.')
-        self.assertIn('Excel', requests[2]['data']['facts']['items'][-1]['text'])
+        evaluations = [r['data'] for r in requests if r['task'] == 'evaluation']
+        self.assertTrue(all('Excel' in r['facts']['items'][-1]['quote'] for r in evaluations))
+        self.assertTrue(all('text' not in fact for r in evaluations for fact in r['facts']['items']))
         self.assertTrue(summary['contextual_findings'])
 
     def test_unsafe_paraphrases_are_replaced_at_every_stage_without_changing_evidence(self):
@@ -405,9 +408,9 @@ class C14BoundaryTests(unittest.TestCase):
             if task == 'requirements' and 'Java' in payload['text']:
                 value['items'][0]['quote'] = 'test.person@example.org'
         report, requests, _, _ = self.run_fixture(mutate)
-        self.assertEqual(len(report['ranking']['jobs']), 1)
+        self.assertEqual(len(report['ranking']['jobs']), 2)
         self.assertFalse(report['ranking']['complete'])
-        self.assertEqual(len(requests), 4)
+        self.assertEqual(len(requests), 6)
         self.assertGreaterEqual(report['errors'][0]['privacy']['findings']['EMAIL'], 1)
         self.assertNotIn('устойчиво', report['leader']['summary'].lower())
 

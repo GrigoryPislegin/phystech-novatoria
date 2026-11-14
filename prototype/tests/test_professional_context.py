@@ -10,6 +10,46 @@ from prototype.privacy_core.models import load
 
 
 class ProfessionalContextTests(unittest.TestCase):
+    def test_cross_document_name_dependencies_converge_for_a_larger_batch(self):
+        names = [f'Name{i}' for i in range(8)]
+        def ner(text):
+            remaining = text.strip()
+            found = text.startswith(' ') and remaining in names
+            return SimpleNamespace(spans=[SimpleNamespace(start=text.index(remaining),
+                stop=text.index(remaining)+len(remaining), type='ORG')] if found else [])
+        async def run():
+            privacy = LocalPrivacy(Detector(ner))
+            try:
+                inputs = [f'{names[i]} {names[i+1]}' for i in reversed(range(7))] + ['ФИО: Name0']
+                safe = await privacy.finalize_sources([await privacy.redact(text) for text in inputs])
+                for source in safe:
+                    self.assertFalse(any(name in source for name in names))
+                    await privacy.check_prepared(source)
+            finally:
+                privacy.close()
+        asyncio.run(run())
+
+    def test_versioned_stacks_and_technical_lists_survive_merged_ner(self):
+        cases = [
+            ('Стек: Vue 3 (Composition API), Nuxt 3 (включая SSR), Pinia.', 'Nuxt'),
+            ('Стек: Vue Router / Nuxt Router, TypeScript.', 'Vue Router / Nuxt Router'),
+            ('Интеграция вёрстки в CMS (WordPress, Bitrix).', 'CMS (WordPress, Bitrix'),
+            ('Интегрировал бизнес-логику через REST API, а также создал сайт.', 'REST API'),
+            ('Опыт работы с Pinia, Nuxt, Monaco Editor.', 'Pinia'),
+            ('Разработка сайтов для клиентов студии с последующей интеграцией в WordPress.', 'WordPress'),
+        ]
+        async def run(source, term):
+            privacy = LocalPrivacy(self.detector(term, 'ORG'))
+            try:
+                result = (await privacy.finalize_sources([await privacy.redact(source)]))[0]
+                self.assertEqual(result, source)
+                await privacy.check_prepared(result)
+            finally:
+                privacy.close()
+        for source, term in cases:
+            with self.subTest(term=term):
+                asyncio.run(run(source, term))
+
     def detector(self, value, kind):
         # Force the observed NER misclassification independent of its context
         # sensitivity; keep the actual structural detector and whole pipeline.
@@ -179,6 +219,22 @@ class RealProfessionalContextTests(unittest.TestCase):
     def setUpClass(cls):
         cls.detector = Detector(load('data/private/privacy-models'))
 
+    def test_public_tool_vocabulary_does_not_exempt_clients_or_adjacent_name_headers(self):
+        async def run(source, hidden):
+            privacy = LocalPrivacy(self.detector)
+            try:
+                result = (await privacy.finalize_sources([await privacy.redact(source)]))[0]
+                self.assertNotIn(hidden, result)
+                await privacy.check_prepared(result)
+            finally:
+                privacy.close()
+        for source, hidden in [('Разработка для Pinia.', 'Pinia'),
+                               ('Разработка для Tableau.', 'Tableau'),
+                               ('Разработчик в студии Angular.', 'Angular'),
+                               ('Frontend Developer\nCode Review', 'Code Review')]:
+            with self.subTest(source=source):
+                asyncio.run(run(source, hidden))
+
     def test_actual_ner_preserves_professional_phrases_through_source_finalization(self):
         source = ('Опыт коммерческой разработки на Vue.js: компонентный подход.\n'
                   'Понимание разницы между SQL и NoSQL.\n'
@@ -313,6 +369,45 @@ class RealProfessionalContextTests(unittest.TestCase):
                 self.assertNotIn('пример.рф', out)
                 with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
                     await privacy.check_prepared('example.ru')
+            finally:
+                privacy.close()
+        asyncio.run(run())
+
+    def test_json_field_boundaries_and_partial_skill_table_keep_provenance(self):
+        from prototype.privacy import check_data
+        async def run():
+            privacy = LocalPrivacy(self.detector)
+            try:
+                source = 'Навыки | TypeScript  Adaptive Design  Figma  Vuex  Pinia'
+                safe = (await privacy.finalize_sources([await privacy.redact(source)]))[0]
+                self.assertEqual(safe, source)
+                await check_data(privacy, {'items':[
+                    {'text':'Vuex  Pinia', 'quote':'Vuex  Pinia'},
+                    {'text':'Adaptive Design  Figma', 'quote':'Adaptive Design  Figma'}]}, prepared=True)
+                # The same words explicitly identified as a name still win.
+                identity = await privacy.redact('ФИО: Adaptive Design')
+                await privacy.finalize_sources([safe, identity])
+                with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+                    await check_data(privacy, {'a':'Adaptive', 'b':'Design'}, prepared=True)
+            finally:
+                privacy.close()
+        asyncio.run(run())
+
+    def test_json_cross_field_ner_rechecks_each_field_and_hidden_values(self):
+        from prototype.privacy import check_data
+        async def run():
+            privacy = LocalPrivacy(self.detector)
+            try:
+                source = 'Опыт работы с Pinia.\nФИО: John Smith'
+                await privacy.finalize_sources([await privacy.redact(source)])
+                await check_data(privacy, {'text':'Pinia.', 'quote':'Pinia.'}, prepared=True)
+                for value in ({'text':'John', 'quote':'Smith'},
+                              {'fact_ids':['Билл', 'Гейтс']},
+                              ['Bill', 'Gates'],
+                              {'text':'private@example.org', 'quote':'Pinia.'},
+                              {'private@example.org':'Pinia.'}):
+                    with self.subTest(value=value), self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+                        await check_data(privacy, value, prepared=True)
             finally:
                 privacy.close()
         asyncio.run(run())

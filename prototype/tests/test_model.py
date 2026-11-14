@@ -8,6 +8,66 @@ from prototype.model import Model, Budget
 
 
 class ModelBoundaryTests(unittest.TestCase):
+    def test_budget_settlement_releases_only_measured_call_headroom(self):
+        budget = Budget('gpt-6-luna', 0.02, max_calls=65)
+        first = budget.reserve(20000, 16000)
+        second = budget.reserve(20000, 16000)
+        with self.assertRaisesRegex(ValueError, 'budget_or_call_limit'):
+            budget.reserve(20000, 16000)
+        budget.settle(first, 100, 100)
+        self.assertEqual(float(budget.reserved), 0.01006)
+        budget.settle(second, 100, 100)
+        for _ in range(59):
+            ticket = budget.reserve(20000, 16000)
+            budget.settle(ticket, 100, 100)
+        self.assertEqual(budget.calls, 61)
+        self.assertAlmostEqual(float(budget.reserved), 0.00366)
+
+    def test_unmeasured_call_keeps_reservation_after_other_call_settles(self):
+        budget = Budget('gpt-6-luna', 0.02)
+        budget.reserve(20000, 16000)
+        ticket = budget.reserve(20000, 16000)
+        budget.settle(ticket, 100, 100)
+        with self.assertRaisesRegex(ValueError, 'budget_or_call_limit'):
+            budget.reserve(20000, 16000)
+
+    def test_parallel_budget_waits_for_usage_instead_of_cancelling_affordable_batch(self):
+        from prototype.demo import ReplayModel, SyntheticPrivacy, demo_inputs
+        from prototype.pipeline import run_pipeline
+        async def run():
+            budget = Budget('gpt-6-luna', 0.025)
+            active, peak = 0, 0
+            class Measured(ReplayModel):
+                async def ask(self, schema, task, payload):
+                    nonlocal active, peak
+                    ticket = await budget.acquire(20000, 16000)
+                    active += 1
+                    peak = max(peak, active)
+                    try:
+                        await asyncio.sleep(0.005)
+                        return await super().ask(schema, task, payload)
+                    finally:
+                        active -= 1
+                        budget.settle(ticket, 100, 100)
+            report = await asyncio.wait_for(run_pipeline(*demo_inputs(), Measured(), SyntheticPrivacy()), 2)
+            self.assertTrue(report['ranking']['complete'], report['errors'])
+            self.assertEqual((active, peak, budget.calls), (0, 2, 7))
+            self.assertAlmostEqual(float(budget.reserved), 0.00042)
+        asyncio.run(run())
+
+    def test_unmeasured_completed_lease_wakes_budget_waiter_with_real_limit(self):
+        async def run():
+            budget = Budget('gpt-6-luna', 0.015)
+            ticket = await budget.acquire(20000, 16000)
+            waiting = asyncio.create_task(budget.acquire(20000, 16000))
+            await asyncio.sleep(0)
+            self.assertFalse(waiting.done())
+            budget.retain(ticket)
+            with self.assertRaisesRegex(ValueError, 'budget_or_call_limit'):
+                await asyncio.wait_for(waiting, 1)
+            self.assertEqual(float(budget.reserved), 0.01)
+        asyncio.run(run())
+
     def model(self, check):
         model = Model.__new__(Model)
         model.model = 'gpt-6-luna'; model.privacy = SimpleNamespace(check=check)

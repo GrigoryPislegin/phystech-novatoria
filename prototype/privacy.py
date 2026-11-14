@@ -49,8 +49,11 @@ async def check_data(privacy, value, *, prepared=False, stage='privacy', directi
         elif item is not None:
             yield str(item)
     try:
-        check = privacy.check_prepared if prepared and hasattr(privacy, 'check_prepared') else privacy.check
-        await check('\n\n'.join(strings(value)))
+        if prepared and hasattr(privacy, 'check_prepared_fields'):
+            await privacy.check_prepared_fields(list(strings(value)))
+        else:
+            check = privacy.check_prepared if prepared and hasattr(privacy, 'check_prepared') else privacy.check
+            await check('\n\n'.join(strings(value)))
     except RuntimeError as exc:
         known = {'privacy_residual_findings','privacy_untrusted_reference','privacy_detector_failed','privacy_closed',
                  'privacy_scan_limit'}

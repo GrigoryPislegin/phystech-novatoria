@@ -439,6 +439,9 @@
 
   function renderOverview() {
     renderLeader();
+    const currentPolicy = report.jobs.length > 0 && report.jobs.every(job =>
+      job.score.policyVersion === 'draft-2026-11-14-v3');
+    byId('overview-method').hidden = !currentPolicy;
     const list = byId('overview-list');
     const entries = describeDashboard(report);
     const percent = value => numberFormat.format(value) + '%';
@@ -462,7 +465,7 @@
       heading.append(element('h3', null, job.title), element('span', 'support', place + job.rank), button);
 
       const bounds = element('div', 'overview-metric');
-      bounds.append(element('p', null, 'Засчитано по шкале'),
+      bounds.append(element('p', null, 'Баллы соответствия'),
         element('strong', 'numeric', numberFormat.format(job.lower) + ' / 100'));
       // Native meters take numeric values under the offline page's strict CSP.
       // The two meters share a baseline and the upper bound has the lighter fill.
@@ -472,7 +475,7 @@
       bounds.append(interval);
 
       const coverage = element('div', 'overview-metric');
-      coverage.append(element('p', null, 'Доля известных данных'),
+      coverage.append(element('p', null, 'Покрытие требований'),
         element('strong', 'numeric', percent(job.coverage)));
       const coverageTrack = meter(job.coverage, 'coverage');
       coverageTrack.setAttribute('aria-hidden', 'true');
@@ -505,7 +508,8 @@
         if (job.brief.radarReady) skills.append(radar(job.brief.axes));
         for (const axis of job.brief.axes) {
           const axisRow = element('div', 'competency-axis');
-          axisRow.append(element('span', null, axis.label + ' · ' + numberFormat.format(axis.coverage) + '% данных'));
+          axisRow.append(element('span', null, axis.label + ' · вес ' + numberFormat.format(axis.weight) +
+            '% · ' + numberFormat.format(axis.coverage) + '% данных'));
           if (axis.score === null) axisRow.append(element('span', 'support', 'Нет данных'));
           else axisRow.append(meter(axis.score, 'coverage'), element('strong', 'numeric', numberFormat.format(axis.score)));
           skills.append(axisRow);
@@ -515,7 +519,12 @@
         skills.append(element('p', 'support', 'Основания: ' + percent(shares.confirmed) +
           ' · Сверка: ' + percent(shares.disputed) + ' · Нет сведений: ' + percent(shares.unknown)));
         brief.append(strengths, skills);
-        row.append(brief);
+        if (index < 3) row.append(brief);
+        else {
+          const detail = element('details', 'overview-brief');
+          detail.append(element('summary', null, 'Навыки и основания'), brief);
+          row.append(detail);
+        }
       }
       list.append(row);
     });

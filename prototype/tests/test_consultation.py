@@ -42,7 +42,7 @@ class ConsultationTests(unittest.TestCase):
                 if task == 'requirements' and 'Java' in payload['text']:
                     raise ValueError('not for report')
                 return await super().ask(schema, task, payload)
-        report = asyncio.run(run_pipeline(*demo_inputs(), Broken(), SyntheticPrivacy()))
+        report = asyncio.run(run_pipeline(*demo_inputs(), Broken(), SyntheticPrivacy(), max_concurrency=1))
         self.assertEqual(len(report['ranking']['jobs']), 1)
         self.assertEqual(report['ranking']['recommendation'], 'incomplete')
         with tempfile.TemporaryDirectory() as tmp:

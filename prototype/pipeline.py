@@ -184,7 +184,9 @@ def refresh_derived(report, decisions=()):
     return report
 
 
-async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sink=None):
+async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sink=None, max_concurrency=3):
+    if type(max_concurrency) is not int or not 1 <= max_concurrency <= 6:
+        raise ValueError('invalid_concurrency')
     if not jobs or len(jobs) > MAX_JOBS or len({j[0] for j in jobs}) != len(jobs):
         raise ValueError('invalid_job_set')
     control = control or RunControl(timeout_seconds=300 if len(jobs) <= 3 else 1800)
@@ -290,10 +292,15 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
             # Never serialize exception messages: upstream errors may contain text/keys/DSNs.
             code = error_code(exc, stage)
             errors.append(failure(exc, stage, jid))
-            # Only known output-validation failures are recoverable, without retry.
-            return code != 'model_invalid'
+            # A rejected answer belongs to this vacancy. Keep evaluating the
+            # other already checked sources; never accept the rejected data.
+            # Detector/source/budget/transport failures still stop the pool.
+            response_failure = (isinstance(exc, PrivacyError)
+                and exc.code in {'privacy_untrusted_reference', 'privacy_residual_findings'}
+                and exc.diagnostic['direction'] == 'response')
+            return code != 'model_invalid' and not response_failure
 
-    if len(safe_jobs) <= 3:
+    if len(safe_jobs) == 1 or max_concurrency == 1:
         for jid, text in safe_jobs:
             if await analyze_job(jid, text):
                 break
@@ -318,7 +325,7 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
                             task.cancel()
                     return
 
-        workers = [asyncio.create_task(worker()) for _ in range(3)]
+        workers = [asyncio.create_task(worker()) for _ in range(min(max_concurrency, len(safe_jobs)))]
         try:
             outcomes = await asyncio.gather(*workers, return_exceptions=True)
             for outcome in outcomes:

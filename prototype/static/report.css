@@ -248,6 +248,9 @@ thead th:nth-child(2) { width: 27%; }
 .overview-metric p { font-size: 13px; }
 .overview-metric strong { color: var(--accent-text); font-size: 18px; }
 .compact-brief { grid-column: 1 / -1; display: grid; grid-template-columns: 1.2fr 1fr; gap: 28px; }
+.overview-brief { grid-column: 1 / -1; }
+.overview-brief > summary, #overview-method > summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.overview-brief[open] > summary { margin-bottom: 12px; }
 .compact-brief h4 { margin: 8px 0; font-size: 14px; }
 .compact-brief ul { padding-left: 18px; }
 .compact-brief li { font-size: 13px; line-height: 1.5; margin: 6px 0; }

@@ -32,6 +32,7 @@ COPY prototype/tests/test_c14_boundary.py /app/prototype/tests/
 COPY prototype/tests/test_professional_context.py /app/prototype/tests/
 COPY prototype/tests/test_e13_case_acceptance.py prototype/tests/test_e13_support.py prototype/tests/test_e13_failures.py /app/prototype/tests/
 COPY prototype/tests/test_e14_evidence_fidelity.py prototype/tests/test_e14_competency_axes.py prototype/tests/test_e14_professional_fidelity.py /app/prototype/tests/
+COPY prototype/tests/test_e15_mandatory_marker.py prototype/tests/test_e15_leader_confidence.py /app/prototype/tests/
 COPY evaluation/fixtures/integration/egor-e13-minimal.json evaluation/fixtures/integration/egor-e13-finance.json evaluation/fixtures/integration/egor-e13-analytics.json evaluation/fixtures/integration/egor-e13-development.json /app/evaluation/fixtures/integration/
 COPY evaluation/expectations/egor/e13-cases.json /app/evaluation/expectations/egor/
 COPY evaluation/policy_compare.py /app/evaluation/policy_compare.py
@@ -41,6 +42,7 @@ RUN python -m unittest discover -s prototype/tests -p 'test_core.py' -v \
     && mkdir -p data/private && ln -s /opt/privacy-models data/private/privacy-models \
     && python -m unittest prototype.tests.test_c14_boundary prototype.tests.test_professional_context prototype.tests.test_e13_case_acceptance prototype.tests.test_e13_failures -q \
     && python -m unittest prototype.tests.test_e14_evidence_fidelity prototype.tests.test_e14_competency_axes prototype.tests.test_e14_professional_fidelity -q \
+    && python -m unittest prototype.tests.test_e15_mandatory_marker prototype.tests.test_e15_leader_confidence -q \
     && python scripts/privacy_smoke.py --models-dir /opt/privacy-models \
     && python scripts/privacy_smoke.py --models-dir /opt/privacy-models --model-mock \
     && mkdir -p /app/data/private/prototype-runs \

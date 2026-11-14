@@ -267,7 +267,10 @@ class LocalPrivacy:
         self._safe_roles.clear()
         self._safe_professional_headers.clear()
         sources = list(sources)
-        for _ in range(4):
+        # A hidden value can expose another NER span, which then propagates
+        # to an earlier document on the next pass. Four passes were insufficient
+        # for real 31-document batches; bound convergence by the batch size.
+        for _ in range(max(4, min(64, 2*len(sources)))):
             changed = False
             for index, text in enumerate(sources):
                 clean = self._without_refs(text)
@@ -287,7 +290,17 @@ class LocalPrivacy:
         if source_findings(text, self.detector.scan(text)):
             raise RuntimeError('privacy_residual_findings')
 
-    async def check_prepared(self, text):
+    async def check_prepared_fields(self, values):
+        # Keep JSON field boundaries: NER must not invent an organization from
+        # the end of a quotation plus the next schema key ("Pinia. quote").
+        fields, offset = [], 0
+        values = [normalized(value) for value in values]
+        for value in values:
+            fields.append((offset, offset + len(value), value))
+            offset += len(value) + 2
+        await self.check_prepared('\n\n'.join(values), _fields=fields)
+
+    async def check_prepared(self, text, *, _fields=()):
         """Check derived data without mutating quotes or globally exempting names.
 
         NER runs on every call. A contextual NER hit must occur verbatim in a
@@ -299,13 +312,37 @@ class LocalPrivacy:
         protected = normalized(text)
         text = self._without_refs(protected)
         blocked, contextual = Counter(), Counter()
+        checked_fields = set()
+        def professional_fragment(value):
+            pattern = re.compile(r'(?<!\w)' + re.escape(_canonical(value)) + r'(?!\w)')
+            return bool(value.strip()) and any(pattern.search(header)
+                for header in self._safe_professional_headers)
         for item in self.detector.scan(text):
             if not 0 <= item.start < item.end <= len(text):
                 raise RuntimeError('privacy_detector_failed')
+            if item.method == 'ner' and item.kind == 'ORG' and _fields:
+                touched = [(start, end, value) for start, end, value in _fields
+                           if item.start < end and start < item.end]
+                # Only a verified technical fragment plus the literal quote
+                # field label can create this artificial organization. Names
+                # split across values (Bill / Gates) must still be rejected.
+                parts = [(text[max(start, item.start):min(end, item.end)].strip(' \t\r\n.,:;()'), field)
+                         for start, end, field in touched]
+                field_noise = (len(touched) > 1 and any(part == field == 'quote' for part, field in parts)
+                    and all(part == field == 'quote' or professional_fragment(part) for part, field in parts))
+                if field_noise:
+                    # Recheck each whole field independently. Structural
+                    # findings and the joined hidden-value scan below still
+                    # apply; splitting a private value cannot exempt it.
+                    for start, end, field in touched:
+                        if start not in checked_fields:
+                            await self.check_prepared(field)
+                            checked_fields.add(start)
+                    continue
             value = text[item.start:item.end].casefold()
             pattern = re.compile(r'(?<!\w)' + re.escape(value) + r'(?!\w)')
             can_inherit = (item.method == 'ner' or
-                           (item.method == 'name_header' and _canonical(value) in self._safe_professional_headers))
+                           (item.method == 'name_header' and professional_fragment(value)))
             if can_inherit and any(pattern.search(source) for source in self._safe_sources):
                 contextual[item.kind] += 1
             else:
