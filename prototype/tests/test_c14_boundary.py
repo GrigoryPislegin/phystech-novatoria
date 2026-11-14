@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from prototype.analysis_contracts import ResumeAnalysis, VacancyAnalysis
+from prototype.analysis_contracts import ResumeAnalysis, VacancyAnalysis, RequirementsAnalysis, JointAnalysis
 from prototype.contracts import Requirements
 from prototype.demo import ReplayModel, demo_inputs
 from prototype.model import Model, Budget
@@ -17,19 +17,25 @@ from prototype.run_store import RunStore
 
 
 class FixtureSDK(Model):
-    def __init__(self, privacy, mutate, response_usage=None):
+    def __init__(self, privacy, mutate, response_usage=None, joint=False):
         import httpx
         from openai import AsyncOpenAI
         self.model, self.privacy = 'gpt-6-luna', privacy
         self.budget, self.usage, self.requests = Budget(self.model), [], []
+        self.joint_analysis = joint
         replay = ReplayModel()
 
         async def respond(request):
             data = json.loads(json.loads(request.content)['input'][1]['content'])
             self.requests.append(data)
             task, payload = data['task'], data['data']
-            schema = {'facts':ResumeAnalysis, 'requirements':Requirements, 'evaluation':VacancyAnalysis}[task]
-            value = (await replay.ask(schema, task, payload)).model_dump()
+            if task == 'match':
+                req = await replay.ask(RequirementsAnalysis, 'requirements', {'text':payload['vacancy_text']})
+                ev = await replay.ask(VacancyAnalysis, 'evaluation', {**payload, 'requirements':req.model_dump()})
+                value = JointAnalysis(requirements=req, evaluation=ev).model_dump()
+            else:
+                schema = {'facts':ResumeAnalysis, 'requirements':Requirements, 'evaluation':VacancyAnalysis}[task]
+                value = (await replay.ask(schema, task, payload)).model_dump()
             mutate(task, payload, value)
             return httpx.Response(200, request=request, json={
                 'id':'resp_synthetic', 'object':'response', 'created_at':0, 'model':self.model, 'status':'completed',
@@ -60,6 +66,70 @@ class C14BoundaryTests(unittest.TestCase):
                 await model.close()
                 privacy.close()
         return asyncio.run(run())
+
+    def test_reprotect_only_known_prose_keeps_controls_and_rejects_untrusted_refs(self):
+        from prototype.privacy_core import Finding
+        privacy = LocalPrivacy(self.detector)
+        try:
+            ref = privacy._mask('education', [Finding(0, 9, 'ORG')])
+            privacy._mask('В', [Finding(0, 1, 'PERSON')])
+            self.assertEqual(privacy.reprotect_response({'quote':'В команде'})['quote'], 'В команде')
+            self.assertEqual(asyncio.run(privacy._known_findings('в команде')), [])
+            before = set(privacy.issued_refs)
+            value = {'quote':'education', 'text':ref, 'factor':'education', 'status':'unknown',
+                     'fact_ids':['education'], 'id':'education'}
+            result = privacy.reprotect_response(value)
+            self.assertEqual(result['quote'], ref)
+            self.assertEqual(result['text'], ref)
+            for key in ('factor','status','fact_ids','id'): self.assertEqual(result[key], value[key])
+            self.assertEqual(privacy.issued_refs, before)
+            with self.assertRaisesRegex(RuntimeError, 'privacy_untrusted_reference'):
+                privacy.reprotect_response({'quote':'[[PRIV:bad]] education'})
+            self.assertEqual(privacy.reprotect_response({'quote':'unseen@example.org'})['quote'], 'unseen@example.org')
+            with self.assertRaises(RuntimeError):
+                asyncio.run(check_data(privacy, {'quote':'unseen@example.org'}, prepared=True, direction='response'))
+        finally:
+            privacy.close()
+
+    def test_joint_thirty_jobs_use_thirty_one_sdk_calls(self):
+        async def run():
+            privacy = LocalPrivacy(self.detector)
+            model = FixtureSDK(privacy, lambda *_:None, joint=True)
+            resume, initial = demo_inputs()
+            jobs = [(f'job-{i}', initial[i % 3][1]) for i in range(30)]
+            try:
+                report = await run_pipeline(resume, jobs, model, privacy, max_concurrency=12)
+                self.assertEqual(report['errors'], [])
+                self.assertTrue(report['ranking']['complete'])
+                self.assertEqual(len(report['ranking']['jobs']), 30)
+                self.assertEqual(len(model.requests), 31)
+                self.assertEqual(sum(r['task'] == 'match' for r in model.requests), 30)
+            finally:
+                await model.close()
+                privacy.close()
+        asyncio.run(run())
+
+    def test_joint_invalid_evidence_and_missing_rows_are_rejected_after_bounded_retry(self):
+        async def run(kind):
+            privacy = LocalPrivacy(self.detector)
+            def mutate(task, payload, value):
+                if task == 'match':
+                    rows = value['evaluation']['rows']
+                    if kind == 'missing': rows.pop()
+                    elif kind == 'duplicate': rows.append(dict(rows[0]))
+                    else: rows[0]['fact_ids'] = ['forged']
+            model = FixtureSDK(privacy, mutate, joint=True)
+            resume, jobs = demo_inputs()
+            try:
+                report = await run_pipeline(resume, jobs[:1], model, privacy)
+                self.assertFalse(report['ranking']['complete'])
+                self.assertEqual(report['errors'][0]['code'], 'model_invalid')
+                self.assertEqual(len(model.requests), 3)
+            finally:
+                await model.close()
+                privacy.close()
+        for kind in ('missing', 'duplicate', 'forged'):
+            with self.subTest(kind=kind): asyncio.run(run(kind))
 
     def test_whitespace_only_quotes_complete_three_jobs_with_seven_sdk_calls(self):
         async def run():
@@ -116,7 +186,7 @@ class C14BoundaryTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory, patch.object(MockTransport, 'handle_async_request', interrupt):
                 result = await asyncio.wait_for(analyze(resume, jobs, model_factory=lambda:model,
                     privacy=model.privacy, out=Path(directory), mode='synthetic_sdk_mock_NOT_model_output'), 3)
-            self.assertEqual((len(dispatched),len(cleaned),model.budget.calls), (3,2,4))
+            self.assertEqual((len(dispatched),len(cleaned),model.budget.calls), (6,5,7))
             self.assertFalse(result.report['usage_complete'])
             self.assertIsNone(result.report['usage_usd_estimate'])
             self.assertEqual(len(result.report['usage']),1)
@@ -134,6 +204,24 @@ class C14BoundaryTests(unittest.TestCase):
         self.assertEqual(len(report['ranking']['jobs']), 3)
         self.assertTrue(all(j['requirement_factors'] is None for j in report['ranking']['jobs']))
         self.assertNotIn('Education', json.dumps(requests, ensure_ascii=False))
+
+    def test_joint_hidden_category_removes_only_optional_factors(self):
+        async def run():
+            privacy = LocalPrivacy(self.detector)
+            def mutate(task, payload, value):
+                if task == 'match':
+                    value['requirements']['factors'] = {'items':[{'requirement_id':r['id'], 'factor':'education'} for r in value['requirements']['items']]}
+            model = FixtureSDK(privacy, mutate, joint=True)
+            resume, jobs = demo_inputs()
+            try:
+                report = await run_pipeline(resume + '\nРаботал в компании Education.', jobs, model, privacy)
+                self.assertEqual(report['errors'], [])
+                self.assertEqual(len(model.requests), 4)
+                self.assertTrue(all(j['requirement_factors'] is None for j in report['ranking']['jobs']))
+            finally:
+                await model.close()
+                privacy.close()
+        asyncio.run(run())
 
     def test_inexact_optional_mandatory_markers_keep_requirements_with_explicit_warnings(self):
         def mutate(task, payload, value):

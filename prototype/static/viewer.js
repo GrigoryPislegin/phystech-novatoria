@@ -2,7 +2,7 @@
   'use strict';
 
   const {
-    MAX_REPORT_BYTES, parseReport, createDisplayText, radarGeometry, filterRows, describeDashboard, describeRun, describeFit, scoreRange,
+    MAX_REPORT_BYTES, interviewPlan, parseReport, createDisplayText, radarGeometry, filterRows, describeDashboard, describeRun, describeFit, scoreRange,
     assessments, mandatoryStates, evidenceLabel, mandatoryLabel, requirementReviewLabel
   } = window.NanimaiReport;
   const { renderManagerReport } = window.NanimaiManagerReport;
@@ -419,6 +419,22 @@
       'Предварительный выбор среди обработанных вакансий. Сравнение со всем набором не завершено.'));
     setText('leader-scope', (report.complete ? '' : 'Обработаны не все вакансии. ') +
       'Проверка по правилам отчёта охватывает спорные основания и не более двух ответов кандидата. Смысл цитат проверяет рекрутер.');
+    const questions = interviewPlan(report);
+    if (questions.length) {
+      const plan = element('section', 'source-list');
+      plan.append(element('h3', null, 'Сначала спросите об этом'),
+        element('p', 'support', 'Три приоритетных уточнения для короткого интервью.'));
+      questions.forEach((ref, index) => {
+        const card = element('article', 'source-disclosure source-body');
+        card.append(element('strong', null, (index + 1) + '. ' + ref.row.question),
+          element('p', 'support', ref.title + ' · ' + (ref.changesOrder ?
+            'Ответ может изменить порядок вакансий.' :
+            ref.row.mandatoryQuote && !ref.row.mandatoryExcluded ? 'Уточните обязательное требование.' : 'Уточните недостающий опыт.')));
+        card.append(comparisonFactor(ref));
+        plan.append(card);
+      });
+      body.append(plan);
+    }
     const groups = [
       ['Основания выбора', leader.factors], ['Ограничения', leader.limits],
       ['Что может изменить выбор', leader.canChange]

@@ -54,6 +54,50 @@ fail — есть явный факт против требования (нап�
 unknown — сведений нет, fact_ids пустой. Отсутствие упоминания НЕ fail.
 Не выводи числовую оценку. Для каждого non-full дай конкретный вопрос кандидату.
 comment кратко объясняет связь фактов с требованием, а не добавляет новые сведения. Достаточно 1–2 предложений; не переписывай в comment цитаты, они уже связаны через fact_ids.'''
+SYSTEM += '''\nmatch: выполни requirements и evaluation в одном ответе. Сначала независимо извлеки все требования из vacancy_text, затем оцени каждое по facts.
+Верни requirements и evaluation по указанной схеме; evaluation ссылается ровно на IDs извлечённых requirements. Не удаляй неподходящие требования.
+В match используй правила requirements/evaluation выше со следующим исключением: mandatory_quote — только короткий дословный заголовок обязательности или само требование, если в нём явно указана обязательность. Не повторяй весь раздел от заголовка до пункта: приложение локально привяжет заголовок к пункту. Дословные цитаты требований нужны один раз в requirements, не повторяй их в comment. Комментарий — одно короткое предложение, вопрос — один короткий вопрос.'''
+
+
+def _bind_short_mandatory(requirements, text):
+    """Expand only an unambiguous, structurally linked mandatory heading."""
+    from .evidence import Source, check_mandatory, occurrences
+    source = Source.of('vacancy', text)
+    result, count = requirements.model_copy(deep=True), 0
+    for item in result.items:
+        marker = item.mandatory_quote
+        if not marker or item.quote in marker:
+            continue
+        if not re.search(r'обязател|требован|требуется|необходим|ожидаем', marker, re.I):
+            continue
+        starts, ends = occurrences(text, marker), occurrences(text, item.quote)
+        if len(starts) != 1 or len(ends) != 1 or starts[0] > ends[0]:
+            continue
+        if not any(h.text.strip() == marker.strip() and h.start <= starts[0] and
+                   starts[0] + len(marker) <= h.end and h.end <= ends[0] and
+                   ends[0] + len(item.quote) <= h.block_end for h in source.text_layout.headings):
+            continue
+        if check_mandatory(item, source).state != 'structure_ok':
+            continue
+        expanded = text[starts[0]:ends[0]+len(item.quote)]
+        candidate = item.model_copy(update={'mandatory_quote':expanded})
+        if len(expanded.strip()) >= 8 and check_mandatory(candidate, source).state == 'structure_ok':
+            item.mandatory_quote = expanded
+            count += 1
+    return result, count
+
+
+def _clear_unknown_background(value, payload):
+    fact_ids = {fact['id'] for fact in payload['facts']['items']}
+    requirements = {item['id']:item for item in payload['requirements']['items']}
+    removed = 0
+    for row in value.rows:
+        if (row.status == 'unknown' and row.fact_ids and row.requirement_id in requirements
+                and set(row.fact_ids) <= fact_ids and len(row.fact_ids) == len(set(row.fact_ids))):
+            row.fact_ids = []
+            row.comment = requirements[row.requirement_id]['quote']
+            removed += 1
+    return removed
 
 
 def _evidence_only_response(value, payload):
@@ -63,8 +107,14 @@ def _evidence_only_response(value, payload):
     This is a local response transformation, not another network attempt or a
     permission to accept the offending output.
     """
-    from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
+    from .analysis_contracts import ResumeAnalysis, VacancyAnalysis, JointAnalysis
     from .contracts import Requirements
+    if isinstance(value, JointAnalysis):
+        value = value.model_copy(deep=True)
+        value.requirements = _evidence_only_response(value.requirements, {'text':payload['vacancy_text']})
+        value.evaluation = _evidence_only_response(value.evaluation,
+            {**payload, 'requirements':value.requirements.model_dump()})
+        return value
     if not isinstance(value, (ResumeAnalysis, Requirements, VacancyAnalysis)):
         return None
     value = value.model_copy(deep=True)
@@ -220,6 +270,7 @@ class Model:
         self.model, self.privacy = model, privacy
         self.budget = Budget(model, budget)
         self.usage = []
+        self.joint_analysis = True
         if not os.environ.get('OPENAI_API_KEY'):
             raise RuntimeError('openai_key_missing')
         from openai import AsyncOpenAI
@@ -231,6 +282,44 @@ class Model:
     def set_run_control(self, control):
         self.run_control = control
 
+    async def match(self, text, facts):
+        """One provider response; the same source/evidence contracts still apply."""
+        from .analysis_contracts import JointAnalysis
+        from .contracts import validate_pair
+        payload = {'facts':facts.model_dump(), 'vacancy_text':text}
+        for attempt in range(2):
+            try:
+                result = await self._ask_once(JointAnalysis, 'match', payload, repair=bool(attempt))
+                requirements, rq = _restore_source_quote_whitespace(result.requirements, {'text':text})
+                requirements, bound = _bind_short_mandatory(requirements, text)
+                try:
+                    requirements = requirements.without_unverified_mandatory(text)
+                    evaluation_payload = {**payload, 'requirements':requirements.model_dump()}
+                    evaluation, eq = _restore_source_quote_whitespace(result.evaluation, evaluation_payload)
+                    removed = _clear_unknown_background(evaluation, evaluation_payload)
+                    validate_pair(requirements, facts, evaluation)
+                except ValueError:
+                    raise ModelOutputError('model_invalid') from None
+                normalized = JointAnalysis(requirements=requirements, evaluation=evaluation)
+                await check_data(self.privacy, normalized.model_dump(mode='json'),
+                                 prepared=True, stage='evaluation', direction='response')
+                actions = []
+                if bound: actions.append(('mandatory_marker_bound_locally', bound))
+                if rq + eq: actions.append(('source_quote_whitespace_restored', rq + eq))
+                if requirements._contract_warnings: actions.append(('unverified_mandatory_removed', len(requirements._contract_warnings)))
+                if removed: actions.append(('unknown_background_citations_removed', removed))
+                if actions:
+                    if not hasattr(self, 'response_normalizations'): self.response_normalizations = []
+                    self.response_normalizations.extend({'stage':'evaluation','action':action,'count':count} for action,count in actions)
+                return requirements, evaluation
+            except (ModelOutputError, PrivacyError) as exc:
+                recoverable = (isinstance(exc, ModelOutputError) and str(exc) == 'model_invalid'
+                    or isinstance(exc, PrivacyError) and exc.code == 'privacy_untrusted_reference'
+                    and exc.diagnostic['direction'] == 'response')
+                if attempt or not recoverable: raise
+                if not hasattr(self, 'response_retries'): self.response_retries = []
+                self.response_retries.append({'stage':'evaluation','reason':str(exc),'attempt':2})
+
     async def ask(self, schema, task, payload):
         from .contracts import Facts, Requirements, Evaluation, validate_pair
         from .analysis_contracts import RequirementsAnalysis
@@ -241,18 +330,24 @@ class Model:
             try:
                 result = await self._ask_once(schema, task, payload, repair=bool(attempt))
                 result, restored = _restore_source_quote_whitespace(result, payload)
+                unknown_cleared = 0
                 try:
                     if isinstance(result, RequirementsAnalysis):
                         result = result.without_unverified_mandatory(payload['text'])
                     if isinstance(result, (Facts, Requirements)):
                         result.validate_source(payload['text'])
                     elif isinstance(result, Evaluation):
+                        # Unknown is not a claim supported by a fact. Some
+                        # model replies attach an existing fact as background;
+                        # discard that citation, never promote unknown to fit.
+                        # Forged/duplicate references still fail the contract.
+                        unknown_cleared = _clear_unknown_background(result, payload)
                         validate_pair(Requirements.model_validate(payload['requirements']),
                                       Facts.model_validate(payload['facts']), result)
                 except ValueError:
                     raise ModelOutputError('model_invalid') from None
                 warnings = isinstance(result, RequirementsAnalysis) and result._contract_warnings
-                if restored or warnings:
+                if restored or warnings or unknown_cleared:
                     await check_data(self.privacy, result.model_dump(mode='json'),
                                      prepared=True, stage=task, direction='response')
                     if not hasattr(self, 'response_normalizations'):
@@ -263,6 +358,9 @@ class Model:
                 if warnings:
                     self.response_normalizations.append({'stage':task, 'action':'unverified_mandatory_removed',
                                                          'count':len(result._contract_warnings)})
+                if unknown_cleared:
+                    self.response_normalizations.append({'stage':task, 'action':'unknown_background_citations_removed',
+                                                         'count':unknown_cleared})
                 return result
             except (ModelOutputError, PrivacyError) as exc:
                 recoverable = (isinstance(exc, ModelOutputError) and str(exc) == 'model_invalid'
@@ -276,15 +374,17 @@ class Model:
 
     async def _ask_once(self, schema, task, payload, *, repair=False):
         protect_dependency_logs()
-        await check_data(self.privacy, payload, prepared=True, stage=task, direction='outbound')
+        privacy_stage = 'evaluation' if task == 'match' else task
+        await check_data(self.privacy, payload, prepared=True, stage=privacy_stage, direction='outbound')
         if getattr(self, 'run_control', None) is not None:
             self.run_control.checkpoint()
         wire_payload = payload
-        if task == 'evaluation':
+        if task in {'evaluation', 'match'}:
             # Exact quotes carry the evidence. Repeating their generated
             # paraphrases for every vacancy adds tokens but no source facts.
-            wire_payload = {**payload, 'facts':{'items':[
-                {'id':fact['id'], 'quote':fact['quote']} for fact in payload['facts']['items']]}}
+            wire_payload = {'facts':{'items':[
+                {'id':fact['id'], 'quote':fact['quote']} for fact in payload['facts']['items']]},
+                **{key:value for key,value in payload.items() if key != 'facts'}}
         references = ModelReferences(wire_payload)
         text = json.dumps({'task':task, 'data':references.encode(wire_payload)}, ensure_ascii=False)
         schema_text = json.dumps(schema.model_json_schema())
@@ -298,6 +398,8 @@ class Model:
         # output is model_invalid and never becomes a complete evaluation.
         if task == 'evaluation':
             capacity = 512 * len(payload.get('requirements', {}).get('items', []))
+        elif task == 'match':
+            capacity = 2048 + 3 * len(payload.get('vacancy_text', '').encode('utf-8'))
         else:
             capacity = 1024 + 2 * len(payload.get('text', '').encode('utf-8'))
         output_tokens = min(16000, max(2048, capacity))
@@ -334,17 +436,18 @@ class Model:
             result = schema.model_validate(references.decode(response.output_parsed.model_dump(mode='json')))
         except ValidationError:
             raise ModelOutputError('model_invalid') from None
-        from .analysis_contracts import RequirementsAnalysis
-        if isinstance(result, RequirementsAnalysis) and result.factors is not None:
+        from .analysis_contracts import RequirementsAnalysis, JointAnalysis
+        requirement_result = result.requirements if isinstance(result, JointAnalysis) else result
+        if isinstance(requirement_result, RequirementsAnalysis) and requirement_result.factors is not None:
             # Validate optional references before any local degradation. A
             # forged/unknown ID must not disappear with the display labels.
             try:
-                result.factors.validate_requirements(result)
+                requirement_result.factors.validate_requirements(requirement_result)
             except ValueError:
                 raise ModelOutputError('model_invalid') from None
         try:
             await check_data(self.privacy, result.model_dump(mode='json'),
-                             prepared=True, stage=task, direction='response')
+                             prepared=True, stage=privacy_stage, direction='response')
         except PrivacyError as exc:
             # Discard only unbound prose. Source quotes/IDs/statuses stay intact;
             # the complete transformed DTO must pass the same detectors. Bad
@@ -352,23 +455,33 @@ class Model:
             # offending value would have been discarded by this transformation.
             if exc.code != 'privacy_residual_findings':
                 raise
+            if isinstance(result, JointAnalysis) and hasattr(self.privacy, 'reprotect_response'):
+                remasked = self.privacy.reprotect_response(result.model_dump(mode='json'))
+                try:
+                    result = schema.model_validate(remasked)
+                except ValidationError:
+                    raise ModelOutputError('model_invalid') from None
             grounded = _evidence_only_response(result, payload)
             if grounded is None:
                 raise
             try:
                 await check_data(self.privacy, grounded.model_dump(mode='json'),
-                                 prepared=True, stage=task, direction='response')
+                                 prepared=True, stage=privacy_stage, direction='response')
             except PrivacyError as grounded_error:
+                optional = grounded.requirements if isinstance(grounded, JointAnalysis) else grounded
                 if (grounded_error.code != 'privacy_residual_findings'
-                        or not isinstance(grounded, RequirementsAnalysis) or grounded.factors is None):
+                        or not isinstance(optional, RequirementsAnalysis) or optional.factors is None):
                     raise
                 # A fixed grouping enum may collide with a hidden company
                 # name (e.g. Stack). Drop optional chart labels locally, then
                 # recheck the complete remaining DTO, including every core ID.
                 # Never exempt a hidden value from the privacy boundary.
-                grounded = grounded.model_copy(update={'factors':None})
+                if isinstance(grounded, JointAnalysis):
+                    grounded = grounded.model_copy(update={'requirements':optional.model_copy(update={'factors':None})})
+                else:
+                    grounded = grounded.model_copy(update={'factors':None})
                 await check_data(self.privacy, grounded.model_dump(mode='json'),
-                                 prepared=True, stage=task, direction='response')
+                                 prepared=True, stage=privacy_stage, direction='response')
                 if not hasattr(self, 'response_normalizations'):
                     self.response_normalizations = []
                 self.response_normalizations.append({'stage':task, 'action':'optional_competency_labels_removed'})

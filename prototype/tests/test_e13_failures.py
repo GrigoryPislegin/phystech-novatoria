@@ -115,11 +115,21 @@ class UnknownIsNotFailTests(FailureMixin, unittest.TestCase):
 
     def test_fail_needs_a_fact_and_unknown_must_have_none(self):
         for name, change in (('fail without a fact', {'status': 'fail'}),
-                             ('unknown with a fact', {'fact_ids': ['f8']})):
+                             ('unknown with forged fact', {'fact_ids': ['forged']})):
             with self.subTest(name):
                 report, _ = self.go(edit('evaluation', 'an-3', lambda a, c=change: a['rows'][self.ROW].update(c)))
                 self.assert_incomplete(report, processed=['an-1', 'an-2'], lost=['an-3'],
                                        stage='evaluation')
+
+    def test_unknown_existing_background_fact_is_removed_without_score_credit(self):
+        base, _ = self.go(None)
+        report, _ = self.go(edit('evaluation', 'an-3', lambda a: a['rows'][self.ROW].update(fact_ids=['f8'])))
+        job = next(j for j in report['ranking']['jobs'] if j['job_id'] == 'an-3')
+        original = next(j for j in base['ranking']['jobs'] if j['job_id'] == 'an-3')
+        self.assertTrue(report['ranking']['complete'])
+        self.assertEqual(job['evaluation']['rows'][self.ROW]['fact_ids'], [])
+        self.assertEqual(job['evaluation']['rows'][self.ROW]['status'], 'unknown')
+        self.assertEqual(job['score'], original['score'])
 
     def test_silence_widens_the_range_and_a_stated_absence_narrows_it(self):
         base, _ = self.go(None)

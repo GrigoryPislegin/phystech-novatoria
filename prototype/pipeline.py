@@ -185,7 +185,7 @@ def refresh_derived(report, decisions=()):
 
 
 async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sink=None, max_concurrency=3):
-    if type(max_concurrency) is not int or not 1 <= max_concurrency <= 6:
+    if type(max_concurrency) is not int or not 1 <= max_concurrency <= 12:
         raise ValueError('invalid_concurrency')
     if not jobs or len(jobs) > MAX_JOBS or len({j[0] for j in jobs}) != len(jobs):
         raise ValueError('invalid_job_set')
@@ -244,17 +244,23 @@ async def run_pipeline(resume, jobs, model, privacy, *, control=None, source_sin
     async def analyze_job(jid, text):
         stage = 'requirements'
         try:
-            extracted_requirements = await control.call(
-                lambda: model.ask(RequirementsAnalysis, 'requirements', {'text':text}), stage, jid)
+            assessed = None
+            if getattr(model, 'joint_analysis', False):
+                stage = 'evaluation'
+                extracted_requirements, assessed = await control.call(lambda:model.match(text, facts), stage, jid)
+            else:
+                extracted_requirements = await control.call(
+                    lambda: model.ask(RequirementsAnalysis, 'requirements', {'text':text}), stage, jid)
             stage = 'requirements_validation'
             contract_warnings = list(getattr(extracted_requirements, '_contract_warnings', []))
             extracted_requirements = RequirementsAnalysis.model_validate(extracted_requirements.model_dump())
             extracted_requirements.validate_source(text)
             requirements = Requirements(items=extracted_requirements.items)
             stage = 'evaluation'
-            assessed = await control.call(lambda: model.ask(VacancyAnalysis, 'evaluation', {
-                'requirements':requirements.model_dump(), 'facts':facts.model_dump(),
-                'vacancy_text':text}), stage, jid)
+            if assessed is None:
+                assessed = await control.call(lambda: model.ask(VacancyAnalysis, 'evaluation', {
+                    'requirements':requirements.model_dump(), 'facts':facts.model_dump(),
+                    'vacancy_text':text}), stage, jid)
             stage = 'evaluation_validation'
             assessed = VacancyAnalysis.model_validate(assessed.model_dump())
             evaluation = Evaluation(rows=assessed.rows)

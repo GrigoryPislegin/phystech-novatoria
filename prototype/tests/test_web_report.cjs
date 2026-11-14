@@ -400,3 +400,16 @@ test('radar distinguishes measured zero from absent data without inventing a ver
   assert.notDeepEqual(points[0].point,{x:160,y:130});
   assert.deepEqual(radarGeometry([{score:90}]),[]);
 });
+
+
+test('interview plan is bounded, deduplicated and distinguishes calculated swings', () => {
+  const { interviewPlan } = require('../static/report.js');
+  const report = parseReport(JSON.stringify(example('success')));
+  const before = JSON.stringify(report);
+  const plan = interviewPlan(report);
+  assert.ok(plan.length > 0 && plan.length <= 3);
+  assert.ok(plan.every(ref => ['unknown', 'partial'].includes(ref.row.status) && ref.row.question));
+  assert.equal(new Set(plan.map(ref => JSON.stringify([ref.jobId,ref.unitIds]))).size, plan.length);
+  assert.ok(plan.every(ref => !ref.changesOrder || report.leader.canChange.some(item => item.jobId === ref.jobId && item.row === ref.row)));
+  assert.equal(JSON.stringify(report), before);
+});

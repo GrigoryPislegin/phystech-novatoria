@@ -14,8 +14,8 @@ from prototype.pipeline import run_pipeline, write_report
 
 
 class RuntimeSafetyTests(unittest.TestCase):
-    def test_small_and_large_job_pools_wait_for_privacy_and_facts_and_cap_inflight_at_three(self):
-        async def scenario(size):
+    def test_small_and_large_job_pools_wait_for_privacy_and_facts_and_obey_cap(self):
+        async def scenario(size, concurrency):
             from prototype.pipeline import RunControl
             ready, all_started = False, asyncio.Event()
             active, peak, facts_calls = 0, 0, 0
@@ -36,7 +36,7 @@ class RuntimeSafetyTests(unittest.TestCase):
                     self_outer.assertEqual(facts_calls, 1)
                     active += 1
                     peak = max(peak, active)
-                    if active == 3:
+                    if active == concurrency:
                         all_started.set()
                     try:
                         await asyncio.wait_for(all_started.wait(), 1)
@@ -48,15 +48,15 @@ class RuntimeSafetyTests(unittest.TestCase):
             resume, examples = demo_inputs()
             jobs = [(f'job-{i:02}', examples[0][1]) for i in range(size)]
             model, control = Model(), RunControl()
-            report = await run_pipeline(resume, jobs, model, Privacy(), control=control)
+            report = await run_pipeline(resume, jobs, model, Privacy(), control=control, max_concurrency=concurrency)
             self.assertTrue(report['ranking']['complete'])
             self.assertEqual(len(report['ranking']['jobs']), size)
-            self.assertEqual((facts_calls, peak, active, model.calls), (1, 3, 0, 1+2*size))
+            self.assertEqual((facts_calls, peak, active, model.calls), (1, concurrency, 0, 1+2*size))
             self.assertEqual([job['job_id'] for job in report['ranking']['jobs']], [jid for jid,_ in jobs])
             self.assertFalse(control._pending)
-        for size in (3, 30):
-            with self.subTest(size=size):
-                asyncio.run(scenario(size))
+        for size, concurrency in ((3, 3), (30, 3), (30, 6), (30, 12)):
+            with self.subTest(size=size, concurrency=concurrency):
+                asyncio.run(scenario(size, concurrency))
 
     def test_pool_fatal_error_keeps_completed_job_and_drains_other_requests(self):
         async def scenario():

@@ -1,8 +1,8 @@
-"""Wire responses group related extraction work into the existing seven calls.
+"""Wire responses group resume extraction and joint per-vacancy analysis.
 
 Core E5 DTOs remain owned by the domain layer; no new display inference is done here.
 """
-from .contracts import Facts, Evaluation, Requirements, RequirementFactors
+from .contracts import Facts, Evaluation, Requirements, RequirementFactors, StrictModel
 from .candidate_profile import CandidateProfile, Conditions
 from pydantic import PrivateAttr
 
@@ -41,3 +41,8 @@ class RequirementsAnalysis(Requirements):
 
 class VacancyAnalysis(Evaluation):
     conditions: Conditions
+
+
+class JointAnalysis(StrictModel):
+    requirements: RequirementsAnalysis
+    evaluation: VacancyAnalysis

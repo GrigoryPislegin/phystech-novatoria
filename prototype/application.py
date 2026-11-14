@@ -91,7 +91,8 @@ async def analyze(resume, jobs, *, model_factory, privacy, out, mode, control=No
     preflight_output(out)
     model = model_factory()
     try:
-        report = await run_pipeline(resume, jobs, model, privacy, control=control, source_sink=source_sink)
+        report = await run_pipeline(resume, jobs, model, privacy, control=control, source_sink=source_sink,
+                                    max_concurrency=(12 if getattr(model, 'joint_analysis', False) else 6) if len(jobs) > 3 else 3)
         report.update(metadata or {})
         report['mode'] = mode
         if hasattr(privacy, 'summary'):
