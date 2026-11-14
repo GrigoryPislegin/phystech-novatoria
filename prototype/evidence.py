@@ -58,10 +58,13 @@ _GENERIC_WORDS = '''
 
 def _stem(word: str) -> str:
     word = word.lower().replace('ё', 'е')
-    word = {'js':'javascript', 'ts':'typescript', 'vuejs':'vue', 'ml':'machinelearning'}.get(word, word)
+    word = {'js':'javascript', 'ts':'typescript', 'vuejs':'vue', 'ml':'machinelearning', 'postgres':'postgresql',
+            'python3':'python', 'k8s':'kubernetes', 'nodejs':'node'}.get(word, word)
     if re.fullmatch(r'тест(?:ы|а|ам|ами|ов|ирование|ирования|ированию|ировать)', word):
         word = 'тест'
-    return word[:5]
+    # A Latin-script term is a name and is compared whole: «Reactive» is not «React», «Excellent» is
+    # not «Excel», «scalability» is not «Scala». Russian words are cut to a stem for their endings.
+    return word if word.isascii() else word[:5]
 
 
 _GENERIC_STEMS = frozenset(map(_stem, _GENERIC_WORDS))
@@ -84,7 +87,7 @@ _REVERSING = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
     (?:прош[её]л|прошла|прохожу|проходил\w*|проходит|окончил\w*|закончил\w*|слушал\w*)\s+(?:[\w-]+\s+){0,2}курс\w*|
     на\s+курс(?:е|ах)|
     learning|learned|studying|studied|courses?|plan\s+to|want\s+to|would\s+like|
-    только|лишь|немного|чуть|поверхностн\w*|начинающ\w*|слаб(?:о|ый|ая|ое|ые)|теоретически|
+    только|лишь|немного|чуть|мало|маловато|недостаточно|интересу\w+|поверхностн\w*|начинающ\w*|слаб(?:о|ый|ая|ое|ые)|теоретически|
     (?:базов|начальн|теоретическ)\w+\s+(?:уров\w+|знани\w+|навык\w+|понимани\w+)|
     (?:как|уровне|уровень|уровня)\s+пользовател\w*|знаком(?:а|ы)?|
     basic|beginner|only|just|familiar
@@ -317,7 +320,8 @@ class MandatoryCheck(_Strict):
     context: str | None = None
 
 
-RULES_VERSION = 'evidence-0.5'  # aliases, general tenure and unambiguous repeated positive evidence
+RULES_VERSION = 'evidence-0.6'  # 0.6: a full claim cites what its requirement names; Latin terms compared whole
+_RULES_05 = 'evidence-0.5'  # aliases, general tenure and unambiguous repeated positive evidence
 
 
 class PairCheck(_Strict):
@@ -384,6 +388,93 @@ def verify_span(span: Span, sources: dict[str, Source]) -> list[Reason]:
     return []
 
 
+# A named term of a requirement: a technology, a product or a level written in Latin letters
+# («React», «Vue.js», «C++», «B2», «SOC»).
+_NAMED = re.compile(r'[A-Za-z][A-Za-z0-9#+]*')
+_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+_LEVEL = re.compile(r'(?i)(?<![A-Za-z0-9])[ABC][12](?![A-Za-z0-9])')
+_LANGUAGE = re.compile(r'(?i)(?<![а-яёa-z])(англи|немец|франц|испан|итал|китай|япон|корей|португ|польск|турец|араб|'
+                       r'english|german|french|spanish|italian|chinese|japanese)')
+_CLAUSE = re.compile(r'[,;.\n+]|\s(?:и|а|and)\s')
+_AND = re.compile(r'^\s*(?:,|и|&|\+|,\s*и|а\s+также|and|,\s*and)\s*$', re.IGNORECASE)
+_OR = re.compile(r'^\s*(?:/|или|либо|or|,\s*или|,\s*либо)\s*$', re.IGNORECASE)
+_GLUE = re.compile(r'^[.\-]$')  # «Vue.js», «Next.js», «CI-CD»: parts of one name
+
+
+def _language_levels(text: str) -> list[tuple[str | None, str]]:
+    """(language, level) pairs of a text: a level belongs to the language named in its own clause."""
+    pairs, start = [], 0
+    for cut in [m.start() for m in _CLAUSE.finditer(text)] + [len(text)]:
+        clause = text[start:cut]
+        start = cut
+        language = _LANGUAGE.search(clause)
+        pairs += [(language.group(1).lower() if language else None, level.upper())
+                  for level in _LEVEL.findall(clause)]
+    return pairs
+
+
+def _uncited_parts(requirement_quote: str, cited: str) -> list[str]:
+    """Named terms a `full` claim must cite and does not.
+
+    Named terms are words in Latin letters. Parts of one name («Vue.js») go together and are cited
+    by the head word. Names
+    separated only by «/», «или», «либо» are a local choice: one of them is enough. Choices and
+    names joined as a list («,», «и», «+», «&») are all required. A name that stands apart from
+    any list is required only when the requirement names nothing else. A language level is met by
+    the same or a higher level of the same language: «немецкий C1» says nothing about «английский B2».
+    Only what is written is compared: «k8s» for «Kubernetes» goes to the recruiter, it is not a fail."""
+    text = _REFERENCE.sub(' ', requirement_quote)
+    tokens = [m for m in _WORD.finditer(text) if _NAMED.fullmatch(m.group()) and len(m.group()) > 1
+              and _stem(m.group()) not in _GENERIC_STEMS]
+    if not tokens:
+        return []
+    have = _terms(cited)
+    cited_levels = _language_levels(cited)
+    wanted_levels = {level: language for language, level in _language_levels(text)}
+
+    def shown(name: str) -> bool:
+        if _LEVEL.fullmatch(name):
+            language = wanted_levels.get(name.upper())
+            return any(_LEVELS.index(level) >= _LEVELS.index(name.upper())
+                       and (language is None or cited_language in (None, language))
+                       for cited_language, level in cited_levels)
+        return _stem(name) in have
+
+    # names → local choices → the list of what is required
+    names, choices, listed = [[tokens[0]]], [], set()
+    for a, b in zip(tokens, tokens[1:]):
+        if _GLUE.match(text[a.end():b.start()]):
+            names[-1].append(b)
+        else:
+            names.append([b])
+    choices.append([names[0]])
+    for a, b in zip(names, names[1:]):
+        between = text[a[-1].end():b[0].start()]
+        if _OR.match(between):
+            choices[-1].append(b)
+            continue
+        if _AND.match(between):
+            listed |= {len(choices) - 1, len(choices)}
+        choices.append([b])
+
+    def label(name):
+        return text[name[0].start():name[-1].end()]
+
+    def met(choice):  # a name is shown by its head word: «Vue» cites «Vue.js»
+        return any(shown(name[0].group()) for name in choice)
+
+    def level(choice):  # a stated level is always required, listed or not
+        return any(_LEVEL.fullmatch(name[0].group()) for name in choice)
+
+    required = ([c for i, c in enumerate(choices) if i in listed or level(c)]
+                or (choices if len(choices) == 1 else []))
+    missing = [' / '.join(label(n) for n in c) for c in required if not met(c)]
+    if missing or required:
+        return missing
+    # Several names that form no list: at least one of them must be cited.
+    return [] if any(met(c) for c in choices) else [' / '.join(label(n) for n in c) for c in choices]
+
+
 def _row_shape(row: Row, requirement: Requirement) -> list[Reason]:
     reasons = []
     if row.requirement_id != requirement.id:
@@ -447,6 +538,15 @@ def _evidence_reasons(span: Span, quote: str, requirement_terms: set[str], fact_
                        if hidden else
                        _review('evidence_not_linked', 'В доказательстве нет ни одного термина требования.',
                                fact_id=fact_id, context=around))
+    # A one- or two-word quote says nothing by itself: a negation in the sentence right after it counts.
+    if status in ('full', 'partial') and len(_WORD.findall(cited)) <= 2:
+        following = next((s for s in lay.sentences if s.start >= span.end), None)
+        # ...unless that sentence names its own subject («Python знаю. Docker не использовал.»).
+        if (following is not None and _NEGATION.search(following.text.replace('ё', 'е'))
+                and not _REFERENCE.search(following.text)
+                and not any(w.isascii() and w.isalpha() and len(w) > 1 for w in _WORD.findall(following.text))):
+            reasons.append(_review('quote_is_fragment', 'Короткая цитата, а следующее предложение содержит отрицание; '
+                                   'проверьте оба.', fact_id=fact_id, context=f'{around} / {following.text}'))
     if span.heading and reverses(span.heading, heading=True):
         reasons.append(_review('heading_context', 'Пункт списка под заголовком с оговоркой; проверьте заголовок.',
                                fact_id=fact_id, context=f'{span.heading} → {around}'))
@@ -530,6 +630,14 @@ def check_row(row: Row, requirement: Requirement, facts: Facts, cv: Source) -> R
             checks = [r for r in checks if r.code != 'evidence_not_linked']
             linked = True
         reasons += checks
+    if row.status == 'full' and evidence and not any(
+            r.code in ('evidence_not_linked', 'link_hidden_by_mask') for r in reasons):
+        cited = ' '.join(cv.text[span.start:span.end] for span in evidence)
+        uncited = _uncited_parts(requirement.quote, cited)
+        if uncited:
+            reasons.append(_review('requirement_part_not_cited',
+                                   'Полное соответствие заявлено, но в цитатах нет названного в требовании: '
+                                   + ', '.join(dict.fromkeys(uncited)) + '. Проверьте, подтверждена ли эта часть.'))
     if row.status == 'partial' and linked:
         # A partial match needs a supported part. Additional context facts may
         # be irrelevant, but negations, forged spans and attribution still block it.
