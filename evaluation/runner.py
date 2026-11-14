@@ -20,10 +20,14 @@ The holdout split is used only when asked for, after its recorded digest matches
 import argparse
 import hashlib
 import json
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
+from prototype.candidate_profile import ConditionsCheck, ProfileCheck
+from prototype.evidence import Source, Span, verify_span
 from prototype.review_queue import build_review_queue
 
 MODES = {'synthetic_replay', 'sdk_mock', 'live'}
@@ -33,6 +37,7 @@ REPORT_MODES = {'synthetic_replay_NOT_model_output': 'synthetic_replay', 'synthe
                 'sdk_mock': 'sdk_mock', 'live_synthetic': 'live', 'live_local_privacy': 'live', 'live': 'live'}
 REPORT_SCHEMA = '0.1'
 STATUSES = ('full', 'partial', 'fail', 'unknown')
+DERIVED_JOB_ID = re.compile(r'job-([0-9a-f]{24})-[1-9][0-9]*')
 ROW_OUTCOMES = ('pass', 'wrong_status', 'wrong_evidence', 'wrong_mandatory', 'missed_requirement', 'error',
                 'not_applicable')
 
@@ -68,7 +73,11 @@ def _strict_json(text: str):
 
 
 def load_reports(directory: Path) -> tuple[str, dict[str, dict | None], dict[str, str]]:
-    manifest = _strict_json((directory / 'manifest.json').read_text(encoding='utf-8'))
+    directory = directory.resolve()
+    manifest_path = (directory / 'manifest.json').resolve()
+    if directory not in manifest_path.parents:
+        raise RunnerError('manifest_outside_directory')
+    manifest = _strict_json(manifest_path.read_text(encoding='utf-8'))
     if not isinstance(manifest, dict) or not isinstance(manifest.get('reports'), dict):
         raise RunnerError('malformed_manifest')
     mode = manifest.get('mode')
@@ -77,11 +86,14 @@ def load_reports(directory: Path) -> tuple[str, dict[str, dict | None], dict[str
     names = list(manifest['reports'].values())
     if not all(isinstance(n, str) for n in names) or len(names) != len(set(names)):
         raise RunnerError('ambiguous_mapping')  # one report per case and one case per report
-    reports, problems = {}, {}
+    reports, problems, paths = {}, {}, set()
     for case_id, name in manifest['reports'].items():
         path = (directory / name).resolve()
-        if directory.resolve() not in path.parents:
+        if directory not in path.parents:
             raise RunnerError('report_outside_directory')
+        if path == manifest_path or path in paths:
+            raise RunnerError('ambiguous_mapping')
+        paths.add(path)
         try:
             report = _strict_json(path.read_text(encoding='utf-8'))
         except (OSError, ValueError, RunnerError):
@@ -189,25 +201,75 @@ def _check_shape(report: dict) -> None:
                 raise _Setup('invalid_row')
 
 
+def _validate_processing(report, jobs, failed, expected_failed):
+    if report['ranking']['complete'] is not (not failed):
+        raise _Setup('invalid_processing_status')
+    if 'unprocessed_job_ids' in report and set(report['unprocessed_job_ids']) != failed:
+        raise _Setup('invalid_processing_status')
+    recorded = {(entry['job_id'], entry['code']) for entry in report['errors']}
+    if any(jid not in failed and (jid is not None or jobs) for jid, _ in recorded):
+        raise _Setup('invalid_processing_error')
+    skipped = {entry['job_id']: entry['reason'] for entry in report['unprocessed']}
+    if any((jid, skipped[jid]) not in recorded for jid in expected_failed):
+        raise _Setup('expected_failure_not_reproduced')
+
+
+def _vacancy_ids(report, texts):
+    by_digest = defaultdict(list)
+    for jid, text in texts.items():
+        by_digest[hashlib.sha256(text.encode()).hexdigest()[:24]].append(jid)
+    matched = {jid: jid for jid in texts}
+    for entry in report['ranking']['jobs'] + report['unprocessed']:
+        jid = entry['job_id']
+        match = DERIVED_JOB_ID.fullmatch(jid)
+        if jid not in matched and match:
+            targets = by_digest[match[1]]
+            if len(targets) == 1:
+                matched[jid] = targets[0]
+    return matched
+
+
+def _mandatory_matches(requirement, expected, vacancy):
+    marker = requirement['mandatory_quote']
+    if marker is None:
+        return not expected
+    return (expected and len(marker.strip()) >= 8 and marker in vacancy.text and requirement['quote'] in marker)
+
+
 def _evaluate(case: dict, report: dict, result: dict) -> None:
     if report.get('schema_version') != REPORT_SCHEMA:
         raise _Setup('unknown_report_version')
     _check_shape(report)
-    jobs = {j['job_id']: j for j in report['ranking']['jobs']}
-    failed = {e['job_id'] for e in report['unprocessed']}  # the pipeline lists every failed job here
-    facts = {f['id']: f['quote'] for f in report['facts']['items']}
     texts = {v['job_id']: v['text'] for v in case['vacancies']}
-    if set(jobs) | failed != set(texts) or set(jobs) & failed:
+    vacancy_ids = _vacancy_ids(report, texts)
+    jobs = {vacancy_ids.get(j['job_id'], j['job_id']): j for j in report['ranking']['jobs']}
+    failed = {vacancy_ids.get(row['job_id'], row['job_id']): row['job_id'] for row in report['unprocessed']}
+    facts = {f['id']: f['quote'] for f in report['facts']['items']}
+    if jobs.keys() | failed.keys() != texts.keys() or jobs.keys() & failed.keys():
+        raise _Setup('job_set_mismatch')
+    if len(jobs) != len(report['ranking']['jobs']) or len(failed) != len(report['unprocessed']):
         raise _Setup('job_set_mismatch')
     expected_failed = set(case['unprocessed_job_ids'])
-    if not expected_failed <= failed:
-        raise _Setup('expected_failure_not_reproduced')  # e.g. the job was simply left out of rank
-    cv = case['cv_text']
+    if not expected_failed <= failed.keys():
+        raise _Setup('expected_failure_not_reproduced')
+    _validate_processing(report, jobs, set(failed.values()), {failed[jid] for jid in expected_failed})
+    cv = Source.of('cv', case['cv_text'])
+    if report.get('safe_resume_sha256', cv.sha256) != cv.sha256:
+        raise _Setup('resume_source_mismatch')
+    sources = {jid: Source.of(job['job_id'], texts[jid]) for jid, job in jobs.items()}
+    if any(job.get('safe_source_sha256', sources[jid].sha256) != sources[jid].sha256
+           for jid, job in jobs.items()):
+        raise _Setup('vacancy_source_mismatch')
 
     for fid, quote in facts.items():  # facts must come from the CV
-        if quote not in cv:
+        if not quote.strip() or quote not in cv.text:
             result['references'].append({'kind': 'fact_not_in_cv', 'fact_id': fid})
+    if not _profile_valid(report.get('profile'), facts.values(), cv):
+        result['references'].append({'kind': 'invalid_profile'})
     for job_id, job in jobs.items():
+        checks = job.get('evidence_check')
+        if checks is not None and not _evidence_valid(checks, facts, cv, sources[job_id]):
+            result['references'].append({'kind': 'invalid_evidence_source', 'job_id': job_id})
         for r in job['requirements']['items']:
             if r['quote'] not in texts[job_id]:
                 result['references'].append({'kind': 'requirement_not_in_vacancy', 'job_id': job_id,
@@ -241,10 +303,10 @@ def _evaluate(case: dict, report: dict, result: dict) -> None:
                 continue
             status = row['status']
             entry = {'job_id': job_id, 'key': e['key'], 'requirement_id': requirement['id'], 'status': status,
-                     'mandatory_ok': (requirement['mandatory_quote'] is not None) == e['mandatory'],
+                     'mandatory_ok': _mandatory_matches(requirement, e['mandatory'], sources[job_id]),
                      'status_ok': status not in e['forbidden_status'],
                      'evidence_ok': None if status == 'unknown' else _evidence_ok(
-                         row, checks.get(requirement['id']), facts, cv, e['cv_quotes'])}
+                         row, checks.get(requirement['id']), facts, cv.text, e['cv_quotes'])}
             entry['outcome'] = ('wrong_mandatory' if not entry['mandatory_ok'] else 'wrong_status'
                                 if not entry['status_ok'] else 'wrong_evidence' if entry['evidence_ok'] is False
                                 else 'pass')
@@ -263,19 +325,69 @@ def _evaluate(case: dict, report: dict, result: dict) -> None:
                                 'outcome': 'pass' if recommendation in case['ranking']['allowed_recommendations']
                                 else 'fail'}
     for expect in case['conditions']:
-        job = jobs.get(expect['job_id'])
-        found = None
-        if job and isinstance(job.get('conditions'), dict):
-            found = next((i for i in job['conditions'].get('items', []) if i.get('kind') == expect['kind']), None)
-        if job is None or job.get('conditions') is None:
-            outcome = 'not_run'
-        elif found is None:
-            outcome = 'fail'  # the condition was compared, this kind is missing
-        else:
-            outcome = 'pass' if found.get('state') in expect['allowed_states'] else 'fail'
-        result['conditions'].append({'job_id': expect['job_id'], 'kind': expect['kind'], 'outcome': outcome,
-                                     'actual': found.get('state') if found else None})
+        job_id = expect['job_id']
+        job = jobs.get(job_id)
+        outcome, actual = 'not_run', None
+        if job is not None:
+            outcome, actual = _check_condition(expect, job.get('conditions'),
+                                               'analysis_schema_version' in report, facts.values(), cv, sources[job_id])
+        result['conditions'].append({'job_id': job_id, 'kind': expect['kind'], 'outcome': outcome,
+                                     'actual': actual})
     result['review_load'] = _load(report)
+
+
+def _profile_valid(data, facts, cv):
+    if data is None:
+        return True
+    profile = ProfileCheck.model_validate(data)
+    if (profile.state == 'invalid' or any(f.severity == 'invalid' for f in profile.findings)
+            or profile.spans.keys() != profile.display.keys()):
+        return False
+    for field, spans in profile.spans.items():
+        if any(verify_span(span, {'cv': cv}) or not any(span.quote in quote for quote in facts) for span in spans):
+            return False
+        value = profile.display[field]
+        quotes = [span.quote for span in spans]
+        if any(value.strip() and value in quote for quote in quotes) or (quotes and value == ' / '.join(quotes)):
+            continue
+        # Ambiguous sources still have literal fact quotes, but no single offset.
+        ambiguous = any(f.code == 'ambiguous_location' and f.where.startswith(field + '.sources[')
+                        for f in profile.findings)
+        if profile.state != 'needs_review' or not ambiguous or not (
+                any(value.strip() and value in quote for quote in facts) or all(
+                    part.strip() and any(part in quote for quote in facts) for part in value.split(' / '))):
+            return False
+    return True
+
+
+def _evidence_valid(checks, facts, cv, vacancy):
+    if (checks['cv_sha256'] != cv.sha256 or checks['vacancy_id'] != vacancy.source_id
+            or checks['vacancy_sha256'] != vacancy.sha256):
+        return False
+    return all(not verify_span(Span.model_validate(data), {'cv': cv}) and data['quote'] in facts.values()
+               for row in checks['rows'] for data in row['evidence'])
+
+
+def _check_condition(expect, data, modern, facts, cv, vacancy):
+    if data is None:
+        return ('fail' if modern else 'not_run'), None
+    conditions = ConditionsCheck.model_validate(data)
+    items = [item for item in conditions.items if item.kind == expect['kind']]
+    if len(items) != 1:
+        return 'fail', None
+    item, = items
+    if (item.state not in expect['allowed_states'] or item.check == 'invalid' or conditions.has_invalid
+            or any(f.severity == 'invalid' for f in conditions.findings + item.findings)):
+        return 'fail', item.state
+    if item.cv_span and not any(item.cv_span.quote in quote for quote in facts):
+        return 'fail', item.state
+    for span, source in ((item.cv_span, cv), (item.vacancy_span, vacancy)):
+        if span is None:
+            if item.state != 'unknown':
+                return 'fail', item.state
+        elif verify_span(span, {source.source_id: source}):
+            return 'fail', item.state
+    return 'pass', item.state
 
 
 def _evidence_ok(row: dict, check: dict | None, facts: dict[str, str], cv: str, expected_quotes: list[str]) -> bool:
@@ -287,7 +399,8 @@ def _evidence_ok(row: dict, check: dict | None, facts: dict[str, str], cv: str, 
         return False
     wanted = [s for s in (_span(cv, q) for q in expected_quotes) if s]
     cited = [s for s in (_span(cv, facts.get(f, '')) for f in row['fact_ids']) if s]
-    return any(2 * _overlap(w, c) >= c[1] - c[0] for w in wanted for c in cited)
+    return any(2 * _overlap(w, c) >= c[1] - c[0] and any(
+        char.isalnum() for char in cv[max(w[0], c[0]):min(w[1], c[1])]) for w in wanted for c in cited)
 
 
 def _load(report: dict) -> dict:
@@ -408,26 +521,45 @@ def to_markdown(summary: dict) -> str:
     return '\n'.join(lines) + '\n'
 
 
+def _write_summary(directory, summary):
+    outputs = {
+        'evaluation.json': json.dumps(summary, ensure_ascii=False, indent=1) + '\n',
+        'evaluation.md': to_markdown(summary),
+    }
+    if directory.is_symlink() or any((directory / name).is_symlink() for name in outputs):
+        raise RunnerError('output_symlink')
+    directory.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix='.evaluation-', dir=directory) as temporary:
+        stage = Path(temporary)
+        for name, content in outputs.items():
+            (stage / name).write_text(content, encoding='utf-8')
+        for name in outputs:
+            (stage / name).replace(directory / name)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--reports', type=Path, required=True)
     parser.add_argument('--expectations', type=Path, required=True)
     parser.add_argument('--split', choices=('dev', 'holdout'), default='dev')
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--check', action='store_true',
+                        help='Exit 1 on failures or missing expected comparisons, after writing the summary.')
     args = parser.parse_args(argv)
     try:
         cases = load_cases(args.expectations, args.split)
         mode, reports, problems = load_reports(args.reports)
-    except (RunnerError, OSError, ValueError, TypeError, KeyError) as exc:  # JSONDecodeError is a ValueError
-        print(f'evaluation refused: {exc}', file=sys.stderr)
+        summary = run(cases, mode, reports, problems)
+        _write_summary(args.out, summary)
+    except (RunnerError, OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
+        code = str(exc) if isinstance(exc, RunnerError) else type(exc).__name__
+        print(f'evaluation refused: {code}', file=sys.stderr)
         return 2
-    summary = run(cases, mode, reports, problems)
-    args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / 'evaluation.json').write_text(json.dumps(summary, ensure_ascii=False, indent=1) + '\n',
-                                              encoding='utf-8')
-    (args.out / 'evaluation.md').write_text(to_markdown(summary), encoding='utf-8')
     print(to_markdown(summary))
-    return 0
+    return int(args.check and (not cases or not reports or summary['extra_requirements'] > 0
+                               or any(metric['failures'] for metric in summary['metrics'])
+                               or any(item['outcome'] == 'not_run' for case in summary['results']
+                                      for item in case['conditions'])))
 
 
 if __name__ == '__main__':
