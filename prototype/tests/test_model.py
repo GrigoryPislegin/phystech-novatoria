@@ -50,6 +50,12 @@ class ModelBoundaryTests(unittest.TestCase):
         self.assertLessEqual(len(references.prefix), 12)
         self.assertEqual(references.decode(references.encode(value)), value)
 
+    def test_ordinary_model_prose_is_not_a_wire_alias(self):
+        from prototype.model_references import ModelReferences
+        references = ModelReferences({'text':'Python'})
+        value = {'text':'Python preferred; reference architecture'}
+        self.assertEqual(references.decode(value), value)
+
     def test_damaged_alias_in_free_text_cannot_survive_valid_quote(self):
         for marker in ('[[REF-1]]', '[[REF 1]]', '［［ＲＥＦ＿１］］'):
             model = self.model(AsyncMock())

@@ -56,7 +56,9 @@ class ModelReferences:
                 return self.originals[match[0]]
             text = self.pattern.sub(replace, text)
             # Unknown/changed aliases must not survive into a saved report.
-            if self.prefix[:-1].casefold() in unicodedata.normalize('NFKC', text).casefold():
+            normalized = unicodedata.normalize('NFKC', text).casefold()
+            bracketed = r'\[\s*\[?\s*' + re.escape(self.prefix[:-1].casefold())
+            if self.prefix.casefold() in normalized or re.search(bracketed, normalized):
                 raise ModelOutputError('model_invalid')
             return text
         return _map_strings(value, restore)
