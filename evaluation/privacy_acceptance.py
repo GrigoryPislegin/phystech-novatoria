@@ -79,17 +79,23 @@ async def evaluate(cases, detector, mode):
             continue
         class RecordingDetector:
             first = None
+            additional_findings = False
 
             def scan(self, text):
                 found = detector.scan(text)
                 if self.first is None:
                     self.first = list(found)
+                elif found:
+                    self.additional_findings = True
                 return found
         recorder = RecordingDetector()
         privacy = LocalPrivacy(recorder)
         try:
             await privacy.redact(case['text'])  # Includes the actual residual-PII check.
-            result = assess_case(case, recorder.first or [])
+            # Later offsets refer to transformed text, not the annotated source.
+            # Do not call first-pass preservation a measurement of the final result.
+            result = assess_case(case, [] if recorder.additional_findings else (recorder.first or []),
+                                 error='multipass_metrics_unavailable' if recorder.additional_findings else None)
             result['privacy_summary'] = privacy.summary()
         except Exception:
             # A blocked transformation must not become a perfect or safely empty result.
@@ -124,7 +130,10 @@ def markdown(report):
             quote = span['quote'].replace('|', '\\|').replace('\n', ' ↵ ')
             lines.append(f"| {span['role']} | {quote} | [{span['start']}, {span['end']}) | {span['outcome']} |")
         findings = [f"{f['kind']}[{f['start']}:{f['end']}]={f['quote']!r}" for f in case['findings']]
-        lines.extend(['', 'Найденные фрагменты: ' + ('; '.join(findings) or 'нет')])
+        finding_text = ('; '.join(findings) or 'нет')
+        if case['error'] == 'multipass_metrics_unavailable':
+            finding_text = 'итоговые смещения не измерены; маскирование завершилось за несколько проходов'
+        lines.extend(['', 'Найденные фрагменты: ' + finding_text])
     return '\n'.join(lines) + '\n'
 
 

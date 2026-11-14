@@ -10,7 +10,7 @@ import re
 import secrets
 import unicodedata
 
-POLICY_VERSION = 'local-privacy-0.2'
+POLICY_VERSION = 'local-privacy-0.3'
 REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
 RESERVED = '[[PRIV:'
 
@@ -124,19 +124,30 @@ class LocalPrivacy:
         text = normalized(text)
         if RESERVED in text.upper():
             raise RuntimeError('privacy_untrusted_reference')
-        parts, pos = [], 0
-        for item in _merge(self.detector.scan(text), len(text)):
-            self.counts[item.kind] = self.counts.get(item.kind, 0) + 1
-            value = text[item.start:item.end]
-            digest = hmac.new(self._key, value.casefold().encode(), hashlib.sha256).digest()
-            if digest not in self._aliases:
-                self._aliases[digest] = f'[[PRIV:{self._nonce}:{len(self._aliases)+1}:{item.kind}]]'
-            ref = self._aliases[digest]
-            self.issued_refs.add(ref)
-            parts.extend((text[pos:item.start], ref))
-            pos = item.end
-        parts.append(text[pos:])
-        result = ''.join(parts)
+        result = text
+        # Masking changes NER context: newly visible findings must also be hidden.
+        # Bound the number of passes; non-convergence still blocks all model calls.
+        for _ in range(3):
+            clean = self._without_refs(result)
+            findings = _merge(self.detector.scan(clean), len(result))
+            if not findings:
+                return result
+            references = list(REFERENCE.finditer(result))
+            parts, pos = [], 0
+            for item in findings:
+                if any(item.start < ref.end() and ref.start() < item.end for ref in references):
+                    raise RuntimeError('privacy_residual_findings')
+                self.counts[item.kind] = self.counts.get(item.kind, 0) + 1
+                value = result[item.start:item.end]
+                digest = hmac.new(self._key, value.casefold().encode(), hashlib.sha256).digest()
+                if digest not in self._aliases:
+                    self._aliases[digest] = f'[[PRIV:{self._nonce}:{len(self._aliases)+1}:{item.kind}]]'
+                ref = self._aliases[digest]
+                self.issued_refs.add(ref)
+                parts.extend((result[pos:item.start], ref))
+                pos = item.end
+            parts.append(result[pos:])
+            result = ''.join(parts)
         await self.check(result)
         return result
 

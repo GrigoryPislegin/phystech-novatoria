@@ -42,6 +42,19 @@ class PrivacyAcceptanceTests(unittest.TestCase):
         self.assertEqual(report['cases'][0]['error'], 'privacy_execution_failed')
         self.assertIsNone(report['metrics']['identifiers_masked']['value'])
 
+    def test_multipass_changes_do_not_publish_first_pass_metrics(self):
+        class ContextDetector:
+            def scan(self, text):
+                for value, kind in [('Ann', 'PERSON'), ('Python', 'ORG')]:
+                    if value in text:
+                        start = text.index(value)
+                        return [Finding(start, start + len(value), kind)]
+                return []
+        report = asyncio.run(evaluate([case()], ContextDetector(), 'test_double'))
+        self.assertEqual(report['cases_assessed'], 0)
+        self.assertEqual(report['cases'][0]['error'], 'multipass_metrics_unavailable')
+        self.assertIsNone(report['metrics']['professional_preserved']['value'])
+
     def test_empty_corpus_is_rejected(self):
         with self.assertRaises(ValueError):
             validate_cases({'origin': 'synthetic', 'cases': []})

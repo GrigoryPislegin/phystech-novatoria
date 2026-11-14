@@ -68,6 +68,47 @@ class PrivacyTests(unittest.TestCase):
                 asyncio.run(run_pipeline(*demo_inputs(), model, LocalPrivacy(detector)))
             self.assertEqual(model.calls, 0)
 
+    def test_context_shift_findings_are_masked_before_return(self):
+        def scan(text):
+            # A contextual NER finds the second entity only after masking the first.
+            for value in ('ALPHA', 'BETA'):
+                if value in text:
+                    start = text.index(value)
+                    return [Finding(start, start + len(value), 'ORG')]
+            return []
+        privacy = LocalPrivacy(Mock(scan=scan))
+        result = asyncio.run(privacy.redact('ALPHA BETA Python 3 years'))
+        self.assertNotIn('ALPHA', result)
+        self.assertNotIn('BETA', result)
+        self.assertIn('Python 3 years', result)
+        self.assertEqual(len(privacy.issued_refs), 2)
+        asyncio.run(privacy.check(result))
+
+    def test_nonconverging_context_still_stops_before_model(self):
+        def scan(text):
+            for value in ('ALPHA', 'BETA', 'GAMMA', 'DELTA'):
+                if value in text:
+                    start = text.index(value)
+                    return [Finding(start, start + len(value), 'ORG')]
+            return []
+        model = ReplayModel()
+        with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+            asyncio.run(run_pipeline('ALPHA BETA GAMMA DELTA', demo_inputs()[1], model,
+                                     LocalPrivacy(Mock(scan=scan))))
+        self.assertEqual(model.calls, 0)
+
+    def test_second_pass_spanning_existing_reference_blocks_model(self):
+        def scan(text):
+            if 'ALPHA' in text:
+                start = text.index('ALPHA')
+                return [Finding(start, start + 5, 'ORG')]
+            return [Finding(0, len(text), 'PERSON')]
+        model = ReplayModel()
+        with self.assertRaisesRegex(RuntimeError, 'privacy_residual_findings'):
+            asyncio.run(run_pipeline('prefix ALPHA suffix', demo_inputs()[1], model,
+                                     LocalPrivacy(Mock(scan=scan))))
+        self.assertEqual(model.calls, 0)
+
     def test_closed_instance_cannot_be_reused(self):
         privacy = self.privacy()
         asyncio.run(privacy.redact('a@example.com'))
