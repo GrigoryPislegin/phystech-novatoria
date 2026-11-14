@@ -1,7 +1,9 @@
 import asyncio
+import csv
 import json
 import tempfile
 import unittest
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -54,6 +56,78 @@ class RuntimeSafetyTests(unittest.TestCase):
             with patch('prototype.pipeline.csv.writer', side_effect=OSError('synthetic disk full')):
                 with self.assertRaises(OSError): write_report(report, Path(tmp))
             self.assertEqual(list(Path(tmp).iterdir()), [])
+
+    def test_local_exports_restore_before_escaping_and_keep_machine_report_protected(self):
+        ref = '[[PRIV:0123456789abcdef:1:ORG]]'
+        original = '=HYPERLINK("https://example.test", "`<img src=x>`")'
+        report = asyncio.run(run_pipeline(*demo_inputs(), ReplayModel(), SyntheticPrivacy()))
+        report = json.loads(json.dumps(report).replace('Python', ref))
+        before = json.dumps(report, sort_keys=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = write_report(report, Path(tmp), display_aliases={ref:original})
+            self.assertEqual(json.loads((out/'report.json').read_text()), report)
+            self.assertNotIn(original, (out/'report.json').read_text())
+            markdown = (out/'report.md').read_text()
+            self.assertNotIn(ref, markdown)
+            self.assertIn('`` ' + original + ' обязателен. ``', markdown)
+            with (out/'requirements.csv').open(encoding='utf-8-sig', newline='') as stream:
+                rows = list(csv.DictReader(stream))
+            restored = [row['job_quote'] for row in rows if original in row['job_quote']]
+            self.assertTrue(restored)
+            self.assertTrue(all(value.startswith("'=") for value in restored))
+            for name in ('report.json', 'report.md', 'requirements.csv'):
+                self.assertEqual((out/name).stat().st_mode & 0o777, 0o600)
+        self.assertEqual(json.dumps(report, sort_keys=True), before)
+
+    def test_legacy_exports_use_stable_neutral_labels_without_guessing_originals(self):
+        ref = '[[PRIV:0123456789abcdef:1:PERSON]]'
+        report = asyncio.run(run_pipeline(*demo_inputs(), ReplayModel(), SyntheticPrivacy()))
+        report = json.loads(json.dumps(report).replace('Python', ref))
+        with tempfile.TemporaryDirectory() as tmp:
+            out = write_report(report, Path(tmp))
+            for name in ('report.md', 'requirements.csv'):
+                text = (out/name).read_text()
+                self.assertNotIn('[[PRIV:', text)
+                self.assertIn('Фрагмент 1', text)
+                self.assertNotIn('Человек 1', text)
+            self.assertIn(ref, (out/'report.json').read_text())
+
+    def test_protected_application_restores_after_privacy_session_is_closed(self):
+        from prototype.application import analyze_protected
+        ref = '[[PRIV:0123456789abcdef:1:ORG]]'
+        aliases = {ref:'Python'}
+        closed = []
+
+        class MaskSynthetic(SyntheticPrivacy):
+            async def redact(self, text):
+                return text.replace('Python', ref)
+
+            def export_display_aliases(self):
+                return aliases.copy()
+
+        @asynccontextmanager
+        async def privacy_context():
+            try:
+                yield MaskSynthetic()
+            finally:
+                aliases.clear()
+                closed.append(True)
+
+        class MaskedReplay(ReplayModel):
+            async def ask(self, schema, task, payload):
+                source = json.loads(json.dumps(payload).replace(ref, 'Python'))
+                answer = await super().ask(schema, task, source)
+                return schema.model_validate_json(answer.model_dump_json().replace('Python', ref))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = asyncio.run(analyze_protected(*demo_inputs(), privacy_context=privacy_context,
+                model_factory=lambda privacy:MaskedReplay(), out=Path(tmp), mode='synthetic_test'))
+            self.assertTrue(closed)
+            self.assertFalse(aliases)
+            self.assertEqual(result.display_aliases, {ref:'Python'})
+            self.assertIn('Python', (result.path/'report.md').read_text())
+            self.assertNotIn(ref, (result.path/'report.md').read_text())
+            self.assertNotIn('Python', (result.path/'report.json').read_text())
 
     def test_local_validation_failure_continues_remaining_jobs(self):
         class InvalidSecond(ReplayModel):

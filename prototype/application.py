@@ -147,5 +147,5 @@ async def analyze_protected(resume, jobs, *, privacy_context, model_factory, out
     else:
         await asyncio.wait_for(stack.__aexit__(None, None, None), timeout=30)
     control.emit('export')
-    result.path = write_report(result.report, out, manifest=manifest)
+    result.path = write_report(result.report, out, manifest=manifest, display_aliases=result.display_aliases)
     return result

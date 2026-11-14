@@ -196,13 +196,13 @@ def preflight_output(root: Path):
         raise ValueError('output_unavailable') from None
 
 
-def write_report(report, root: Path, *, manifest=None):
+def write_report(report, root: Path, *, manifest=None, display_aliases=None):
     preflight_output(root)
     root = Path(root)
     staging = Path(tempfile.mkdtemp(prefix='.staging-', dir=root))
     final = root / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex)
     try:
-        _write_report_files(report, staging)
+        _write_report_files(report, staging, display_aliases=display_aliases)
         if manifest is not None:
             path = staging / 'inputs.manifest.json'
             with path.open('x', encoding='utf-8') as handle:
@@ -215,7 +215,24 @@ def write_report(report, root: Path, *, manifest=None):
             shutil.rmtree(staging)
 
 
-def _write_report_files(report, out):
+def _write_report_files(report, out, *, display_aliases=None, _literal=literal):
+    # Restore only human-readable local exports, before Markdown/CSV escaping.
+    # Machine data, evidence offsets, IDs and hashes always stay protected.
+    from .privacy_core import REFERENCE
+    aliases = display_aliases or {}
+    labels = {}
+
+    def display(value):
+        def replace(match):
+            ref = match.group()
+            if ref in aliases:
+                return aliases[ref]
+            return labels.setdefault(ref, f'Фрагмент {len(labels) + 1}')
+        return REFERENCE.sub(replace, str(value))
+
+    def literal(value):
+        return _literal(display(value))
+
     def write(name, text):
         with open(out/name, 'x', encoding='utf-8') as handle:
             os.chmod(out/name, 0o600)
@@ -333,5 +350,6 @@ def _write_report_files(report, out):
         writer = csv.writer(handle)
         writer.writerow(['job_id','requirement_id','requirement','job_quote','mandatory_quote','status','resume_evidence','comment','question','verification'])
         # Avoid formula execution when opening untrusted model/document text in a spreadsheet.
-        writer.writerows([["'"+str(v) if str(v).lstrip().startswith(('=','+','-','@')) else v for v in row] for row in records])
+        displayed = [[display(value) for value in row] for row in records]
+        writer.writerows([["'"+v if v.lstrip().startswith(('=','+','-','@')) else v for v in row] for row in displayed])
     return out
