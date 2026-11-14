@@ -30,20 +30,18 @@ class IntegratedEvidenceTests(unittest.TestCase):
         self.assertEqual(verify_span(span, {'cv':source})[0].code, 'context_mismatch')
 
     def test_pipeline_exports_context_and_does_not_auto_confirm(self):
-        class Fragment(ReplayModel):
+        class Unlinked(ReplayModel):  # «Python» is "proved" by the SQL fact: nothing ties them
             async def ask(self, schema, task, payload):
                 result = await super().ask(schema, task, payload)
-                if task == 'facts':
-                    result.items[0].quote = 'Python'
-                    result.profile.summary[0].text = 'Python'
-                    result.profile.summary[0].sources[0].quote = 'Python'
+                if task == 'evaluation' and len(result.rows) == 2:
+                    result.rows[0].fact_ids = ['f2']
                 return result
-        report = asyncio.run(run_pipeline(*demo_inputs(), Fragment(), SyntheticPrivacy()))
+        report = asyncio.run(run_pipeline(*demo_inputs(), Unlinked(), SyntheticPrivacy()))
         self.assertTrue(report['ranking']['complete'])
         self.assertFalse(report['requirements_review']['requirements_confirmed'])
         row = report['presentation']['jobs'][0]['rows'][0]
         self.assertEqual(row['evidence_check']['state'], 'needs_review')
-        self.assertIn('quote_is_fragment', [r['code'] for r in row['evidence_check']['reasons']])
+        self.assertIn('evidence_not_linked', [r['code'] for r in row['evidence_check']['reasons']])
         self.assertFalse(report['presentation']['final_allowed'])
 
     def test_opposite_headings_make_repeated_quote_ambiguous(self):

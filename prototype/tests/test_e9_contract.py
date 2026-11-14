@@ -141,7 +141,8 @@ class ScenarioTests(unittest.TestCase):
 
 class SkillListModel:
     """E9c repro: a CV skill list makes the matching row disputed (heading_context)."""
-    CV = 'Навыки:\n- Python 5 лет\nРаботал в команде из 5 человек.'
+    # The heading limits the bullet («только учебные проекты»), so the bullet is disputed, not counted.
+    CV = 'Только учебные проекты:\n- Python 5 лет\nРаботал в команде из 5 человек.'
     JOBS = [('job-a', 'Python обязателен.'), ('job-b', 'Опыт работы в команде.')]
 
     async def ask(self, schema, task, payload):
