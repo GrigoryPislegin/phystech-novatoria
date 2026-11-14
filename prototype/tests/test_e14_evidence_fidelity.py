@@ -69,7 +69,8 @@ class ScreenScenarioTests(unittest.TestCase):
 
     def test_new_checks_carry_the_rules_version(self):
         _, _, (_, _, evidence) = one_of_eight('Работал с Vue.js.', 'Опыт работы с Vue.js.', 'Работал с Vue.js.')
-        self.assertEqual((evidence.rules_version, RULES_VERSION), ('evidence-0.2', 'evidence-0.2'))
+        self.assertEqual(evidence.rules_version, RULES_VERSION)  # stamped with the current rules
+        self.assertRegex(RULES_VERSION, r'^evidence-0\.\d+$')
         stored = evidence.model_dump()
         del stored['rules_version']  # a check stored before this change is read as it was
         self.assertIsNone(type(evidence).model_validate(stored).rules_version)

@@ -9,7 +9,7 @@ depended on which layout the model happened to cite. Synthetic texts; no model i
 import unittest
 
 from prototype.contracts import Evaluation, Requirement, Requirements, Row
-from prototype.evidence import Source, check_mandatory, check_pair
+from prototype.evidence import RULES_VERSION, Source, check_mandatory, check_pair
 from prototype.contracts import Fact, Facts
 from prototype.scoring import score
 
@@ -97,15 +97,87 @@ class StrictNegativeTests(unittest.TestCase):
     def test_a_heading_that_denies_the_obligation_is_no_marker(self):
         for head in ('Необязательные требования:', 'Не обязательно, но желательно:', 'Желательные навыки:',
                      'Будет плюсом:', 'Nice to have:'):
-            text = vacancy('● ', head=head, optional_head='Условия:', optional='Удалённо.')
-            for marker_quote in (head, marker(text, 'Git.', head)):
-                with self.subTest(head=head, marker=marker_quote[:25]):
-                    result = check(text, 'Git.', marker_quote)
-                    self.assertEqual((result.state, codes(result)), ('needs_review', {'mandatory_not_stated'}))
+            for mark in ('- ', '● '):
+                text = vacancy(mark, head=head, optional_head='Условия:', optional='Удалённо.')
+                for marker_quote in (head, marker(text, 'Git.', head)):
+                    with self.subTest(head=head, mark=mark, marker=marker_quote[:25]):
+                        result = check(text, 'Git.', marker_quote)
+                        self.assertEqual(result.state, 'needs_review')
+                        if mark == '- ' or 'требования' in head:  # the list is recognised: the reason is exact
+                            self.assertEqual(codes(result), {'mandatory_not_stated'})
 
     def test_a_short_line_above_ordinary_text_is_not_a_heading(self):
         text = 'Обязательные требования\nОпыт Python от 3 лет.\nGit.'  # no colon and no marked list
         self.assertEqual(check(text, 'Git.', 'Обязательные требования').state, 'needs_review')
+
+
+class ReviewOf04b80daTests(unittest.TestCase):
+    """Counterexamples of the integration review: exact continuous markers that must stay refused."""
+
+    def run_contract(self, text, quotes, markers, statuses, cv='Python знаю. Docker не использовал.'):
+        reqs = Requirements(items=[Requirement(id=f'r{i}', text=q, quote=q, mandatory_quote=m)
+                                   for i, (q, m) in enumerate(zip(quotes, markers), 1)])
+        reqs.validate_source(text)  # the DTO passes the strict wire validation: these are exact quotes
+        facts = Facts(items=[Fact(id='f1', text='факт', quote='Python знаю.'),
+                             Fact(id='f2', text='факт', quote='Docker не использовал.')])
+        rows = [Row(requirement_id=f'r{i}', status=st, fact_ids=[] if st == 'unknown' else [fact], comment='c',
+                    question=None if st == 'full' else 'q') for i, (st, fact) in enumerate(statuses, 1)]
+        evaluation = Evaluation(rows=rows)
+        evidence = check_pair(reqs, facts, evaluation, Source.of('cv', cv), Source.of('job', text))
+        return score(reqs, evaluation, evidence), evidence
+
+    def test_only_a_requirements_heading_recovers_a_list_across_lines(self):
+        for text, quote in (('Условия работы:\nУдалённо.', 'Удалённо.'),
+                            ('Стек проекта:\n● Python.', 'Python.'),
+                            ('О команде:\n✓ Пишем на Python.', 'Пишем на Python.'),
+                            ('Мы предлагаем\n● Удалённую работу.', 'Удалённую работу.')):
+            with self.subTest(text):
+                result = check(text, quote, text)  # the whole continuous block as the marker
+                self.assertEqual(result.state, 'needs_review')
+                self.assertTrue(codes(result) & {'mandatory_spans_segments', 'mandatory_not_linked'})
+        for head in ('Требования:', 'Обязательно:', 'Необходимые навыки:', 'Требуется:', 'Must have:', 'Requirements:'):
+            text = f'{head}\n● Python.\n● Git.'
+            self.assertEqual(check(text, 'Git.', text).state, 'structure_ok', head)
+        # What every heading governed before stays: «-» items directly under it.
+        self.assertEqual(check('Стек проекта:\n- Python.', 'Python.', 'Стек проекта:').state, 'structure_ok')
+
+    def test_an_item_that_denies_the_obligation_is_not_mandatory(self):
+        for text, quote in (('Требования:\n● Docker не требуется.', 'Docker не требуется.'),
+                            ('Требования:\n- Docker не требуется.', 'Docker не требуется.'),
+                            ('Обязательные требования:\n● Python.\n● Docker не обязателен.', 'Docker не обязателен.'),
+                            ('Требования:\n● Docker желателен.', 'Docker желателен.'),
+                            ('Требования:\n● Docker — по желанию.', 'Docker — по желанию.')):
+            with self.subTest(text):
+                result = check(text, quote, text)
+                self.assertEqual((result.state, codes(result)), ('needs_review', {'mandatory_not_stated'}))
+
+    def test_a_marked_optional_item_ends_the_mandatory_list(self):
+        text = 'Обязательные требования:\n● Python.\n● Будет плюсом: Docker.'
+        self.assertEqual(check(text, 'Python.', text[:text.index('Python.') + 7]).state, 'structure_ok')
+        for quote in ('Будет плюсом: Docker.', 'Docker.'):
+            result = check(text, quote, text)
+            self.assertEqual(result.state, 'needs_review', quote)
+        after = 'Обязательные требования:\n● Python.\n● Будет плюсом: Docker.\n● Kafka.'
+        self.assertEqual(check(after, 'Kafka.', after).state, 'needs_review')  # nothing after it is governed either
+
+    def test_the_score_of_the_exact_contract_keeps_the_optional_item_optional(self):
+        text = 'Обязательные требования:\n● Python.\n● Будет плюсом: Docker.'
+        s, evidence = self.run_contract(text, ['Python.', 'Docker.'],
+                                        ['Обязательные требования:\n● Python.', text],
+                                        [('full', 'f1'), ('fail', 'f2')])
+        self.assertEqual((s['mandatory'], s['lower'], s['excluded_mandatory_ids'], s['weights']),
+                         ('confirmed', 75, ['r2'], {'r1': 75, 'r2': 25}))  # Docker never becomes a hard requirement
+        self.assertEqual(s['breakdown']['stop_factors'], [])
+        self.assertEqual(evidence.rules_version, RULES_VERSION)
+        # The reviewer's reading: both rows quote the whole block as the marker of an optional fail.
+        s, _ = self.run_contract('Требования:\n● Python.\n● Docker не требуется.', ['Python.', 'Docker не требуется.'],
+                                 [None, 'Требования:\n● Python.\n● Docker не требуется.'],
+                                 [('full', 'f1'), ('fail', 'f2')])
+        self.assertEqual((s['mandatory'], s['lower'], s['excluded_mandatory_ids'], s['weights']),
+                         ('not_set', 50, ['r2'], {'r1': 50, 'r2': 50}))
+
+    def test_rules_version_changed_with_the_rules(self):
+        self.assertEqual(RULES_VERSION, 'evidence-0.3')
 
 
 class OrderStabilityTests(unittest.TestCase):
