@@ -75,3 +75,36 @@ test('local inspection keeps the upload body scoped to its dedicated endpoint', 
   assert.deepEqual(JSON.parse(calls[1][1].body), input);
   assert.equal(calls[1][1].headers['X-CSRF-Token'], 'fixture');
 });
+
+test('timeout on start leaves the same request available for a user retry', async () => {
+  const calls = [];
+  const api = createRunApi(async (path, options) => {
+    if (path === '/api/session') return json({ csrf_token: 'fixture', capabilities: {} });
+    calls.push(JSON.parse(options.body));
+    if (calls.length > 1) return json({ run_id: runId }, 202);
+    return new Promise((resolve, reject) => {
+      const keepAlive = setTimeout(() => reject(new Error('Timeout not enforced')), 250);
+      options.signal.addEventListener('abort', () => {
+        clearTimeout(keepAlive);
+        reject(options.signal.reason);
+      }, { once: true });
+    });
+  }, 10);
+  await api.session();
+  const body = { mode: 'protected-live', input_id: runId, budget: 1, idempotency_key: 'one-paid-run' };
+  await assert.rejects(() => api.start(body), /не ответил вовремя/);
+  assert.deepEqual(calls, [body]);
+  assert.equal((await api.start(body)).run_id, runId);
+  assert.deepEqual(calls, [body, body]);
+});
+
+test('selected pair uses a same-origin read and encodes vacancy IDs as values', async () => {
+  const calls = [];
+  const api = createRunApi(async (path, options) => {
+    calls.push([path, options]);
+    return json({ revision: 1, comparison: {} });
+  });
+  assert.equal((await api.comparison(runId, 'a&b=x', 'other')).revision, 1);
+  assert.equal(calls[0][0], '/api/runs/' + runId + '/report?a=a%26b%3Dx&b=other');
+  assert.equal(calls[0][1].method, 'GET');
+});

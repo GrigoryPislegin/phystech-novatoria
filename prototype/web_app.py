@@ -6,12 +6,12 @@ import re
 import secrets
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from .local_service import LocalService
 from .run_store import StoreError
 
-MAX_BODY = 28_000_000
+MAX_BODY = 25_000_000
 MAX_REPORT = 16_000_000
 STATIC = Path(__file__).with_name('static')
 RUN = re.compile(r'/api/runs/([0-9a-f]{32})(?:/(report|cancel|review))?\Z')
@@ -86,7 +86,7 @@ class Handler(BaseHTTPRequestHandler):
             raise StoreError('origin_rejected')
         if mutate:
             tokens = self.headers.get_all('X-CSRF-Token', [])
-            if len(tokens) != 1 or not hmac.compare_digest(tokens[0], self.server.session_token):
+            if len(tokens) != 1 or not tokens[0].isascii() or not hmac.compare_digest(tokens[0], self.server.session_token):
                 raise StoreError('csrf_rejected')
 
     def _body(self):
@@ -95,13 +95,18 @@ class Handler(BaseHTTPRequestHandler):
             raise StoreError('invalid_request')
         if self.headers.get_content_type() != 'application/json':
             raise StoreError('invalid_content_type')
-        try:
-            size = int(lengths[0])
-        except ValueError:
-            raise StoreError('invalid_request') from None
-        if not 0 <= size <= MAX_BODY:
+        if not re.fullmatch(r'[0-9]+', lengths[0]):
+            raise StoreError('invalid_request')
+        digits = lengths[0].lstrip('0')
+        if len(digits) > len(str(MAX_BODY)):
             raise StoreError('input_too_large')
-        raw = self.rfile.read(size)
+        size = int(digits or '0')
+        if size > MAX_BODY:
+            raise StoreError('input_too_large')
+        try:
+            raw = self.rfile.read(size)
+        except TimeoutError:
+            raise StoreError('request_timeout') from None
         if len(raw) != size:
             raise StoreError('invalid_request')
         try:
@@ -111,13 +116,14 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(body, dict):
                 raise ValueError()
             return body
-        except (ValueError, UnicodeError):
+        except (ValueError, UnicodeError, RecursionError):
             raise StoreError('invalid_request') from None
 
     def _dispatch(self, mutate=False):
         try:
             self._guard(mutate)
-            path = urlsplit(self.path).path
+            route = urlsplit(self.path)
+            path = route.path
             service = self.server.service
             if self.command == 'GET':
                 if path == '/api/session':
@@ -128,7 +134,16 @@ class Handler(BaseHTTPRequestHandler):
                 if match:
                     rid, operation = match.groups()
                     if operation == 'report':
-                        return self._send(200, service.store.report(rid))
+                        if not route.query:
+                            return self._send(200, service.store.report(rid))
+                        # The report resource also serves a projection for one selected pair.
+                        try:
+                            args = parse_qs(route.query, strict_parsing=True, max_num_fields=2)
+                            if args.keys() != {'a', 'b'} or any(len(v) != 1 or len(v[0]) > 128 for v in args.values()):
+                                raise ValueError()
+                        except ValueError:
+                            raise StoreError('invalid_request') from None
+                        return self._send(200, service.store.comparison(rid, args['a'][0], args['b'][0]))
                     if operation is None:
                         return self._send(200, service.store.get(rid))
                 name = 'index.html' if path == '/' else path.removeprefix('/')
@@ -160,8 +175,9 @@ class Handler(BaseHTTPRequestHandler):
             status = 404 if code in {'not_found','unknown_job','input_not_found'} else (
                 403 if code in {'origin_rejected','csrf_rejected','live_disabled'} else (
                 413 if code in {'input_too_large','record_too_large'} else (
+                408 if code == 'request_timeout' else (
                 409 if code in {'busy','stale_revision','idempotency_conflict','action_not_allowed','run_active',
-                                'report_unavailable','invalid_transition'} else 400)))
+                                'report_unavailable','comparison_unavailable','invalid_transition'} else 400))))
             self._send(status, {'error':code})
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True

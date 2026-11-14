@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; connect-src 'self'; base-uri 'none'; form-action 'none'">
   <title>Вакансии · AI-рекрутер</title>
   <link rel="stylesheet" href="report.css">
@@ -40,10 +41,11 @@
       </div>
     </header>
     <p id="file-status" class="file-status" tabindex="-1" role="status" aria-live="polite" hidden></p>
+    <p id="service-status" class="file-status" role="status" aria-live="polite" hidden></p>
 
     <section id="welcome" class="welcome" aria-labelledby="welcome-title">
       <h2 id="welcome-title">Откройте сохранённый отчёт</h2>
-      <p>Выберите <code>report.json</code> из папки запуска. Файл читается на этом устройстве.</p>
+      <p id="welcome-copy">Выберите <code>report.json</code> из папки запуска. Файл читается на этом устройстве.</p>
       <details class="demo-help">
         <summary>Как получить собственный отчёт</summary>
         <p>Запустите синтетический сценарий из корня проекта. Путь к отчёту появится в выводе.</p>
@@ -67,11 +69,14 @@
       </div>
       <p id="inputs-message" class="support" role="status" aria-live="polite"></p>
       <ol id="inspected-files" class="saved-runs"></ol>
-      <button class="button button-primary protected-start" type="button" id="analyze-inputs" hidden>Запустить защищённый анализ</button>
+      <div class="run-actions protected-start">
+        <button class="button button-primary" type="button" id="analyze-mock-inputs" hidden>Запустить локальный Mock SDK</button>
+        <button class="button button-primary" type="button" id="analyze-inputs" hidden>Запустить защищённый анализ · Live</button>
+      </div>
     </section>
     <dialog id="confirm-live" class="confirm-dialog" aria-labelledby="live-dialog-title">
       <h2 id="live-dialog-title">Запустить защищённый анализ?</h2>
-      <p>После локальной защиты текст будет обработан внешней моделью. Лимит этого запуска — 1 доллар США.</p>
+      <p>После локальной защиты текст будет обработан внешней моделью. Лимит этого запуска — 1 доллар США. Уже отправленный запрос может быть оплачен и после отмены.</p>
       <div class="dialog-actions">
         <button type="button" id="dismiss-live" class="button button-secondary" autofocus>Отмена</button>
         <button type="button" id="submit-live" class="button button-primary">Запустить</button>
@@ -181,13 +186,14 @@
 
           <div class="comparison-section" id="comparison-section" hidden>
             <div class="requirements-heading">
-              <h3>Почему такое место</h3>
+              <h3>Сравнение вакансий</h3>
               <label id="comparison-picker" class="comparison-picker" hidden>
                 <span>Сравнить с вакансией</span>
                 <select id="comparison-job"></select>
               </label>
             </div>
-            <p id="comparison-summary" class="support"></p>
+            <div id="comparison-pair" class="comparison-grid"></div>
+            <p id="comparison-summary" class="support" role="status" aria-live="polite"></p>
             <div id="comparison-detail" class="source-list"></div>
           </div>
 
@@ -216,7 +222,7 @@
           </div>
           <div id="review-panel" class="conditions-section" hidden>
             <div class="requirements-heading">
-              <h3>Проверка рекрутером</h3>
+              <h3 id="review-title" tabindex="-1">Проверка рекрутером</h3>
               <div id="review-controls" class="review-controls"></div>
             </div>
             <p id="review-state" class="support"></p>

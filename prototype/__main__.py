@@ -1,12 +1,13 @@
 import argparse
 import asyncio
 import json
+import sys
 from pathlib import Path
 from .demo import demo_inputs, ReplayModel, SyntheticPrivacy
-from .documents import read_document
+from .documents import DocumentReadError, document_diagnostic, read_document
 from .model import Model, RATES
 from .pipeline import RunControl, preflight_output
-from .application import analyze, analyze_protected, load_documents
+from .application import InputDocumentError, analyze, analyze_protected, load_documents
 from .errors import error_code
 from .privacy import local_privacy, protect_dependency_logs
 
@@ -65,6 +66,14 @@ def main():
             from .web_app import serve
             return serve(args)
         return asyncio.run(execute(args))
+    except DocumentReadError as exc:
+        item = {'status':'error', **document_diagnostic(exc)}
+        if isinstance(exc, InputDocumentError):
+            item.update(role='resume' if exc.position == 0 else 'vacancy', index=exc.position or 1)
+        elif args.command == 'inspect':
+            item['file'] = 1
+        print(json.dumps(item, ensure_ascii=False), file=sys.stderr)
+        return 2
     except Exception as exc:
         print(f"Запуск остановлен: {error_code(exc)}. Проверьте входные файлы, зависимости и настройки по prototype/README.md.")
         return 2

@@ -11,7 +11,7 @@
     live_local_privacy: ['Live · Защищённый анализ', 'Ответы модели'],
     live_certum: ['Live · Защищённый анализ', 'Ответы модели']
   };
-  const scenarios = { success: 'Подходящая вакансия', disputed: 'Спорный случай' };
+  const scenarios = { success: 'Подходящая вакансия', disputed: 'Спорный случай', incomplete: 'Неполный запуск' };
   const recommendations = {
     review_top: ['С чего начать', 'Проверьте цитаты по вакансиям на первом месте.'],
     clarify: ['Нужны уточнения', 'Перед выбором вакансии проверьте основания порядка и открытые вопросы в очереди проверки.'],
@@ -402,39 +402,44 @@
       unitIds: job.units.find(unit => unit.includes(row.id)) || [row.id] };
   }
 
-  function readComparisons(input, jobs, policy) {
-    if (!Array.isArray(input)) return [];
-    const [leader] = jobs;
+  function readComparison(item, jobs, policy) {
+    if (!isRecord(item)) return null;
     const byId = new Map(jobs.map(job => [job.id, job]));
+    const a = byId.get(item.job_a);
+    const b = byId.get(item.job_b);
+    if (!a || !b || a === b || (item.policy_version && item.policy_version !== policy)) return null;
+    const outcome = a.rank === b.rank ? 'tie' : a.rank < b.rank ? 'a_higher' : 'b_higher';
+    if (item.outcome !== outcome || !(outcome === 'tie' ? item.reason === 'tie' :
+      ['mandatory_violation', 'lower_bound'].includes(item.reason))) return null;
+    const deciding = Array.isArray(item.deciding) ? item.deciding.slice(0, 3)
+      .map(ref => factorReference(ref, [a, b])).filter(Boolean) : [];
+    const swings = Array.isArray(item.swings) ? item.swings.slice(0, 8).flatMap(swing => {
+      const ref = factorReference(swing?.row, [a, b]);
+      return ref && ['full', 'fail'].includes(swing.assumed_status) &&
+        ['reversed', 'tie', 'breaks_tie'].includes(swing.result)
+        ? [{ ...ref, assumedStatus: swing.assumed_status, result: swing.result,
+          alternative: readAlternative(swing.hypothetical_score, ref.jobId === a.id ? a : b, ref.effect) }] : [];
+    }) : [];
+    const v3 = policy === 'draft-2026-11-14-v3' && jobs.every(job => job.score.policyVersion === policy);
+    const close = v3 && item.close === true && item.reason === 'lower_bound' && outcome !== 'tie' &&
+      [a, b].every(job => job.score.lower > 0 || job.excluded.length || job.disputed.length || job.conflicts.length) &&
+      a.score.resolution !== null && b.score.resolution !== null && Number.isFinite(item.margin) && item.margin >= 0 &&
+      item.margin <= Math.max(a.score.resolution, b.score.resolution) + 0.0001 &&
+      Math.abs(item.margin - Math.abs(a.score.lower - b.score.lower)) < 0.00011;
+    const caveats = Array.isArray(item.caveats) ? item.caveats.filter(value =>
+      ['different_requirement_lists', 'incomplete_run', 'evidence_not_applied'].includes(value) ||
+      (value === 'close_margin' && close)) : [];
+    return { a, b, outcome, reason: item.reason, deciding, swings, caveats: Array.from(new Set(caveats)) };
+  }
 
-    return input.slice(0, 19).flatMap(item => {
-      if (!isRecord(item)) return [];
-      const a = byId.get(item.job_a);
-      const b = byId.get(item.job_b);
-      if (!a || !b || a === b || (a !== leader && b !== leader)) return [];
-      const outcome = a.rank === b.rank ? 'tie' : a.rank < b.rank ? 'a_higher' : 'b_higher';
-      if (item.outcome !== outcome || !(outcome === 'tie' ? item.reason === 'tie' :
-        ['mandatory_violation', 'lower_bound'].includes(item.reason))) return [];
-      const deciding = Array.isArray(item.deciding) ? item.deciding.slice(0, 3)
-        .map(ref => factorReference(ref, [a, b])).filter(Boolean) : [];
-      const swings = Array.isArray(item.swings) ? item.swings.slice(0, 8).flatMap(swing => {
-        const ref = factorReference(swing?.row, [a, b]);
-        return ref && ['full', 'fail'].includes(swing.assumed_status) &&
-          ['reversed', 'tie', 'breaks_tie'].includes(swing.result)
-          ? [{ ...ref, assumedStatus: swing.assumed_status, result: swing.result }] : [];
-      }) : [];
-      const v3 = policy === 'draft-2026-11-14-v3' &&
-        jobs.every(job => job.score.policyVersion === policy);
-      const close = v3 && item.close === true && item.reason === 'lower_bound' && outcome !== 'tie' &&
-        [a, b].every(job => job.score.lower > 0 || job.excluded.length || job.disputed.length || job.conflicts.length) && a.score.resolution !== null && b.score.resolution !== null &&
-        Number.isFinite(item.margin) && item.margin >= 0 &&
-        item.margin <= Math.max(a.score.resolution, b.score.resolution) + 0.0001 &&
-        Math.abs(item.margin - Math.abs(a.score.lower - b.score.lower)) < 0.00011;
-      const caveats = Array.isArray(item.caveats) ? item.caveats.filter(value =>
-        ['different_requirement_lists', 'incomplete_run', 'evidence_not_applied'].includes(value) ||
-        (value === 'close_margin' && close)) : [];
-      return [{ a, b, outcome, reason: item.reason, deciding, swings, caveats: Array.from(new Set(caveats)) }];
-    });
+  function readAlternative(value, job, effect) {
+    if (!isRecord(value) || ![1, 2].includes(value.rank)) return null;
+    try {
+      const score = scoreFrom(value);
+      return Math.abs(score.lower - job.score.lower - effect) < 0.0002 ? { rank: value.rank, score } : null;
+    } catch {
+      return null;
+    }
   }
 
   function readLeader(input, jobs, policy, ranking) {
@@ -570,7 +575,9 @@
 
     const leader = readLeader(report.leader, jobs, report.policy_version, report.ranking);
     return {
-      jobs, comparisons: readComparisons(report.comparisons, jobs, report.policy_version), unprocessed, processed: jobs.length, total,
+      jobs, comparisons: Array.isArray(report.comparisons)
+        ? report.comparisons.slice(0, 19).map(item => readComparison(item, jobs, report.policy_version)).filter(Boolean) : [],
+      policyVersion: report.policy_version, unprocessed, processed: jobs.length, total,
       leader,
       complete: report.ranking.complete, recommendation: report.ranking.recommendation,
       requirementsConfirmed: report.ranking.complete && jobs.every(job => job.requirementsReview === 'confirmed'),
@@ -613,7 +620,8 @@
 
   const api = {
     MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeDashboard, describeRun, describeFit, scoreRange, assessments,
-    mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
+    mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel,
+    readComparison
   };
   if (typeof module === 'object' && module.exports) {
     module.exports = api;

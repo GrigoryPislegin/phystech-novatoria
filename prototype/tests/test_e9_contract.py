@@ -77,8 +77,13 @@ class ShapeTests(unittest.TestCase):
                 self.assertEqual(report['handoff'], [assess_handoff(report, [], j['job_id']).model_dump()
                                                      for j in report['ranking']['jobs']])
                 top = report['ranking']['jobs'][0]['job_id']
-                self.assertEqual(report['comparisons'], [compare(report, top, j['job_id']).model_dump()
-                                                         for j in report['ranking']['jobs'][1:]])
+                comparisons = [compare(report, top, j['job_id']).model_dump() for j in report['ranking']['jobs'][1:]]
+                for stored, current in zip(report['comparisons'], comparisons, strict=True):
+                    # The persisted E9 fixtures predate optional scores for the hypothetical row.
+                    for old_swing, new_swing in zip(stored['swings'], current['swings'], strict=True):
+                        if 'hypothetical_score' not in old_swing:
+                            del new_swing['hypothetical_score']
+                    self.assertEqual(stored, current)
                 scores = {j['job_id']: j['score'] for j in report['ranking']['jobs']}
                 for view in report['presentation']['jobs']:
                     self.assertEqual(view['score'], scores[view['job_id']])
