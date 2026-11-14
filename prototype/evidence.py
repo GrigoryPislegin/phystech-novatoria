@@ -314,7 +314,8 @@ class MandatoryCheck(_Strict):
     context: str | None = None
 
 
-RULES_VERSION = 'evidence-0.5'  # 0.5: Latin terms compared whole, more reservation words, a short quote before a negation
+RULES_VERSION = 'evidence-0.6'  # 0.6: local choices and lists of named terms, a level bound to its language
+_RULES_05 = 'evidence-0.5'  # 0.5: Latin terms compared whole, more reservation words, a short quote before a negation
 _RULES_04 = 'evidence-0.4'  # 0.4: a full claim must cite the named terms of its requirement
 _RULES_03 = 'evidence-0.3'  # 0.3: list layouts under requirement headings, obligation denied by heading or item
 
@@ -388,39 +389,86 @@ def verify_span(span: Span, sources: dict[str, Source]) -> list[Reason]:
 _NAMED = re.compile(r'[A-Za-z][A-Za-z0-9#+]*')
 _LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
 _LEVEL = re.compile(r'(?i)(?<![A-Za-z0-9])[ABC][12](?![A-Za-z0-9])')
-_JOINER = re.compile(r'^\s*(?:,|и|&|\+|,\s*и|а\s+также|and|,\s*and)\s*$', re.IGNORECASE)
-_ALTERNATIVE = re.compile(r'(?i)(?<![а-яёa-z])(?:или|либо|or)(?![а-яёa-z])|/')
+_LANGUAGE = re.compile(r'(?i)(?<![а-яёa-z])(англи|немец|франц|испан|итал|китай|япон|корей|португ|польск|турец|араб|'
+                       r'english|german|french|spanish|italian|chinese|japanese)')
+_CLAUSE = re.compile(r'[,;.\n+]|\s(?:и|а|and)\s')
+_AND = re.compile(r'^\s*(?:,|и|&|\+|,\s*и|а\s+также|and|,\s*and)\s*$', re.IGNORECASE)
+_OR = re.compile(r'^\s*(?:/|или|либо|or|,\s*или|,\s*либо)\s*$', re.IGNORECASE)
+_GLUE = re.compile(r'^[.\-]$')  # «Vue.js», «Next.js», «CI-CD»: parts of one name
+
+
+def _language_levels(text: str) -> list[tuple[str | None, str]]:
+    """(language, level) pairs of a text: a level belongs to the language named in its own clause."""
+    pairs, start = [], 0
+    for cut in [m.start() for m in _CLAUSE.finditer(text)] + [len(text)]:
+        clause = text[start:cut]
+        start = cut
+        language = _LANGUAGE.search(clause)
+        pairs += [(language.group(1).lower() if language else None, level.upper())
+                  for level in _LEVEL.findall(clause)]
+    return pairs
 
 
 def _uncited_parts(requirement_quote: str, cited: str) -> list[str]:
     """Named terms a `full` claim must cite and does not.
 
-    One named term in the requirement: it must be in the cited text («React» is not shown by «Vue»,
-    «B2» is not shown by «B1»). Named terms joined as a list («Python и Go», «Docker, Kubernetes»):
-    every one of them, unless the requirement offers a choice («или», «/»). Otherwise one is enough.
+    Named terms are words in Latin letters. Parts of one name («Vue.js») go together and are cited
+    by the head word. Names
+    separated only by «/», «или», «либо» are a local choice: one of them is enough. Choices and
+    names joined as a list («,», «и», «+», «&») are all required. A name that stands apart from
+    any list is required only when the requirement names nothing else. A language level is met by
+    the same or a higher level of the same language: «немецкий C1» says nothing about «английский B2».
     Only what is written is compared: «k8s» for «Kubernetes» goes to the recruiter, it is not a fail."""
     text = _REFERENCE.sub(' ', requirement_quote)
-    # The same tokens the link check uses, so «Vue.js» is «Vue» + «js» on both sides.
-    found = [m for m in _WORD.finditer(text) if _NAMED.fullmatch(m.group()) and len(m.group()) > 1
-             and _stem(m.group()) not in _GENERIC_STEMS]
-    names = [_stem(m.group()) for m in found]
-    have = _terms(cited)
-    # A language level is met by the same or a higher one: «B2» in the resume covers «не ниже B1».
-    levels = [x.upper() for x in _LEVEL.findall(cited)]
-    def shown(name):
-        if _LEVEL.fullmatch(name):
-            return any(_LEVELS.index(x) >= _LEVELS.index(name.upper()) for x in levels)
-        return _stem(name) in have
-    missing = [m.group() for m in found if not shown(m.group())]
-    if not names or len(missing) < len(names) and _ALTERNATIVE.search(text):
+    tokens = [m for m in _WORD.finditer(text) if _NAMED.fullmatch(m.group()) and len(m.group()) > 1
+              and _stem(m.group()) not in _GENERIC_STEMS]
+    if not tokens:
         return []
-    if len(set(names)) == 1 or len(missing) == len(names):
+    have = _terms(cited)
+    cited_levels = _language_levels(cited)
+    wanted_levels = {level: language for language, level in _language_levels(text)}
+
+    def shown(name: str) -> bool:
+        if _LEVEL.fullmatch(name):
+            language = wanted_levels.get(name.upper())
+            return any(_LEVELS.index(level) >= _LEVELS.index(name.upper())
+                       and (language is None or cited_language in (None, language))
+                       for cited_language, level in cited_levels)
+        return _stem(name) in have
+
+    # names → local choices → the list of what is required
+    names, choices, listed = [[tokens[0]]], [], set()
+    for a, b in zip(tokens, tokens[1:]):
+        if _GLUE.match(text[a.end():b.start()]):
+            names[-1].append(b)
+        else:
+            names.append([b])
+    choices.append([names[0]])
+    for a, b in zip(names, names[1:]):
+        between = text[a[-1].end():b[0].start()]
+        if _OR.match(between):
+            choices[-1].append(b)
+            continue
+        if _AND.match(between):
+            listed |= {len(choices) - 1, len(choices)}
+        choices.append([b])
+
+    def label(name):
+        return text[name[0].start():name[-1].end()]
+
+    def met(choice):  # a name is shown by its head word: «Vue» cites «Vue.js»
+        return any(shown(name[0].group()) for name in choice)
+
+    def level(choice):  # a stated level is always required, listed or not
+        return any(_LEVEL.fullmatch(name[0].group()) for name in choice)
+
+    required = ([c for i, c in enumerate(choices) if i in listed or level(c)]
+                or (choices if len(choices) == 1 else []))
+    missing = [' / '.join(label(n) for n in c) for c in required if not met(c)]
+    if missing or required:
         return missing
-    listed = set()
-    for a, b in zip(found, found[1:]):
-        if _JOINER.match(text[a.end():b.start()]):
-            listed |= {a.group(), b.group()}
-    return [name for name in missing if name in listed]
+    # Several names that form no list: at least one of them must be cited.
+    return [] if any(met(c) for c in choices) else [' / '.join(label(n) for n in c) for c in choices]
 
 
 def _row_shape(row: Row, requirement: Requirement) -> list[Reason]:

@@ -84,6 +84,54 @@ class NamedTermTests(unittest.TestCase):
         self.assertEqual((s['lower'], s['upper'], s['mandatory']), (100, 100, 'confirmed'))
 
 
+class LocalChoiceAndLevelTests(unittest.TestCase):
+    """Review of e93269a: a slash or «или» anywhere must not excuse the whole requirement, and a
+    language level belongs to its language."""
+
+    CASES = [
+        # requirement, cited text, what is not cited
+        ('Frontend: Next.js/React, TypeScript, HTML/CSS.', 'JavaScript HTML CSS. Nuxt Vue.', ['Next.js / React', 'TypeScript']),
+        ('React / Angular и TypeScript.', 'Писал на Angular.', ['TypeScript']),
+        ('TypeScript + Angular.', 'Писал на Angular.', ['TypeScript']),
+        ('HTML/CSS и JS.', 'HTML, CSS.', ['JS']),
+        ('Опыт с Docker, Kubernetes и Kafka.', 'Docker и Kafka.', ['Kubernetes']),
+        ('Опыт Python и Go.', 'Писал на Python 4 года.', ['Go']),
+        ('Английский язык не ниже B2.', 'Немецкий язык — C1, английский — B1.', ['B2']),
+        ('Английский B2, немецкий A2.', 'Английский C1, немецкий A1.', ['A2']),
+        ('Английский B2.', 'Немецкий C1.', ['B2']),
+        # cited in full
+        ('Frontend: Next.js/React, TypeScript, HTML/CSS.', 'React, TypeScript, CSS.', []),
+        ('React / Angular и TypeScript.', 'Angular и TypeScript.', []),
+        ('Next.js/React.', 'React 3 года.', []),
+        ('Опыт Django или FastAPI.', 'Писал сервисы на FastAPI.', []),
+        ('Опыт Python и Go.', 'Писал на Python и Go.', []),
+        ('Опыт Vue.js.', 'Писал на Vue.', []),
+        ('Frontend-разработка на React.', 'Писал на React.', []),
+        ('Английский язык не ниже B2.', 'Английский — C1.', []),
+        ('Английский язык не ниже B1.', 'Английский язык — B2.', []),
+        ('Английский B2.', 'Немецкий C1 + английский B2.', []),
+        ('Уровень B2.', 'C1.', []),  # no language named on either side
+    ]
+
+    def test_what_a_full_claim_must_cite(self):
+        from prototype.evidence import _uncited_parts
+        for requirement, cited, missing in self.CASES:
+            with self.subTest(requirement=requirement, cited=cited):
+                self.assertEqual(_uncited_parts(requirement, cited), missing)
+
+    def test_the_rule_reaches_the_score(self):
+        requirement, cv = 'Frontend: Next.js/React, TypeScript, HTML/CSS.', 'JavaScript HTML CSS. Nuxt Vue.'
+        s, check = run(requirement, cv, cv, 'full')
+        self.assertEqual((check.state, codes(check), s['lower'], s['mandatory']),
+                         ('needs_review', {'requirement_part_not_cited'}, 0, 'clarify'))
+        self.assertIn('TypeScript', check.reasons[0].message)
+        s, check = run('Английский язык не ниже B2.', 'Немецкий язык — C1, английский — B1.',
+                       'Немецкий язык — C1, английский — B1.', 'full')
+        self.assertEqual((check.state, s['lower']), ('needs_review', 0))
+        s, check = run(requirement, 'React, TypeScript, CSS.', 'React, TypeScript, CSS.', 'full')
+        self.assertEqual((check.state, s['lower']), ('structure_ok', 100))
+
+
 class ReleaseReviewTests(unittest.TestCase):
     """Findings of the independent release review of main 8b13b77 that belong to evidence.py."""
 
