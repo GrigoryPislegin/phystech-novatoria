@@ -422,3 +422,105 @@ def explain_leader(report: dict) -> LeaderExplanation | None:
         factors=factors, limits=limits, condition_conflicts=conflicts, can_change=changes,
         challengers=[c['job_id'] for c in leader['challengers']], close_to=leader['close_to'],
         unassessed=leader['unassessed'], summary=text)
+
+
+# ---------- competency axes (E14, policy v3) -----------------------------------------------------
+
+AXES = {  # the order of the radar; 'conditions' and 'other' are requirements outside the axes
+    'stack': 'Инструменты и технологии',
+    'relevant_experience': 'Профильный опыт и стаж',
+    'domain': 'Сфера и предметная область',
+    'education': 'Образование и квалификация',
+    'management': 'Руководство и взаимодействие',
+    'language': 'Языки',
+}
+MIN_AXES, MIN_AXES_WITH_DATA = 4, 3
+
+
+class Axis(StrictModel):
+    axis: str
+    title: str
+    weight: float  # points of the vacancy's 100-point scale: the sum of its requirement units
+    score: float | None  # 0–100 inside the axis by counted evidence; None when nothing is counted
+    upper: float  # 0–100 inside the axis if every open requirement were confirmed
+    coverage: float  # 0–100: the share of the axis weight with counted evidence
+    requirement_ids: list[str]
+    fact_ids: list[str]  # facts of the counted rows; quotes stay behind these ids
+    stop_factor: bool  # a confirmed fail of an applied mandatory requirement is on this axis
+
+
+class CompetencyAxes(StrictModel):
+    policy_version: str
+    job_id: str
+    radar_ready: bool
+    reason: Literal['no_labels', 'too_few_axes', 'too_little_data'] | None
+    axes: list[Axis]
+    outside_weight: float  # weight of requirements labelled 'conditions', 'other' or not labelled
+    summary: str
+
+
+def competency_axes(job: dict, labels: dict[str, str] | None) -> CompetencyAxes | None:
+    """Data for a compact summary and a radar of one vacancy. Pure arithmetic over the job's v3 score.
+
+    `labels` maps requirement ids to a `contracts.Factor` (a model proposal, like the statuses). An
+    axis weight is the sum of the policy weights of its requirement units, so repeats, splitting and
+    optional rows move it exactly as they move the score, and all weights add up to 100. An axis
+    value is counted evidence only; nothing is drawn for an axis without it. With fewer than four
+    axes, or data on fewer than three, `radar_ready` is false and `summary` is the honest short
+    text to show instead. Returns None for a job scored by a policy without units (v1, v2)."""
+    score_ = job['score']
+    if 'units' not in score_:
+        return None
+    rows = {r['requirement_id']: r for r in job['evaluation']['rows']}
+    known = set(rows)
+    labels = labels or {}
+    if not set(labels) <= known:
+        raise ValueError('unknown_requirement_id')
+    if not set(labels.values()) <= set(AXES) | {'conditions', 'other'}:
+        raise ValueError('unknown_axis')
+    value = {'full': 1.0, 'partial': 0.5, 'fail': 0.0}
+    groups: dict[str, list[dict]] = {name: [] for name in AXES}
+    outside = 0.0
+    for unit in score_['units']:
+        weight = sum(score_['weights'][rid] for rid in unit['ids'])
+        axis = next((labels[rid] for rid in unit['ids'] if rid in labels), None)
+        if axis in AXES:
+            groups[axis].append({**unit, 'weight': weight})
+        else:
+            outside += weight
+    axes = []
+    for name, units in groups.items():
+        if not units:
+            continue
+        weight = sum(u['weight'] for u in units)
+        counted = [u for u in units if u['state'] in value]
+        got = sum(u['weight'] * value[u['state']] for u in counted)
+        covered = sum(u['weight'] for u in counted)
+        ids = [rid for u in units for rid in u['ids']]
+        axes.append(Axis(
+            axis=name, title=AXES[name], weight=round(weight, 4),
+            score=round(100 * got / covered, 2) if covered else None,
+            upper=round(100 * (got + weight - covered) / weight, 2), coverage=round(100 * covered / weight, 2),
+            requirement_ids=ids,
+            fact_ids=sorted({f for u in counted for rid in u['ids'] for f in rows[rid]['fact_ids']}),
+            stop_factor=any(u['group'] == 'core' and u['state'] == 'fail' for u in units)))
+    with_data = [a for a in axes if a.coverage > 0]
+    reason = ('no_labels' if not labels else 'too_few_axes' if len(axes) < MIN_AXES
+              else 'too_little_data' if len(with_data) < MIN_AXES_WITH_DATA else None)
+    shares = score_['shares']
+    text = (f"Подтверждено {shares['confirmed']} п. из 100, предложено моделью и ждёт сверки {shares['disputed']} п., "
+            f"нет сведений по {shares['unknown']} п.")
+    if score_['breakdown']['stop_factors']:
+        text += ' Есть подтверждённое несоответствие обязательному требованию.'
+    if reason == 'no_labels':
+        text += ' Группы компетенций для требований не заданы: диаграмма не строится.'
+    elif reason == 'too_few_axes':
+        text += f' Требования относятся к {len(axes)} группам компетенций; для диаграммы нужно не меньше {MIN_AXES}.'
+    elif reason == 'too_little_data':
+        text += (f' Засчитанные данные есть по {len(with_data)} группам из {len(axes)}; '
+                 'диаграмма показала бы пустые оси.')
+    else:
+        best = max(with_data, key=lambda a: (a.score, a.weight))
+        text += f' Сильнее всего: {best.title.lower()} ({best.score}% при покрытии {best.coverage}%).'
+    return CompetencyAxes(policy_version=score_['policy_version'], job_id=job['job_id'], radar_ready=reason is None,
+                          reason=reason, axes=axes, outside_weight=round(outside, 4), summary=text)

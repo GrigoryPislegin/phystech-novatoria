@@ -37,7 +37,10 @@ class Requirements(StrictModel):
                     raise ValueError('unbound_mandatory_quote')
 
 
-Factor = Literal['stack', 'relevant_experience', 'domain', 'conditions', 'other']
+# 'education', 'management' and 'language' were added for the competency axes (E14); 'conditions' and
+# 'other' are never axes. Additive: earlier values keep their meaning.
+Factor = Literal['stack', 'relevant_experience', 'domain', 'education', 'management', 'language', 'conditions',
+                 'other']
 
 
 class RequirementFactor(StrictModel):
