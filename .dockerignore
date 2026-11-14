@@ -9,6 +9,7 @@ prototype/**
 !prototype/demo.py
 !prototype/documents.py
 !prototype/model.py
+!prototype/model_references.py
 !prototype/pipeline.py
 !prototype/privacy.py
 !prototype/scoring.py

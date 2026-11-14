@@ -155,7 +155,7 @@ class RealPrivacyBoundaryTests(FailureMixin, unittest.TestCase):
         self.assertEqual(processed, 0)
         self.assertEqual(stopped[0], 'facts')
         self.assertEqual(stopped[1], 'privacy_untrusted_reference')
-        self.assertEqual(replay.requests, [('facts', None)])
+        self.assertEqual(replay.requests, [('facts', None), ('facts', None)])
 
     def test_professional_terms_in_free_text_and_in_quotes(self):
         """Expected: 3 of 3. A tool name the model repeats in free text, or cites as a short quote, is

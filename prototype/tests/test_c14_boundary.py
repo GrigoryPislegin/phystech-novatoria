@@ -183,7 +183,8 @@ class C14BoundaryTests(unittest.TestCase):
             report, requests, _, _ = self.run_fixture(mutate, '\nФИО: zqxprivate')
             self.assertEqual(report['ranking']['jobs'], [])
             self.assertEqual(report['errors'][0]['code'], error)
-            self.assertEqual([r['task'] for r in requests], ['facts','requirements'])
+            self.assertEqual([r['task'] for r in requests], ['facts','requirements'] +
+                             (['requirements'] if error == 'privacy_untrusted_reference' else []))
 
     def test_optional_labels_do_not_hide_forged_or_private_core_ids(self):
         for core_id in (False, True):
@@ -316,7 +317,7 @@ class C14BoundaryTests(unittest.TestCase):
         self.assertEqual(len(requests), 8)
         self.assertNotIn('Несуществующая', json.dumps(requests, ensure_ascii=False))
 
-    def test_retry_respects_budget_and_foreign_refs_never_trigger_it(self):
+    def test_retry_respects_budget_and_foreign_refs_are_retried_but_never_accepted(self):
         def invalid_quote(task, payload, value):
             if task == 'facts':
                 value['items'][0]['quote'] = 'Несуществующая цитата об опыте.'
@@ -328,7 +329,7 @@ class C14BoundaryTests(unittest.TestCase):
                 value['items'][0]['text'] = '[[PRIV:deadbeefdeadbeef:1:ORG]]'
         report, requests, _, _ = self.run_fixture(foreign_prose)
         self.assertEqual(report['errors'][0]['code'], 'privacy_untrusted_reference')
-        self.assertEqual(len(requests), 1)
+        self.assertEqual(len(requests), 2)
 
     def test_prose_recovery_does_not_repair_a_missing_required_question(self):
         for question in (None, '   '):
@@ -419,7 +420,47 @@ class C14BoundaryTests(unittest.TestCase):
             report, requests, _, _ = self.run_fixture(mutate)
             self.assertEqual(report['errors'][0]['code'], code)
             self.assertEqual(report['ranking']['jobs'], [])
-            self.assertEqual(len(requests), 1 if code == 'privacy_untrusted_reference' else 2)
+            self.assertEqual(len(requests), 2)
+
+    def test_damaged_reference_response_recovers_full_pipeline(self):
+        attempts = []
+        def mutate(task, payload, value):
+            if task == 'facts':
+                attempts.append(True)
+                if len(attempts) == 1:
+                    value['items'][0]['quote'] = '[[PRIV:deadbeefdeadbeef:1:ORG]]'
+        report, requests, _, _ = self.run_fixture(mutate, '\nФИО: zqxprivate')
+        self.assertTrue(report['ranking']['complete'], report['errors'])
+        self.assertEqual(len(requests), 8)
+        self.assertEqual(len(attempts), 2)
+        self.assertNotIn('PRIV:', json.dumps(requests))
+        self.assertNotIn('zqxprivate', json.dumps(requests))
+
+    def test_short_wire_alias_restores_fact_and_profile_with_real_ner_and_sdk(self):
+        async def run():
+            privacy = LocalPrivacy(self.detector)
+            def mutate(task, payload, value):
+                import re
+                alias = re.search(r'\[\[REF_\d+\]\]', payload['text'])[0]
+                value['items'].append({'id':'f3', 'text':alias, 'quote':alias})
+                value['profile']['summary'].append({'text':alias, 'sources':[{'fact_id':'f3','quote':alias}]})
+            model = FixtureSDK(privacy, mutate)
+            try:
+                source = await privacy.redact(demo_inputs()[0] + '\nФИО: zqxprivate')
+                self.assertIn('[[PRIV:', source)
+                value = await model.ask(ResumeAnalysis, 'facts', {'text':source})
+                restored = value.items[-1].quote
+                self.assertTrue(restored.startswith('[[PRIV:'))
+                self.assertIn(restored, source)
+                self.assertEqual(value.profile.summary[-1].sources[0].quote, restored)
+                self.assertNotIn('REF_', json.dumps(value.model_dump()))
+                self.assertNotIn('PRIV:', json.dumps(model.requests))
+                self.assertNotIn('zqxprivate', json.dumps(model.requests))
+                self.assertEqual(len(model.requests), 1)
+            finally:
+                await model.close()
+                privacy.close()
+        asyncio.run(run())
 
     def test_hidden_value_cannot_be_restored_even_if_context_now_misses_it(self):
         async def run():

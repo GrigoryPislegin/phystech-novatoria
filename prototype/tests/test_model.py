@@ -23,6 +23,81 @@ class ModelBoundaryTests(unittest.TestCase):
         model.client.responses.parse.assert_not_called()
         self.assertEqual(model.budget.calls, 0)
 
+    def test_outbound_untrusted_reference_is_not_retried(self):
+        model = self.model(AsyncMock(side_effect=RuntimeError('privacy_untrusted_reference')))
+        with self.assertRaisesRegex(RuntimeError, 'privacy_untrusted_reference'):
+            asyncio.run(model.ask(Facts, 'facts', {'text':'[[PRIV:bad]]'}))
+        model.client.responses.parse.assert_not_called()
+        self.assertEqual(model.privacy.check.await_count, 1)
+
+    def test_short_references_roundtrip_nested_quotes_and_preserve_literal_aliases(self):
+        from prototype.model_references import ModelReferences
+        first, second = '[[PRIV:0123456789abcdef:1:PERSON]]', '[[PRIV:0123456789abcdef:2:ORG]]'
+        source = {'text':f'[[REF_1]] {first} {second} {first}',
+                  'facts':{'items':[{'quote':second}]}}
+        references = ModelReferences(source)
+        wire = references.encode(source)
+        self.assertNotIn('PRIV:', json.dumps(wire))
+        self.assertNotEqual(references.prefix, 'REF_')
+        self.assertLessEqual(len(references.prefix), 12)
+        self.assertEqual(wire['text'], f'[[REF_1]] [[{references.prefix}1]] [[{references.prefix}2]] [[{references.prefix}1]]')
+        self.assertEqual(references.decode(wire), source)
+
+    def test_adversarial_literal_namespace_keeps_aliases_short(self):
+        from prototype.model_references import ModelReferences
+        value = {'text':'X' * 59990 + 'REF_ [[PRIV:0123456789abcdef:1:ORG]]'}
+        references = ModelReferences(value)
+        self.assertLessEqual(len(references.prefix), 12)
+        self.assertEqual(references.decode(references.encode(value)), value)
+
+    def test_damaged_alias_in_free_text_cannot_survive_valid_quote(self):
+        for marker in ('[[REF-1]]', '[[REF 1]]', '［［ＲＥＦ＿１］］'):
+            model = self.model(AsyncMock())
+            model.client.responses.parse.return_value.output_parsed = Facts(
+                items=[{'id':'f1','text':marker,'quote':'Работал в [[REF_1]].'}])
+            with self.assertRaisesRegex(ValueError, 'model_invalid'):
+                asyncio.run(model.ask(Facts, 'facts', {'text':'Работал в [[PRIV:0123456789abcdef:42:ORG]].'}))
+            self.assertEqual(model.client.responses.parse.await_count, 2)
+
+    def test_response_aliases_expand_before_source_and_privacy_checks(self):
+        reference = '[[PRIV:0123456789abcdef:42:ORG]]'
+        source = f'Работал в {reference}.'
+        model = self.model(AsyncMock())
+        model.client.responses.parse.return_value.output_parsed = Facts(
+            items=[{'id':'f1','text':'[[REF_1]]','quote':'Работал в [[REF_1]].'}])
+        result = asyncio.run(model.ask(Facts, 'facts', {'text':source}))
+        self.assertEqual(result.items[0].quote, source)
+        self.assertEqual(result.items[0].text, reference)
+        request = model.client.responses.parse.call_args.kwargs['input'][1]['content']
+        self.assertNotIn('PRIV:', request)
+        self.assertIn('[[REF_1]]', request)
+        self.assertIn(reference, model.privacy.check.call_args.args[0])
+        self.assertNotIn('REF_', model.privacy.check.call_args.args[0])
+
+    def test_damaged_alias_retries_without_echoing_rejected_answer(self):
+        for bad_alias in ('[[REF_999]]', '[[REF_1]', '[[ref_1]]'):
+            model = self.model(AsyncMock())
+            responses = [Facts(items=[{'id':'f1','text':alias, 'quote':f'Работал в {alias}.'}])
+                         for alias in (bad_alias, '[[REF_1]]')]
+            model.client.responses.parse.side_effect = [
+                SimpleNamespace(status='completed', output_parsed=value, usage=None) for value in responses]
+            source = 'Работал в [[PRIV:0123456789abcdef:42:ORG]].'
+            result = asyncio.run(model.ask(Facts, 'facts', {'text':source}))
+            self.assertEqual(result.items[0].quote, source)
+            self.assertEqual(model.budget.calls, 2)
+            calls = model.client.responses.parse.call_args_list
+            self.assertEqual(calls[0].kwargs['input'][1], calls[1].kwargs['input'][1])
+
+    def test_unknown_alias_is_never_accepted_and_retry_obeys_budget(self):
+        for max_calls, error in ((2, 'model_invalid'), (1, 'budget_or_call_limit')):
+            model = self.model(AsyncMock())
+            model.budget.max_calls = max_calls
+            model.client.responses.parse.return_value.output_parsed = Facts(
+                items=[{'id':'f1','text':'[[REF_999]]','quote':'[[REF_999]]'}])
+            with self.assertRaisesRegex(ValueError, error):
+                asyncio.run(model.ask(Facts, 'facts', {'text':'[[PRIV:0123456789abcdef:42:ORG]]'}))
+            self.assertEqual(model.client.responses.parse.await_count, max_calls)
+
     def test_budget_block_prevents_sdk_request(self):
         model = self.model(AsyncMock())
         model.budget = Budget(model.model, 0.000001)

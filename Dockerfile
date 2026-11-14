@@ -21,6 +21,7 @@ RUN python -c "from prototype.privacy_core.models import load; load('/opt/privac
 FROM models-${PRIVACY_MODEL_SOURCE} AS final
 COPY prototype/__main__.py prototype/contracts.py prototype/demo.py prototype/documents.py prototype/model.py prototype/pipeline.py prototype/privacy.py prototype/scoring.py prototype/application.py prototype/errors.py prototype/presentation.py prototype/evidence.py prototype/requirements_review.py /app/prototype/
 COPY prototype/analysis_contracts.py prototype/candidate_profile.py prototype/ranking_explanation.py prototype/review_queue.py prototype/review_policy.py prototype/run_store.py prototype/local_service.py prototype/web_app.py /app/prototype/
+COPY prototype/model_references.py /app/prototype/
 COPY prototype/static /app/prototype/static
 COPY scripts/privacy_smoke.py /app/scripts/privacy_smoke.py
 COPY scripts/check_cli_replays.py /app/scripts/check_cli_replays.py

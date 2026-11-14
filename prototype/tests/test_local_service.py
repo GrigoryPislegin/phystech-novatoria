@@ -245,7 +245,12 @@ class LocalServiceTests(unittest.TestCase):
             aliases = self.service.store.display_data(rid)['aliases']
             facts_input = outgoing[0]['text']
             refs = {value:ref for ref,value in aliases.items()}
-            self.assertLess(facts_input.index(refs[contacts[0]]), facts_input.index(refs[contacts[1]]))
+            source = self.service.store._read(rid)['sources']['resume']
+            from prototype.model_references import ModelReferences
+            wire_refs = ModelReferences({'text':source}).aliases
+            self.assertNotIn('PRIV:', facts_input)
+            self.assertLess(facts_input.index(wire_refs[refs[contacts[0]]]),
+                            facts_input.index(wire_refs[refs[contacts[1]]]))
             self.assertTrue(privacy_sessions[0].closed)
             self.assertEqual(privacy_sessions[0]._display_aliases, {})
             jid = report['ranking']['jobs'][0]['job_id']

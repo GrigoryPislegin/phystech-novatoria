@@ -46,7 +46,7 @@ def real_privacy_available() -> bool:
     return True
 
 
-REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
+REFERENCE = re.compile(r'\[\[(?:PRIV:[a-f0-9]{16}:\d+:[A-Z]+|REF(?:[a-f0-9]{8})?_\d+)\]\]')
 
 
 class Projector:
@@ -126,7 +126,12 @@ class Replay:
             else:  # condition quotes: the CV side comes from the CV, the vacancy side from the vacancy
                 for item in answer['conditions']['items']:
                     if item.get('cv'):
-                        item['cv']['quote'] = self.cv_projector.quote(item['cv']['quote'])
+                        # Wire aliases are local to this evaluation request;
+                        # the facts request can have a different numbering.
+                        fact_id = item['cv']['fact_id']
+                        original = next(f['quote'] for f in model['facts']['items'] if f['id'] == fact_id)
+                        processed = next(f['quote'] for f in data['facts']['items'] if f['id'] == fact_id)
+                        item['cv']['quote'] = Projector(original, processed).quote(item['cv']['quote'])
                     if item.get('vacancy_quote'):
                         item['vacancy_quote'] = projector.quote(item['vacancy_quote'])
             fault = self.faults.get('job', {}).get(job_id) if task == 'evaluation' else None
