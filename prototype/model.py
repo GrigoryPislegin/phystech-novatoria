@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from decimal import Decimal
 from .documents import MAX_JOBS
 from .privacy import check_data, protect_dependency_logs
@@ -93,6 +94,60 @@ def _evidence_only_response(value, payload):
     return value
 
 
+def _restore_source_quote_whitespace(value, payload):
+    """Restore a unique exact source span, changing whitespace only.
+
+    Used after response privacy validation. No words, punctuation, identifiers
+    or references are repaired. Ambiguous matches keep their original value
+    and remain subject to the unchanged source/evidence validation.
+    """
+    from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
+    from .contracts import Facts, Requirements
+    result, count = value.model_copy(deep=True), 0
+
+    def restore(quote, source):
+        nonlocal count
+        if quote is None or not quote.strip() or quote in source:
+            return quote
+        # Lookahead includes overlapping matches in the ambiguity check.
+        pattern = re.compile('(?=(' + r'\s+'.join(re.escape(part) for part in quote.strip().split()) + '))')
+        matches = pattern.finditer(source)
+        first = next(matches, None)
+        if first is None or next(matches, None) is not None:
+            return quote
+        count += 1
+        return first.group(1)
+
+    def citation(item, facts):
+        if item is not None and item.fact_id in facts:
+            item.quote = restore(item.quote, facts[item.fact_id])
+
+    if isinstance(result, (Facts, Requirements)):
+        source = payload['text']
+        for item in result.items:
+            item.quote = restore(item.quote, source)
+            if isinstance(result, Requirements):
+                item.mandatory_quote = restore(item.mandatory_quote, source)
+    if isinstance(result, ResumeAnalysis):
+        facts = {item.id:item.quote for item in result.items}
+        profile = result.profile
+        claims = [*profile.summary, *profile.stack]
+        if profile.last_position:
+            claims += [profile.last_position.role, profile.last_position.domain, profile.last_position.period]
+        for achievement in profile.achievements:
+            claims += [achievement.action, achievement.result]
+        for claim in claims:
+            if claim is not None:
+                for item in claim.sources:
+                    citation(item, facts)
+    elif isinstance(result, VacancyAnalysis):
+        facts = {item['id']:item['quote'] for item in payload['facts']['items']}
+        for condition in result.conditions.items:
+            citation(condition.cv, facts)
+            condition.vacancy_quote = restore(condition.vacancy_quote, payload['vacancy_text'])
+    return result, count
+
+
 class Budget:
     # One facts request and two per vacancy, each with at most one repair.
     def __init__(self, model, limit=1.0, max_calls=2 * (1 + 2 * MAX_JOBS)):
@@ -135,6 +190,7 @@ class Model:
         for attempt in range(2):
             try:
                 result = await self._ask_once(schema, task, payload, repair=bool(attempt))
+                result, restored = _restore_source_quote_whitespace(result, payload)
                 try:
                     if isinstance(result, RequirementsAnalysis):
                         result = result.without_unverified_mandatory(payload['text'])
@@ -145,11 +201,16 @@ class Model:
                                       Facts.model_validate(payload['facts']), result)
                 except ValueError:
                     raise ModelOutputError('model_invalid') from None
-                if isinstance(result, RequirementsAnalysis) and result._contract_warnings:
+                warnings = isinstance(result, RequirementsAnalysis) and result._contract_warnings
+                if restored or warnings:
                     await check_data(self.privacy, result.model_dump(mode='json'),
                                      prepared=True, stage=task, direction='response')
                     if not hasattr(self, 'response_normalizations'):
                         self.response_normalizations = []
+                if restored:
+                    self.response_normalizations.append({'stage':task, 'action':'source_quote_whitespace_restored',
+                                                         'count':restored})
+                if warnings:
                     self.response_normalizations.append({'stage':task, 'action':'unverified_mandatory_removed',
                                                          'count':len(result._contract_warnings)})
                 return result

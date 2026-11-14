@@ -61,6 +61,28 @@ class C14BoundaryTests(unittest.TestCase):
                 privacy.close()
         return asyncio.run(run())
 
+    def test_whitespace_only_quotes_complete_three_jobs_with_seven_sdk_calls(self):
+        async def run():
+            privacy = LocalPrivacy(self.detector)
+            model = FixtureSDK(privacy, lambda *_:None)
+            resume, jobs = demo_inputs()
+            resume = resume.replace('Python 3', 'Python\t3')
+            jobs = [(jid, text.replace('Python обязателен', 'Python  обязателен')) for jid,text in jobs]
+            try:
+                report = await run_pipeline(resume, jobs, model, privacy)
+                self.assertEqual(report['errors'], [])
+                self.assertTrue(report['ranking']['complete'])
+                self.assertEqual(len(model.requests), 7)
+                self.assertEqual(report['facts']['items'][0]['quote'], 'Разрабатывал на Python\t3 года.')
+                self.assertEqual(report['profile']['state'], 'structure_ok')
+                first = next(job for job in report['ranking']['jobs'] if job['job_id'] == 'job-001')
+                self.assertEqual(first['requirements']['items'][0]['quote'], 'Python  обязателен.')
+                self.assertEqual(first['requirements']['items'][0]['mandatory_quote'], 'Python  обязателен.')
+            finally:
+                await model.close()
+                privacy.close()
+        asyncio.run(run())
+
     def test_hidden_company_equal_to_category_drops_only_optional_labels(self):
         def mutate(task, payload, value):
             if task == 'requirements':
