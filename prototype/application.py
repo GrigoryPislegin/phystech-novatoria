@@ -6,20 +6,29 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
-from .documents import read_document
+from .documents import DocumentReadError, MAX_BYTES, read_document
 from .pipeline import RunControl, preflight_output, run_pipeline, write_report, refresh_derived
 from .privacy import protect_dependency_logs
 
 
-def _input_file(path):
-    if path.is_symlink():
-        raise ValueError('input_symlink')
-    if not path.is_file():
-        raise ValueError('input_invalid')
-    if path.suffix.lower() not in {'.txt', '.md', '.pdf', '.docx'}:
-        raise ValueError('input_unsupported')
-    if path.stat().st_size > 5_000_000:
-        raise ValueError('input_too_large')
+class InputDocumentError(DocumentReadError):
+    def __init__(self, code, position):
+        super().__init__(code)
+        self.position = position
+
+
+def _input_file(path, position):
+    try:
+        if path.is_symlink():
+            raise InputDocumentError('input_symlink', position)
+        if not path.is_file():
+            raise InputDocumentError('input_invalid', position)
+        if path.suffix.lower() not in {'.txt', '.md', '.pdf', '.docx'}:
+            raise InputDocumentError('input_unsupported', position)
+        if path.stat().st_size > MAX_BYTES:
+            raise InputDocumentError('input_too_large', position)
+    except OSError:
+        raise InputDocumentError('input_access_denied', position) from None
 
 
 def load_documents(resume_path, jobs_root, *, reader=read_document, control=None):
@@ -39,17 +48,24 @@ def load_documents(resume_path, jobs_root, *, reader=read_document, control=None
             raise ValueError('invalid_job_set')
     if not files:
         raise ValueError('invalid_job_set')
-    for path in [resume_path, *files]:
-        _input_file(path)
+    files.sort()
+    for position, path in enumerate([resume_path, *files]):
+        _input_file(path, position)
     if control:
         control.emit('parsing')
         control.checkpoint()
-    resume = reader(resume_path)
+    def read(path, position):
+        try:
+            return reader(path)
+        except DocumentReadError as error:
+            raise InputDocumentError(error.code, position) from None
+
+    resume = read(resume_path, 0)
     jobs, entries, counts = [], [], {}
-    for path in sorted(files):
+    for position, path in enumerate(files, 1):
         if control:
             control.checkpoint()
-        text = reader(path)
+        text = read(path, position)
         digest = hashlib.sha256(text.encode()).hexdigest()
         counts[digest] = counts.get(digest, 0) + 1
         job_id = 'job-' + digest[:24] + '-' + str(counts[digest])

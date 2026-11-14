@@ -1,5 +1,7 @@
 import asyncio
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -39,6 +41,30 @@ class RuntimeSafetyTests(unittest.TestCase):
             with patch('prototype.__main__.read_document', side_effect=AssertionError('parsed before preflight')):
                 with self.assertRaisesRegex(ValueError, 'input_symlink'):
                     asyncio.run(execute(args))
+
+    def test_cli_identifies_the_rejected_file_without_its_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cv = root / 'sample.txt'
+            cv.write_text('Вымышленный опыт.', encoding='utf-8')
+            jobs = root / 'jobs'
+            jobs.mkdir()
+            (jobs / '01.txt').write_text('Синтетическая вакансия.', encoding='utf-8')
+            rejected = jobs / '02-SYNTHETIC_PRIVATE.pdf'
+            rejected.write_bytes(b'invalid synthetic PDF')
+
+            cases = [(['inspect', str(rejected)], {'file':1}),
+                     (['run', '--resume', str(cv), '--jobs', str(jobs), '--out', str(root / 'out')],
+                      {'role':'vacancy', 'index':2})]
+            for args, location in cases:
+                with self.subTest(command=args[0]):
+                    child = subprocess.run([sys.executable, '-m', 'prototype', *args], capture_output=True, text=True)
+                    self.assertEqual(child.returncode, 2)
+                    self.assertNotIn('SYNTHETIC_PRIVATE', child.stdout + child.stderr)
+                    error = json.loads(child.stderr)
+                    self.assertEqual(error['code'], 'document_unreadable')
+                    self.assertTrue(error['reason'] and error['action'])
+                    self.assertEqual({key:error[key] for key in location}, location)
 
     def test_bad_output_prevents_model_initialization(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -21,7 +21,9 @@
   const vacanciesInput = byId('vacancies-input');
   const inspectInputs = byId('inspect-inputs');
   const analyzeInputs = byId('analyze-inputs');
+  const analyzeMock = byId('analyze-mock-inputs');
   const liveDialog = byId('confirm-live');
+  const uploadMock = 'synthetic-upload-mock';
   const knownModes = {
     'synthetic-replay': 'Синтетический replay',
     'synthetic-protected-mock': 'Защищённый Mock SDK'
@@ -44,9 +46,17 @@
   const known = (options, value, fallback) => typeof value === 'string' && Object.hasOwn(options, value)
     ? options[value] : fallback;
   const stages = {
-    parsing: 'Чтение документов', validating_inputs: 'Проверка входных данных',
+    starting: 'Подготовка запуска', parsing: 'Чтение документов', validating_inputs: 'Проверка входных данных',
+    privacy_startup: 'Подготовка локальной защиты', privacy: 'Локальная защита текста',
     facts: 'Извлечение фактов', requirements: 'Чтение требований',
-    evaluation: 'Сопоставление требований', analysis_finished: 'Подготовка отчёта', export: 'Сохранение отчёта'
+    evaluation: 'Сопоставление требований', job_finished: 'Вакансия обработана',
+    analysis_finished: 'Подготовка отчёта', export: 'Сохранение отчёта'
+  };
+  const runErrors = {
+    privacy_models_missing_or_invalid: 'Проверьте установку локальных весов NER.',
+    openai_key_missing: 'Внешний анализ требует настройки сервера.',
+    budget_limit: 'Достигнут лимит бюджета.', deadline_exceeded: 'Время обработки истекло.',
+    interrupted: 'Сервер перезапустился во время обработки.'
   };
   const dateFormat = new Intl.DateTimeFormat('ru', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -54,19 +64,32 @@
   let pendingStart = null;
   let inputLimits;
   let liveAvailable = false;
+  let mockAvailable = false;
   let inspected = null;
   let inputBusy = false;
   let inputSequence = 0;
   let startBusy = false;
   let listSequence = 0;
   let activeTimer;
+  let activeRunsSeen = false;
   let removalBusy = false;
   let toRemove = null;
   const rowMutations = new Set();
+  const cancelPending = new Set();
   const deletedRuns = new Set();
+
+  function addressRun(id) {
+    const url = new URL(location.href);
+    if (id) url.searchParams.set('run', id);
+    else url.searchParams.delete('run');
+    history.replaceState(null, '', url);
+  }
+
+  viewer.onOpen(context => addressRun(context?.id));
 
   function message(text, error = false, id = 'runs-message') {
     const node = byId(id);
+    delete node.dataset.listStatus;
     node.classList.toggle('error', error);
     node.textContent = text;
   }
@@ -76,62 +99,57 @@
     if (operations.has('review')) {
       context.decide = (jobId, action, itemId) => saveDecision(context, jobId, action, itemId);
     }
+    if (operations.has('compare')) context.compare = (a, b) => api.comparison(context.id, a, b);
     return context;
   }
 
-  async function openRun(id, revealReport = true) {
+  async function openRun(id, revealReport = true, reviewWarning = null) {
     if (deletedRuns.has(id)) return;
     const sequence = viewer.beginLoad();
-    message('Читаем отчёт запуска…');
+    viewer.status('Читаем отчёт запуска…');
     try {
-      const response = await api.report(id);
-      if (Number(response.headers.get('Content-Length')) > MAX_REPORT_BYTES) throw new Error('Отчёт слишком большой.');
-      const source = await response.text();
-      if (new Blob([source]).size > MAX_REPORT_BYTES) throw new Error('Отчёт слишком большой.');
+      const source = await api.report(id, MAX_REPORT_BYTES);
       const next = parseReport(source);
       if (next.runId !== id || !next.revision) throw new Error('Версия отчёта запуска недоступна.');
       if (deletedRuns.has(id) || !viewer.isLatest(sequence)) return;
       viewer.openServerReport(next, reportContext(next));
       message('Открыт отчёт запуска.');
+      if (reviewWarning) message(reviewWarning, true, 'review-message');
       if (revealReport) {
         setRunCenterOpen(false);
         setInputCenterOpen(false);
         byId('file-status').focus();
       }
     } catch (error) {
-      if (viewer.isLatest(sequence)) message(error.message, true);
+      if (viewer.isLatest(sequence)) viewer.status(error.message, true);
     }
   }
 
   async function saveDecision(context, jobId, action, itemId) {
     if (viewer.getContext() !== context || context.pending || !Object.hasOwn(confirmation, action)) return;
+    const sequence = viewer.loadVersion();
+    const isCurrent = () => viewer.isLatest(sequence) && viewer.getContext() === context;
     const text = confirmation[action];
     context.pending = true;
-    if (text && !await confirmReview(text)) {
-      context.pending = false;
-      return;
-    }
-    if (viewer.getContext() !== context) return;
-    message('Сохраняем решение…', false, 'review-message');
     try {
+      if ((text && !await confirmReview(text)) || !isCurrent()) return;
+      message('Сохраняем решение…', false, 'review-message');
       const decision = { expected_revision: context.revision, job_id: jobId, action, item_id: itemId };
       const key = JSON.stringify(decision);
       if (context.retry?.key !== key) context.retry = { key, id: crypto.randomUUID() };
       const { report } = await api.review(context.id, { ...decision, idempotency_key: context.retry.id });
       const next = parseReport(JSON.stringify(report));
       if (next.runId !== context.id || !next.revision) throw new Error('Версия отчёта запуска недоступна.');
-      if (viewer.getContext() === context) {
+      if (isCurrent()) {
         viewer.openServerReport(next, reportContext(next));
         message('Решение сохранено.', false, 'review-message');
       }
       refreshRuns();
     } catch (error) {
-      if (viewer.getContext() !== context) return;
+      if (!isCurrent()) return;
       if (error.status === 409 && error.code === 'stale_revision') {
-        await openRun(context.id, false);
-        if (viewer.getContext()?.id === context.id) {
-          message('Версия отчёта изменилась. Проверьте текущую запись и повторите действие.', true, 'review-message');
-        }
+        const warning = 'Версия отчёта изменилась. Проверьте текущую запись и повторите действие.';
+        await openRun(context.id, false, warning);
       } else {
         message(error.message, true, 'review-message');
       }
@@ -169,7 +187,8 @@
     status.className = 'support';
     const created = new Date(run.created_at);
     title.textContent = [
-      run.mode === 'protected-live' ? 'Live · Защищённый анализ' : known(knownModes, run.mode, 'Локальный запуск'),
+      run.mode === 'protected-live' ? 'Live · Защищённый анализ' : run.mode === uploadMock
+        ? 'Mock SDK · Загруженная синтетика' : known(knownModes, run.mode, 'Режим не распознан'),
       known(knownScenarios, run.scenario, ''),
       Number.isFinite(created.getTime()) && run.created_at ? dateFormat.format(created) : ''
     ].filter(Boolean).join(' · ');
@@ -179,7 +198,8 @@
     const state = known(states, run.state, 'Состояние недоступно');
     status.textContent = run.state === 'complete' && progress
       ? state + ' ' + progress
-      : [state, stage, progress && 'Обработано ' + progress].filter(Boolean).join(' · ');
+      : [run.cancel_requested && isActive(run) ? 'Ожидается отмена' : state, stage,
+        progress && 'Обработано ' + progress, known(runErrors, run.error, '')].filter(Boolean).join(' · ');
     content.append(title, status);
 
     const actions = document.createElement('div');
@@ -188,19 +208,28 @@
       actions.append(makeButton('Открыть отчёт', () => openRun(run.run_id)));
     }
     if (operations.has('cancel') && isActive(run)) {
-      actions.append(makeButton('Отменить запуск', async () => {
+      const cancellation = run.cancel_requested || cancelPending.has(run.run_id);
+      const cancel = makeButton(cancellation ? 'Отмена запрошена' : 'Отменить запуск', async () => {
         if (rowMutations.has(run.run_id)) return;
         rowMutations.add(run.run_id);
+        cancel.disabled = true;
         try {
-          await api.cancel(run.run_id);
-          message('Запрос на отмену отправлен.');
+          const updated = await api.cancel(run.run_id);
+          if (!isActive(updated)) {
+            message('Обработка уже завершилась. Проверьте состояние запуска.');
+            return;
+          }
+          cancelPending.add(run.run_id);
+          message(run.mode === 'protected-live'
+            ? 'Отмена запрошена. Уже отправленный запрос может быть оплачен.' : 'Отмена запрошена.');
         } catch (error) {
           message(error.message, true);
         } finally {
           rowMutations.delete(run.run_id);
           refreshRuns();
         }
-      }, rowMutations.has(run.run_id)));
+      }, cancellation || rowMutations.has(run.run_id));
+      actions.append(cancel);
     }
     if (operations.has('delete') && Object.hasOwn(states, run.state) && !isActive(run)) {
       actions.append(makeButton('Удалить', () => {
@@ -216,26 +245,57 @@
     if (!operations.has('list') || center.hidden) return;
     const sequence = ++listSequence;
     clearTimeout(activeTimer);
+    const status = byId('runs-message');
+    if (status.textContent === '' || status.dataset.listStatus === 'true') {
+      message('Загружаем список запусков…');
+      status.dataset.listStatus = 'true';
+    }
+    byId('saved-runs').setAttribute('aria-busy', 'true');
     try {
       const result = await api.list();
       if (sequence !== listSequence || center.hidden) return;
       if (!Array.isArray(result?.runs)) throw new Error('Список запусков недоступен.');
       const runs = result.runs.filter(run => isRunId(run?.run_id));
+      byId('saved-runs').removeAttribute('aria-busy');
+      for (const run of runs) if (!isActive(run)) cancelPending.delete(run.run_id);
       const list = byId('saved-runs');
       const focused = document.activeElement;
       const focusedId = focused.closest('li')?.dataset.runId;
       const focusText = focusedId ? focused.textContent : null;
-      list.replaceChildren(...runs.map(renderRun));
+      const existing = new Map(Array.from(list.children, row => [row.dataset.runId, row]));
+      const rows = runs.map(run => {
+        const signature = JSON.stringify([run, rowMutations.has(run.run_id), cancelPending.has(run.run_id)]);
+        const prior = existing.get(run.run_id);
+        if (prior?.dataset.signature === signature) return prior;
+        const row = renderRun(run);
+        row.dataset.signature = signature;
+        return row;
+      });
+      for (const [index, row] of rows.entries()) {
+        if (list.children[index] !== row) list.insertBefore(row, list.children[index] ?? null);
+      }
+      while (list.children.length > rows.length) list.lastElementChild.remove();
       if (focusedId) {
         const row = Array.from(list.children).find(item => item.dataset.runId === focusedId);
         const target = Array.from(row?.querySelectorAll('button') ?? []).find(button => button.textContent === focusText)
           ?? row?.querySelector('button') ?? reload;
         target.focus({ preventScroll: true });
       }
-      if (runs.length === 0 && !startBusy && !rowMutations.size) message('Сохранённых запусков пока нет.');
-      if (runs.some(isActive)) activeTimer = setTimeout(refreshRuns, 1000);
+      if (runs.length === 0 && !startBusy && !rowMutations.size) {
+        message('Сохранённых запусков пока нет.');
+        status.dataset.listStatus = 'true';
+      } else if (status.dataset.listStatus === 'true') {
+        message('');
+      }
+      activeRunsSeen = runs.some(isActive);
+      if (activeRunsSeen) activeTimer = setTimeout(refreshRuns, 1000);
     } catch (error) {
-      if (sequence === listSequence && !center.hidden) message(error.message, true);
+      if (sequence === listSequence && !center.hidden) {
+        byId('saved-runs').removeAttribute('aria-busy');
+        message(error.message, true);
+        status.dataset.listStatus = 'true';
+        if (activeRunsSeen) activeTimer = setTimeout(refreshRuns, 2000);
+      }
     }
   }
 
@@ -255,6 +315,11 @@
     showInputs.setAttribute('aria-expanded', String(open));
   }
 
+  function setUploadBusy(busy) {
+    inputBusy = busy;
+    for (const input of [resumeInput, vacanciesInput, inspectInputs, analyzeInputs, analyzeMock]) input.disabled = busy;
+  }
+
   async function startRun() {
     if (startBusy) return;
     const mode = type.value;
@@ -268,6 +333,7 @@
       const run = await api.start({ mode, scenario: selected, idempotency_key: pendingStart.id });
       if (!isRunId(run?.run_id)) throw new Error('Идентификатор созданного запуска недоступен.');
       pendingStart = null;
+      activeRunsSeen = true;
       message('Запуск создан.');
       refreshRuns();
     } catch (error) {
@@ -305,45 +371,57 @@
     ++inputSequence;
     inspected = null;
     analyzeInputs.hidden = true;
+    analyzeMock.hidden = true;
     byId('inspected-files').replaceChildren();
     message('', false, 'inputs-message');
   }
 
-  function displayInspection(result, count) {
-    if (!Array.isArray(result?.files) || result.files.length !== count ||
-        result.files.some(file => !['resume', 'vacancy'].includes(file?.role) ||
-          !['ok', 'error'].includes(file.status) || !Number.isSafeInteger(file.index) || file.index <= 0)) {
+  function displayInspection(result, files) {
+    if (!Array.isArray(result?.files) || result.files.length !== files.length ||
+        result.files.some((file, index) => file?.role !== (index === 0 ? 'resume' : 'vacancy') ||
+          file.index !== Math.max(index, 1) || !['ok', 'error'].includes(file.status))) {
       throw new Error('Сервер вернул неполную проверку документов.');
     }
     const list = byId('inspected-files');
-    list.replaceChildren(...result.files.map(file => {
+    list.replaceChildren(...result.files.map((file, index) => {
       const row = document.createElement('li');
       row.className = 'saved-run';
       const name = document.createElement('strong');
-      name.textContent = file.role === 'resume' ? 'Резюме' : 'Вакансия ' + file.index;
+      name.textContent = (file.role === 'resume' ? 'Резюме' : 'Вакансия ' + file.index) + ' · ' + files[index].name;
       const details = document.createElement('span');
       details.className = file.status === 'error' ? 'support error' : 'support';
       const checked = Number.isSafeInteger(file.characters) && file.characters >= 0
         ? 'Текст извлечён · ' + file.characters + ' знаков' : 'Текст извлечён';
       const guidance = typeof file.action === 'string' && file.action.length <= 220 ? file.action : null;
+      const reason = typeof file.reason === 'string' && file.reason.length <= 220 ? file.reason : null;
       const code = typeof file.error === 'string' && /^[a-z0-9_]{1,64}$/.test(file.error) ? ' (' + file.error + ')' : '';
       details.textContent = file.status === 'ok' ? checked
-        : guidance || 'Файл не прошёл проверку. Проверьте формат и содержимое.' + code;
+        : [reason || 'Файл не прошёл проверку' + code + '.', guidance].filter(Boolean).join(' ');
       row.append(name, details);
       return row;
     }));
-    if (result.ready === true && isRunId(result.input_id) && result.files.every(file => file.status === 'ok')) {
-      inspected = { id: result.input_id, key: crypto.randomUUID() };
-      analyzeInputs.hidden = !liveAvailable;
-      const text = liveAvailable ? 'Документы проверены локально.' : 'Проверено локально. Внешний анализ выключен.';
-      message(text, false, 'inputs-message');
-    } else {
+    if (result.ready !== true || result.files.some(file => file.status !== 'ok')) {
       message('Исправьте отмеченные документы и повторите проверку.', true, 'inputs-message');
+      return;
     }
+    if (isRunId(result.input_id)) {
+      const mock = mockAvailable && ['success', 'disputed'].includes(result.mock_scenario);
+      inspected = { id: result.input_id, mock, pending: null };
+      analyzeMock.hidden = !mock;
+      analyzeInputs.hidden = !liveAvailable;
+    }
+    message(inspected?.mock ? 'Учебный набор проверен. Mock SDK работает без внешних запросов.' :
+      inspected && liveAvailable ? 'Документы проверены локально.' :
+        'Документы прочитаны. Для них доступна локальная проверка чтения. Внешний анализ выключен.',
+      false, 'inputs-message');
   }
 
   async function sendInspection() {
     if (inputBusy || !inputLimits) return;
+    if (inspected?.pending) {
+      message('Проверьте список запусков или повторите отправку проверенного набора.', true, 'inputs-message');
+      return;
+    }
     clearInspection();
     const sequence = inputSequence;
     const [resume] = resumeInput.files;
@@ -358,60 +436,82 @@
       return;
     }
 
-    inputBusy = true;
-    inspectInputs.disabled = true;
+    setUploadBusy(true);
     message('Проверяем документы на локальном сервере…', false, 'inputs-message');
     try {
       const [cv, ...vacancies] = await Promise.all(files.map(readInputFile));
       if (sequence !== inputSequence) return;
       const result = await api.inspect({ resume: cv, jobs: vacancies });
-      if (sequence === inputSequence) displayInspection(result, files.length);
+      if (sequence === inputSequence) displayInspection(result, files);
     } catch (error) {
       if (sequence === inputSequence) message(error.message, true, 'inputs-message');
     } finally {
-      inputBusy = false;
-      inspectInputs.disabled = false;
+      setUploadBusy(false);
     }
   }
 
-  async function startProtected() {
-    liveDialog.close();
-    if (!liveAvailable || !inspected || inputBusy) return;
+  async function startUploaded(mode) {
+    if (!inspected || inputBusy || (mode === uploadMock ? !inspected.mock : !liveAvailable)) return;
     const input = inspected;
-    inputBusy = true;
-    analyzeInputs.disabled = true;
-    inspectInputs.disabled = true;
+    if (input.pending && input.pending.mode !== mode) {
+      message('Сначала повторите запрос в том же режиме или проверьте список запусков.', true, 'inputs-message');
+      return;
+    }
+    input.pending ??= { mode, id: crypto.randomUUID() };
+    setUploadBusy(true);
     message('Создаём защищённый запуск…', false, 'inputs-message');
     try {
-      const run = await api.start({ mode: 'protected-live', input_id: input.id, budget: 1, idempotency_key: input.key });
+      const data = { mode, input_id: input.id, idempotency_key: input.pending.id };
+      if (mode === 'protected-live') data.budget = 1;
+      const run = await api.start(data);
       if (!isRunId(run?.run_id)) throw new Error('Идентификатор созданного запуска недоступен.');
       if (inspected === input) {
         resumeInput.value = '';
         vacanciesInput.value = '';
         clearInspection();
-        message('Защищённый запуск создан.', false, 'inputs-message');
+        message('', false, 'inputs-message');
       }
-      if (!show.hidden) setRunCenterOpen(true);
+      if (!show.hidden) {
+        activeRunsSeen = true;
+        setInputCenterOpen(false);
+        message(mode === uploadMock ? 'Локальный запуск Mock SDK создан.' : 'Защищённый запуск Live создан.');
+        setRunCenterOpen(true);
+        reload.focus();
+      }
     } catch (error) {
-      if (inspected === input) message(error.message, true, 'inputs-message');
+      if (inspected === input) {
+        if (error.status >= 400 && error.status < 500 && error.status !== 408) input.pending = null;
+        const hint = input.pending ? ' Повтор запроса в том же режиме использует тот же запуск.' : '';
+        message(error.message + hint, true, 'inputs-message');
+      }
     } finally {
-      inputBusy = false;
-      analyzeInputs.disabled = false;
-      inspectInputs.disabled = false;
+      setUploadBusy(false);
     }
   }
 
-  showInputs.addEventListener('click', () => setInputCenterOpen(inputCenter.hidden));
+  showInputs.addEventListener('click', () => {
+    const open = inputCenter.hidden;
+    setInputCenterOpen(open);
+    if (open) resumeInput.focus();
+  });
   resumeInput.addEventListener('change', clearInspection);
   vacanciesInput.addEventListener('change', clearInspection);
   inspectInputs.addEventListener('click', sendInspection);
+  analyzeMock.addEventListener('click', () => startUploaded(uploadMock));
   analyzeInputs.addEventListener('click', () => {
     if (inspected && liveAvailable && !inputBusy) liveDialog.showModal();
   });
   byId('dismiss-live').addEventListener('click', () => liveDialog.close());
-  byId('submit-live').addEventListener('click', startProtected);
+  byId('submit-live').addEventListener('click', () => {
+    liveDialog.close();
+    startUploaded('protected-live');
+  });
 
-  show.addEventListener('click', () => setRunCenterOpen(center.hidden));
+  show.addEventListener('click', () => {
+    const open = center.hidden;
+    setRunCenterOpen(open);
+    if (open) (reload.hidden ? type : reload).focus();
+  });
   reload.addEventListener('click', refreshRuns);
   start.addEventListener('click', startRun);
   for (const button of document.querySelectorAll('[data-dismiss-dialog]')) {
@@ -427,8 +527,11 @@
     try {
       await api.remove(id);
       deletedRuns.add(id);
-      viewer.closeServerReport(id);
+      const closed = viewer.closeServerReport(id);
       message('Запуск удалён.');
+      if (closed) {
+        reload.focus();
+      }
     } catch (error) {
       message(error.message, true);
     } finally {
@@ -440,9 +543,12 @@
   });
 
   async function initialize() {
+    const requested = new URL(location.href).searchParams.get('run');
+    const initialView = viewer.beginLoad();
+    const serviceStatus = byId('service-status');
     try {
       const capabilities = await api.session();
-      if (!capabilities || !Array.isArray(capabilities.operations)) return;
+      if (!capabilities || !Array.isArray(capabilities.operations)) throw new Error('Локальный сервис недоступен.');
       operations = new Set(capabilities.operations);
       setupOptions(type, capabilities.modes, knownModes);
       setupOptions(scenario, capabilities.scenarios, knownScenarios);
@@ -457,14 +563,23 @@
         if ([count, file, total].every(Number.isSafeInteger) && count >= 2 && file > 0 && total >= file) {
           inputLimits = { count, file, total };
           byId('input-limits').textContent = 'Одно резюме и до ' + (count - 1) + ' вакансий. До ' +
-            file / 1e6 + ' МБ на файл и ' + total / 1e6 + ' МБ суммарно.';
+            file / 1e6 + ' МБ на файл и ' + new Intl.NumberFormat('ru').format(total / 1e6) + ' МБ суммарно.';
           showInputs.hidden = false;
           liveAvailable = operations.has('create') && capabilities.live === true &&
             Array.isArray(capabilities.modes) && capabilities.modes.includes('protected-live');
+          mockAvailable = operations.has('create') && Array.isArray(capabilities.modes) &&
+            capabilities.modes.includes(uploadMock);
+          byId('welcome-title').textContent = 'Загрузите резюме и вакансии';
+          byId('welcome-copy').textContent = 'Откройте «Документы» для проверки файлов или «Запуски» для просмотра сохранённых отчётов.';
         }
       }
+      if (requested !== null && viewer.isLatest(initialView)) {
+        if (isRunId(requested) && operations.has('read')) await openRun(requested);
+        else viewer.status('Запуск по этой ссылке недоступен.', true);
+      }
     } catch {
-      // The offline viewer remains available when the service is absent or unreachable.
+      serviceStatus.hidden = false;
+      serviceStatus.textContent = 'Локальный сервис недоступен. Можно открыть сохранённый отчёт или демо.';
     }
   }
 

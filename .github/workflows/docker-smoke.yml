@@ -11,6 +11,16 @@ on:
       - scripts/check_cli_replays.py
       - scripts/check_container_stop.py
       - .github/workflows/docker-smoke.yml
+  pull_request:
+    branches: [main, codex/cli-recruiter-prototype, codex/cli-integration-consultation]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - prototype/**
+      - scripts/privacy_smoke.py
+      - scripts/check_cli_replays.py
+      - scripts/check_container_stop.py
+      - .github/workflows/docker-smoke.yml
 permissions:
   contents: read
 jobs:

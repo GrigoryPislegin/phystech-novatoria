@@ -3,7 +3,7 @@
 
   const {
     MAX_REPORT_BYTES, parseReport, filterRows, describeDashboard, describeRun, describeFit, scoreRange,
-    assessments, mandatoryStates, evidenceLabel, mandatoryLabel, requirementReviewLabel
+    assessments, mandatoryStates, evidenceLabel, mandatoryLabel, requirementReviewLabel, readComparison
   } = window.NanimaiReport;
   const { renderManagerReport } = window.NanimaiManagerReport;
   const byId = id => document.getElementById(id);
@@ -32,6 +32,8 @@
   let filter = 'all';
   let loadSequence = 0;
   let runContext = null;
+  let compareSequence = 0;
+  let openListener;
 
   function setText(id, value) {
     byId(id).textContent = value;
@@ -119,6 +121,7 @@
   }
 
   function selectJob(job) {
+    ++compareSequence;
     activeJob = job;
     managerButton.hidden = !job;
     managerButton.disabled = !job;
@@ -270,26 +273,86 @@
   };
 
   function renderComparison(job) {
-    const matches = report.comparisons.filter(item => item.a === job || item.b === job);
     const section = byId('comparison-section');
     const picker = byId('comparison-job');
-    section.hidden = report.jobs.length < 2;
-    byId('comparison-picker').hidden = matches.length < 2;
-    picker.replaceChildren(...matches.map((item, index) => {
-      const option = element('option', null, (item.a === job ? item.b : item.a).title);
+    const others = report.jobs.filter(other => other !== job);
+    section.hidden = !others.length;
+    byId('comparison-picker').hidden = others.length < 2;
+    picker.replaceChildren(...others.map((other, index) => {
+      const option = element('option', null, other.title);
       option.value = index;
       return option;
     }));
-    renderComparisonDetail(matches[0]);
+    if (others.length) chooseComparison(job, others[0]);
+  }
+
+  function comparisonCard(job, kinds) {
+    const card = element('section', 'comparison-card');
+    card.append(element('h4', null, 'Вакансия ' + job.title),
+      element('p', 'support', (report.complete ? 'Место ' : 'Предварительное место ') + job.rank +
+        ' · L–H ' + scoreRange(job.score) + ' · Известно ' + numberFormat.format(job.score.coverage) + '%'),
+      tag(...mandatoryStates[job.score.mandatory]));
+    const terms = new Map(job.conditions.items.map(item => [item.label, item]));
+    for (const label of kinds) {
+      const item = terms.get(label);
+      const details = element('details', 'source-disclosure');
+      const summary = element('summary', 'source-heading', label);
+      summary.append(tag(...(item ? conditionStates[item.state] : ['Сравнение отсутствует', 'neutral'])));
+      details.append(summary);
+      if (item) {
+        for (const [title, fragment, unresolved] of [['Вакансия', item.vacancy, item.vacancyUnresolved],
+          ['Резюме', item.cv, item.cvUnresolved]]) {
+          details.append(quoteCard(title, fragment ? [sourceText(fragment)] : [],
+            item.state === 'invalid' || unresolved ? 'Цитату не удалось привязать.' : 'Цитата не указана.'));
+        }
+      } else {
+        details.append(element('p', 'support', 'В отчёте нет результата проверки этого условия.'));
+      }
+      card.append(details);
+    }
+    return card;
+  }
+
+  async function chooseComparison(left, right) {
+    const sequence = ++compareSequence;
+    const context = runContext;
+    const summary = byId('comparison-summary');
+    const detail = byId('comparison-detail');
+    const terms = job => new Map(job.conditions.items.map(item => [item.label, item]));
+    const a = terms(left), b = terms(right);
+    const different = [...new Set([...a.keys(), ...b.keys()])].filter(label => {
+      const x = a.get(label), y = b.get(label);
+      return x?.state !== y?.state || x?.vacancy?.quote !== y?.vacancy?.quote || x?.cv?.quote !== y?.cv?.quote;
+    });
+    byId('comparison-pair').replaceChildren(comparisonCard(left, different), comparisonCard(right, different));
+    detail.replaceChildren();
+    summary.classList.remove('error');
+    const stored = report.comparisons.find(item => (item.a === left && item.b === right) || (item.a === right && item.b === left));
+    if (stored) return renderComparisonDetail(stored);
+    if (!context?.compare) {
+      summary.textContent = 'Разбор порядка этой пары отсутствует в сохранённом отчёте.';
+      return;
+    }
+
+    summary.textContent = 'Запрашиваем сравнение по сохранённому отчёту…';
+    try {
+      const result = await context.compare(left.id, right.id);
+      if (sequence !== compareSequence) return;
+      const item = readComparison(result?.comparison, report.jobs, report.policyVersion);
+      if (result?.run_id !== context.id || result.revision !== context.revision || item?.a !== left || item?.b !== right) {
+        throw new Error('Сравнение недоступно для открытой версии отчёта. Откройте запуск снова.');
+      }
+      renderComparisonDetail(item);
+    } catch (error) {
+      if (sequence !== compareSequence) return;
+      summary.classList.add('error');
+      summary.textContent = error.message;
+    }
   }
 
   function renderComparisonDetail(item) {
     const detail = byId('comparison-detail');
     detail.replaceChildren();
-    if (!item) {
-      setText('comparison-summary', 'В отчёте нет сравнения для этой вакансии.');
-      return;
-    }
     const { a, b, outcome, reason } = item;
     const [higher, lower] = outcome === 'b_higher' ? [b, a] : [a, b];
     const low = job => numberFormat.format(job.score.lower) + '%';
@@ -301,19 +364,15 @@
       summary = higher.title + ' выше ' + lower.title + ' по нижней границе L · ' + low(higher) + ' и ' + low(lower) + '.';
     }
     setText('comparison-summary', summary);
+    if ([a, b].every(job => job.conditions.items.length === 0)) {
+      detail.append(element('p', 'support', 'В отчёте нет условий, которые можно сопоставить для этой пары.'));
+    }
 
     for (const ref of item.deciding) detail.append(comparisonFactor(ref));
     if (item.swings.length) {
-      const finding = element('details', 'source-disclosure');
-      finding.append(element('summary', 'source-heading', 'Что уточнить, чтобы проверить порядок'));
-      const body = element('div', 'source-list source-body');
-      for (const ref of item.swings) {
-        const hypothetical = 'Если оценка станет «' + assessments[ref.assumedStatus][0].toLocaleLowerCase('ru') +
-          '», ' + swingOutcomes[ref.result] + '.';
-        body.append(comparisonFactor(ref, hypothetical));
-      }
-      finding.append(body);
-      detail.append(finding);
+      detail.append(whatIf(item));
+    } else {
+      detail.append(element('p', 'support', 'В этом сравнении нет допущения по одному требованию, меняющего порядок пары.'));
     }
     if (item.caveats.length) {
       const notes = element('ul', 'comparison-caveats');
@@ -322,7 +381,49 @@
     }
   }
 
-  function comparisonFactor(ref, hypothetical) {
+  function whatIf(item) {
+    const section = element('section', 'what-if');
+    section.append(element('h4', null, 'Что изменится после уточнения'));
+    const controls = element('div', 'run-actions');
+    const label = element('label', 'comparison-picker', 'Допущение');
+    const select = element('select');
+    const empty = element('option', null, 'Выберите допущение');
+    empty.value = '';
+    select.append(empty);
+    item.swings.forEach((ref, index) => {
+      const job = ref.jobId === item.a.id ? item.a : item.b;
+      const option = element('option', null, 'Вакансия ' + job.title + ' · ' + ref.row.label.slice(0, 70) +
+        ' · ' + assessments[ref.assumedStatus][0]);
+      option.value = index;
+      select.append(option);
+    });
+    label.append(select);
+    const reset = element('button', 'button button-secondary compact', 'Сбросить');
+    reset.type = 'button';
+    reset.disabled = true;
+    controls.append(label, reset);
+    const output = element('div', 'source-list');
+    output.setAttribute('aria-live', 'polite');
+    section.append(controls, output);
+    const update = () => {
+      output.replaceChildren();
+      reset.disabled = select.value === '';
+      if (!select.value) return;
+      const ref = item.swings[Number(select.value)];
+      const job = ref.jobId === item.a.id ? item.a : item.b;
+      output.append(element('p', 'support', 'Гипотетически, если по требованию «' + ref.row.label + '» оценка станет «' +
+        assessments[ref.assumedStatus][0].toLocaleLowerCase('ru') + '», ' + swingOutcomes[ref.result] + '. Допущение не меняет рейтинг и решения HR.'));
+      if (ref.alternative) output.append(element('p', 'support', 'Вакансия ' + job.title + ' · L–H ' +
+        scoreRange(job.score) + ' → ' + scoreRange(ref.alternative.score) + '. Место в этой паре после уточнения: ' +
+        ref.alternative.rank + '.'));
+      output.append(comparisonFactor(ref));
+    };
+    select.addEventListener('change', update);
+    reset.addEventListener('click', () => { select.value = ''; update(); select.focus(); });
+    return section;
+  }
+
+  function comparisonFactor(ref) {
     const job = report.jobs.find(candidate => candidate.id === ref.jobId);
     const details = element('details', 'source-disclosure');
     const title = element('summary', 'source-heading');
@@ -334,7 +435,6 @@
     details.append(quotes);
     if (ref.row.scoreConflict) details.append(element('p', 'source-note support',
       'Повторы одного требования получили разные оценки. Их общий вклад спорный; исходные статусы сохранены.'));
-    if (hypothetical) details.append(element('p', 'source-note support', hypothetical));
     return details;
   }
 
@@ -625,28 +725,37 @@
     byId('welcome').hidden = true;
     byId('report-workspace').hidden = false;
     setFileStatus(label);
+    openListener?.(context);
+    if (!context) byId('file-status').focus();
   }
 
   window.RecruiterViewer = {
     beginLoad: () => ++loadSequence,
+    loadVersion: () => loadSequence,
     isLatest: sequence => sequence === loadSequence,
     getContext: () => runContext,
+    status: setFileStatus,
+    onOpen: listener => { openListener = listener; },
     openServerReport(next, context) {
       const staysOpen = runContext?.id === context.id;
       const view = staysOpen ? views.find(button => button.getAttribute('aria-pressed') === 'true').dataset.view : 'ranking';
+      const focusReview = staysOpen && byId('review-panel').contains(document.activeElement);
       openReport(next, 'Открыт отчёт локального запуска', context, staysOpen ? activeJob?.id : null, view);
+      if (focusReview) byId('review-title').focus();
     },
     closeServerReport(id) {
-      if (runContext?.id !== id) return;
-      ++loadSequence;
+      if (runContext?.id !== id) return false;
+      ++compareSequence;
       runContext = null;
       report = null;
       activeJob = null;
       byId('report-workspace').hidden = true;
       byId('welcome').hidden = false;
       for (const container of ['job-list', 'requirement-rows', 'profile-list', 'overview-list',
-        'condition-list', 'comparison-detail', 'comparison-job', 'review-list', 'review-controls', 'skipped-jobs']) byId(container).replaceChildren();
+        'condition-list', 'comparison-pair', 'comparison-detail', 'comparison-job', 'review-list', 'review-controls', 'skipped-jobs']) byId(container).replaceChildren();
       setFileStatus('Локальный запуск удалён.');
+      openListener?.(null);
+      return true;
     }
   };
 
@@ -667,9 +776,8 @@
     if (file) loadFile(file);
   });
   byId('comparison-job').addEventListener('change', event => {
-    if (!activeJob) return;
-    const matches = report.comparisons.filter(item => item.a === activeJob || item.b === activeJob);
-    renderComparisonDetail(matches[Number(event.target.value)]);
+    const other = report?.jobs.filter(job => job !== activeJob)[Number(event.target.value)];
+    if (activeJob && other) chooseComparison(activeJob, other);
   });
   managerButton.addEventListener('click', downloadManagerReport);
   search.addEventListener('input', renderRows);

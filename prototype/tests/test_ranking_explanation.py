@@ -76,6 +76,15 @@ class CompareTests(unittest.TestCase):
         self.assertEqual({ab.outcome, ba.outcome}, {'a_higher', 'b_higher'})
         self.assertEqual((ab.reason, ab.deciding, ab.swings), (ba.reason, ba.deciding, ba.swings))
 
+    def test_hypothetical_score_is_separate_from_the_original_pair(self):
+        report = demo_report('disputed')
+        original = copy.deepcopy(report)
+        c = compare(report, 'job-001', 'job-002')
+        swing = next(s for s in c.swings if s.row.job_id == 'job-002' and s.assumed_status == 'full')
+        self.assertEqual(c.scores['job-002'].lower, 0)
+        self.assertEqual((swing.hypothetical_score.lower, swing.hypothetical_score.rank), (100, 1))
+        self.assertEqual(report, original)
+
     def test_references_exist_in_the_report(self):
         report = demo_report('disputed')
         facts = {f['quote'] for f in report['facts']['items']}

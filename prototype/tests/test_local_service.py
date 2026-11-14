@@ -1,12 +1,14 @@
 import base64
 import copy
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import tempfile
 import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from prototype.local_service import LocalService, SyntheticSDKModel
+from prototype.local_service import LocalService, SyntheticSDKModel, UPLOAD_MOCK
 from prototype.demo import demo_inputs
 from prototype.run_store import StoreError
 
@@ -62,6 +64,9 @@ class LocalServiceTests(unittest.TestCase):
         self.assertEqual(bad['files'][0]['status'], 'error')
         with self.assertRaisesRegex(StoreError, 'input_invalid'):
             self.service.inspect({'resume':file('../cv.txt',b'x'),'jobs':[file('job.txt',b'x')]})
+        inspected = self.service.inspect({'resume':file('cv.rtf',b'x'),'jobs':[file('job.txt',b'x')]})
+        self.assertEqual([f['status'] for f in inspected['files']], ['error', 'ok'])
+        self.assertEqual(inspected['files'][0]['error'], 'input_unsupported')
 
     def test_replay_cannot_accept_user_documents_or_a_forged_mode(self):
         for request in ({'mode':'synthetic-replay','scenario':'success','input_id':'x','idempotency_key':'a'},
@@ -98,6 +103,57 @@ class LocalServiceTests(unittest.TestCase):
         self.service.close()
         self.service = LocalService(Path(self.tmp.name), allow_live=True)
         self.assertEqual(self.service.create(request)['run_id'], first['run_id'])
+
+    def test_simultaneous_uploaded_start_reuses_the_first_run(self):
+        resume, jobs = demo_inputs('disputed')
+        def file(text):
+            return {'name': 'synthetic.txt', 'content_base64': base64.b64encode(text.encode()).decode()}
+        inspected = self.service.inspect({'resume':file(resume), 'jobs':[file(text) for _, text in reversed(jobs)]})
+        self.assertEqual(inspected['mock_scenario'], 'disputed')
+        request = {'mode':UPLOAD_MOCK, 'input_id':inspected['input_id'], 'idempotency_key':'same-upload'}
+        arrived = threading.Barrier(2)
+        def start():
+            arrived.wait(timeout=5)
+            return self.service.create(request)['run_id']
+        with patch.object(self.service, '_execute', side_effect=lambda rid,*args:self.service.store.fail(rid,'synthetic_test')) as calls:
+            with ThreadPoolExecutor(2) as pool:
+                first, second = list(pool.map(lambda _: start(), range(2)))
+            self.service.wait(first)
+            self.assertEqual(first, second)
+            self.assertEqual(calls.call_count, 1)
+            with self.assertRaisesRegex(StoreError, 'input_not_found'):
+                self.service.create({**request, 'idempotency_key':'another-key'})
+        self.assertEqual(len(self.service.store.list()), 1)
+
+    def test_uploaded_mock_requires_the_known_synthetic_documents(self):
+        self.service.allow_live = True
+        sample, jobs = demo_inputs()
+        def file(text):
+            return {'name': 'synthetic.txt', 'content_base64': base64.b64encode(text.encode()).decode()}
+        inspected = self.service.inspect({'resume':file(sample + ' Дополнительный факт.'),
+                                          'jobs':[file(text) for _, text in jobs]})
+        self.assertIsNone(inspected['mock_scenario'])
+        with self.assertRaisesRegex(StoreError, 'mock_requires_demo_documents'):
+            self.service.create({'mode':UPLOAD_MOCK, 'input_id':inspected['input_id'], 'idempotency_key':'rejected'})
+        self.assertFalse(self.service.store.list())
+
+    def test_cancel_status_persists_until_worker_stops(self):
+        entered, release = threading.Event(), threading.Event()
+        def execute(rid, request, inputs, control):
+            self.service.store.start(rid)
+            entered.set()
+            release.wait(timeout=5)
+            self.service.store.fail(rid, 'cancelled' if control.cancelled else 'synthetic_test')
+        with patch.object(self.service, '_execute', side_effect=execute):
+            run = self.service.create({'mode':'synthetic-replay','scenario':'success','idempotency_key':'cancel-test'})
+            rid = run['run_id']
+            try:
+                self.assertTrue(entered.wait(timeout=5))
+                self.assertTrue(self.service.cancel(rid)['cancel_requested'])
+                self.assertTrue(self.service.store.list()[0]['cancel_requested'])
+            finally:
+                release.set()
+            self.assertEqual(self.service.wait(rid)['state'], 'cancelled')
 
     @unittest.skipUnless((Path(os.environ.get('PRIVACY_MODELS_DIR', 'data/private/privacy-models')) /
                           'slovnet_ner_news_v1.tar').is_file(), 'Local NER weights unavailable')

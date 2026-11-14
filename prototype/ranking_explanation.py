@@ -46,18 +46,19 @@ class RowRef(StrictModel):
     effect: float  # percentage points of L: added by the row (higher job), lost (lower job), or the pair gap
 
 
-class Swing(StrictModel):
-    row: RowRef
-    assumed_status: Literal['full', 'fail']
-    result: Literal['reversed', 'tie', 'breaks_tie']
-
-
 class JobScore(StrictModel):
     rank: int
     lower: float
     upper: float
     coverage: float
     mandatory: str
+
+
+class Swing(StrictModel):
+    row: RowRef
+    assumed_status: Literal['full', 'fail']
+    result: Literal['reversed', 'tie', 'breaks_tie']
+    hypothetical_score: JobScore | None = None
 
 
 class Comparison(StrictModel):
@@ -234,8 +235,11 @@ def _swings(a: _Job, b: _Job, outcome: str) -> list[Swing]:
             if new == outcome:
                 continue
             result = 'breaks_tie' if outcome == 'tie' else 'tie' if new == 'tie' else 'reversed'
+            # The alternative rank is within this pair. The published ranking is untouched.
+            pair_rank = 1 if new in ('tie', 'a_higher' if first else 'b_higher') else 2
+            alternative = JobScore(rank=pair_rank, **{k: changed[k] for k in ('lower', 'upper', 'coverage', 'mandatory')})
             swings.append(Swing(row=job.ref(rid, changed['lower'] - job.score['lower']), assumed_status=assumed,
-                                result=result))
+                                result=result, hypothetical_score=alternative))
     return swings
 
 

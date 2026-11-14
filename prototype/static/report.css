@@ -349,6 +349,7 @@ thead th:nth-child(2) { width: 27%; }
 .button-danger { background: #f3125f; color: #fff; }
 .button-danger:hover { background: #e11158; }
 .run-center .error, #review-message.error { color: var(--danger); }
+#comparison-summary.error { color: var(--danger); }
 #review-message:empty { display: none; }
 
 .comparison-section { margin-top: 24px; }
@@ -356,6 +357,15 @@ thead th:nth-child(2) { width: 27%; }
 .comparison-section > .support { margin-top: 6px; }
 .comparison-picker { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 13px; }
 .comparison-picker select { padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: #fff; font: inherit; }
+.comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.comparison-card { display: grid; justify-items: start; align-content: start; gap: 7px; min-width: 0;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 13px; overflow-wrap: anywhere; }
+.comparison-card .source-disclosure { width: 100%; }
+.comparison-card .evidence-card + .evidence-card { margin-top: 9px; }
+.what-if { display: grid; gap: 9px; min-width: 0; border: 1px solid #dce1ff;
+  border-radius: 14px; background: var(--accent-bg); padding: 13px; }
+.what-if select { max-width: min(100%, 46ch); }
+.what-if .source-list:empty, .protected-start:not(:has(button:not([hidden]))) { display: none; }
 .comparison-caveats { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 
 .intro-actions { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
@@ -366,4 +376,9 @@ thead th:nth-child(2) { width: 27%; }
 .protected-start { margin-top: 12px; }
 @media (max-width: 540px) {
   .intro-actions { justify-content: flex-start; }
+  .comparison-grid { grid-template-columns: 1fr; }
+}
+
+@media print {
+  .what-if { display: none !important; }
 }

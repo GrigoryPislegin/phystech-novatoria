@@ -15,12 +15,23 @@ from .analysis_contracts import ResumeAnalysis, VacancyAnalysis
 from .application import analyze, analyze_protected
 from .contracts import Requirements
 from .demo import ReplayModel, SyntheticPrivacy, demo_inputs
-from .documents import read_document_bytes, document_diagnostic
+from .documents import MAX_BYTES, read_document_bytes, document_diagnostic
 from .errors import ModelOutputError, error_code
 from .model import Model, Budget
 from .pipeline import RunControl
 from .privacy import local_privacy, protect_dependency_logs
 from .run_store import RunStore, StoreError, ACTIVE
+
+MAX_TOTAL_BYTES = 18_700_000  # Leaves room for base64 and metadata in the 25 MB HTTP body.
+UPLOAD_MOCK = 'synthetic-upload-mock'
+
+
+def _uploaded_demo(resume, jobs):
+    for scenario in ('success', 'disputed'):
+        sample, vacancies = demo_inputs(scenario)
+        if resume == sample and sorted(jobs) == sorted(text for _, text in vacancies):
+            return scenario
+    return None
 
 
 class ScenarioReplay(ReplayModel):
@@ -87,10 +98,11 @@ class LocalService:
 
     @property
     def capabilities(self):
-        return {'modes':['synthetic-replay','synthetic-protected-mock'] + (['protected-live'] if self.allow_live else []),
+        return {'modes':['synthetic-replay','synthetic-protected-mock',UPLOAD_MOCK] +
+                        (['protected-live'] if self.allow_live else []),
                 'scenarios':['success','disputed','incomplete'],
-                'operations':['create','list','read','cancel','delete','review','inspect'],
-                'live':self.allow_live, 'max_files':21, 'max_file_bytes':5_000_000, 'max_total_bytes':20_000_000}
+                'operations':['create','list','read','cancel','delete','review','inspect','compare'],
+                'live':self.allow_live, 'max_files':21, 'max_file_bytes':MAX_BYTES, 'max_total_bytes':MAX_TOTAL_BYTES}
 
     def close(self):
         with self._lock:
@@ -114,16 +126,16 @@ class LocalService:
             if not isinstance(name, str) or not 1 <= len(name) <= 255 or any(c in name for c in ('/','\\','\0')):
                 raise StoreError('input_invalid')
             suffix = Path(name).suffix.lower()
-            if suffix not in {'.pdf','.docx','.txt','.md'}:
-                raise StoreError('input_unsupported')
-            if not isinstance(encoded, str) or len(encoded) > 6_666_668:
+            if not isinstance(encoded, str):
+                raise StoreError('input_invalid')
+            if len(encoded) > 4 * ((MAX_BYTES + 2) // 3):
                 raise StoreError('input_too_large')
             try:
                 raw = base64.b64decode(encoded, validate=True)
             except (ValueError, UnicodeError):
                 raise StoreError('input_invalid') from None
             total += len(raw)
-            if len(raw) > 5_000_000 or total > 20_000_000:
+            if len(raw) > MAX_BYTES or total > MAX_TOTAL_BYTES:
                 raise StoreError('input_too_large')
             entries.append((suffix, raw))
         results, texts = [], []
@@ -136,23 +148,27 @@ class LocalService:
             except Exception as exc:
                 texts.append(None)
                 diagnostic = document_diagnostic(exc)
-                result.update(status='error', error=diagnostic['code'], action=diagnostic['action'])
+                result.update(status='error', error=diagnostic['code'], reason=diagnostic['reason'],
+                              action=diagnostic['action'])
             results.append(result)
         if any(result['status'] == 'error' for result in results):
             return {'input_id':None, 'ready':False, 'files':results}
-        input_id = uuid4().hex
-        if self.allow_live:
+        resume, *vacancies = texts
+        mock_scenario = _uploaded_demo(resume, vacancies)
+        input_id = None
+        if self.allow_live or mock_scenario:
+            input_id = uuid4().hex
             with self._lock:
                 self._expire_inputs()
                 while len(self._inputs) >= 20:
                     self._inputs.pop(next(iter(self._inputs)))
                 jobs = [('job-' + hashlib.sha256(text.encode()).hexdigest()[:24] + '-' + str(index), text)
-                        for index, text in enumerate(texts[1:], 1)]
-                self._inputs[input_id] = (time.monotonic(), (texts[0], jobs))
-        return {'input_id':input_id, 'ready':True, 'files':results}
+                        for index, text in enumerate(vacancies, 1)]
+                self._inputs[input_id] = (time.monotonic(), (resume, jobs), mock_scenario)
+        return {'input_id':input_id, 'ready':True, 'files':results, 'mock_scenario':mock_scenario}
 
     def _expire_inputs(self):
-        for key, (created, _) in list(self._inputs.items()):
+        for key, (created, _, _) in list(self._inputs.items()):
             if time.monotonic() - created >= 900:
                 self._inputs.pop(key)
 
@@ -160,45 +176,54 @@ class LocalService:
         if not isinstance(request, dict) or not isinstance(request.get('mode'), str):
             raise StoreError('invalid_request')
         mode = request['mode']
-        if mode == 'protected-live':
-            if not self.allow_live:
+        scenario = None
+        upload = mode in {'protected-live', UPLOAD_MOCK}
+        if upload:
+            if mode == 'protected-live' and not self.allow_live:
                 raise StoreError('live_disabled')
-            if set(request) != {'mode','input_id','budget','idempotency_key'}:
+            fields = {'mode','input_id','idempotency_key'}
+            if set(request) != (fields | {'budget'} if mode == 'protected-live' else fields):
                 raise StoreError('invalid_request')
-            budget = request['budget']
-            if type(budget) not in {float,int} or not 0 < budget <= 1:
+            budget = request.get('budget')
+            if mode == 'protected-live' and (type(budget) not in {float,int} or not 0 < budget <= 1):
                 raise StoreError('invalid_budget')
             if not isinstance(request['input_id'], str):
-                raise StoreError('input_not_found')
-            existing = self.store.lookup_request({k:v for k,v in request.items() if k != 'idempotency_key'},
-                                                 request['idempotency_key'])
-            if existing is not None:
-                return existing
-            with self._lock:
-                self._expire_inputs()
-                cached = self._inputs.get(request['input_id'])
-                inputs = cached[1] if cached is not None else None
-            if inputs is None:
                 raise StoreError('input_not_found')
         elif mode in {'synthetic-replay','synthetic-protected-mock'}:
             if (set(request) != {'mode','scenario','idempotency_key'} or not isinstance(request['scenario'], str)
                     or request['scenario'] not in {'success','disputed','incomplete'}):
                 raise StoreError('invalid_request')
-            inputs = demo_inputs('disputed' if request['scenario'] == 'disputed' else 'success')
+            scenario = request['scenario']
+            inputs = demo_inputs('disputed' if scenario == 'disputed' else 'success')
             if mode == 'synthetic-protected-mock':
                 inputs = ('Иван Иванов. Телефон: +7 (999) 123-45-67. Email: ivan.synthetic@example.com.\n' + inputs[0], inputs[1])
         else:
             raise StoreError('invalid_mode')
         with self._lock:
-            summary, created = self.store.create({k:v for k,v in request.items() if k != 'idempotency_key'} |
-                                                  {'total':len(inputs[1])}, request['idempotency_key'])
+            fields = {k:v for k,v in request.items() if k != 'idempotency_key'}
+            key = request['idempotency_key']
+            if upload:
+                existing = self.store.lookup_request(fields, key)
+                if existing is not None:
+                    return existing
+                self._expire_inputs()
+                cached = self._inputs.get(request['input_id'])
+                if cached is None:
+                    raise StoreError('input_not_found')
+                _, inputs, mock_scenario = cached
+                if mode == UPLOAD_MOCK:
+                    if mock_scenario is None:
+                        raise StoreError('mock_requires_demo_documents')
+                    scenario = mock_scenario
+            summary, created = self.store.create(fields | {'total':len(inputs[1])}, key, scenario=scenario)
             if created:
-                if mode == 'protected-live':
+                if upload:
                     self._inputs.pop(request['input_id'], None)
                 rid = summary['run_id']
                 control = RunControl(progress=lambda event:self.store.progress(rid, event))
                 self._controls[rid] = control
-                self._futures[rid] = self._pool.submit(self._execute, rid, dict(request), inputs, control)
+                execution = fields | {'scenario': scenario or 'success'}
+                self._futures[rid] = self._pool.submit(self._execute, rid, execution, inputs, control)
             return summary
 
     def _execute(self, rid, request, inputs, control):
@@ -214,7 +239,7 @@ class LocalService:
                         privacy=SyntheticPrivacy(), out=Path(directory), control=control,
                         mode='synthetic_replay_NOT_model_output', source_sink=capture))
                 else:
-                    mock = mode == 'synthetic-protected-mock'
+                    mock = mode in {'synthetic-protected-mock', UPLOAD_MOCK}
                     result = asyncio.run(analyze_protected(*inputs, privacy_context=local_privacy,
                         model_factory=(lambda p:SyntheticSDKModel(p, scenario)) if mock else
                                       (lambda p:Model('gpt-6-luna', p, request['budget'])),
@@ -232,6 +257,7 @@ class LocalService:
             snapshot.clear()
             with self._lock:
                 self._controls.pop(rid, None)
+                self._futures.pop(rid, None)
 
     def wait(self, rid, timeout=30):
         future = self._futures.get(rid)
@@ -248,4 +274,4 @@ class LocalService:
             if control is None:
                 raise StoreError('run_unavailable')
             control.cancel()
-            return self.store.get(rid)
+            return self.store.request_cancel(rid)

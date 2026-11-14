@@ -20,6 +20,7 @@ from uuid import uuid4
 from .contracts import Requirements
 from . import requirements_review as requirements_review
 from .pipeline import refresh_derived
+from .ranking_explanation import compare
 from .review_policy import Decision, closing_decision, current_versions
 
 ACTIVE = {'queued', 'running'}
@@ -193,7 +194,7 @@ class RunStore:
     def _summary(record):
         fields = ('run_id','mode','scenario','created_at','updated_at','state','stage','processed','total','error')
         return {**{k:record[k] for k in fields}, 'report_available':record['report'] is not None,
-                'revision':record['revision'] or None}
+                'revision':record['revision'] or None, 'cancel_requested':record.get('cancel_requested', False)}
 
     def get(self, rid):
         with self._mutex:
@@ -204,7 +205,7 @@ class RunStore:
             return sorted((self._summary(self._read(rid)) for rid in self._ids()),
                           key=lambda r:r['created_at'], reverse=True)
 
-    def create(self, request, idempotency_key):
+    def create(self, request, idempotency_key, *, scenario=None):
         if not isinstance(idempotency_key, str) or not KEY.fullmatch(idempotency_key):
             raise StoreError('invalid_idempotency_key')
         fingerprint = _request_digest(request)
@@ -220,7 +221,7 @@ class RunStore:
             if len(records) >= 200:
                 raise StoreError('store_full')
             rid, now = uuid4().hex, _now()
-            record = dict(store_version='0.1', run_id=rid, mode=request['mode'], scenario=request.get('scenario'),
+            record = dict(store_version='0.1', run_id=rid, mode=request['mode'], scenario=scenario or request.get('scenario'),
                           created_at=now, updated_at=now, state='queued', stage='queued', error=None,
                           processed=0, total=request.get('total', 3), revision=0, report=None, sources=None,
                           idempotency_key=idempotency_key, request_digest=fingerprint, decisions=[], review_requests={})
@@ -275,6 +276,14 @@ class RunStore:
                 record['completed_job_ids'] = sorted(completed)
                 record['processed'] = len(completed)
             self._write(record)
+
+    def request_cancel(self, rid):
+        with self._mutex:
+            record = self._read(rid)
+            if record['state'] in ACTIVE and not record.get('cancel_requested'):
+                record.update(cancel_requested=True, updated_at=_now())
+                self._write(record)
+            return self._summary(record)
 
     @staticmethod
     def _validate_snapshot(report, sources):
@@ -345,6 +354,24 @@ class RunStore:
     def report(self, rid):
         with self._mutex:
             return self._view(self._read(rid))
+
+    def comparison(self, rid, left, right):
+        with self._mutex:
+            record = self._read(rid)
+            report = record['report']
+            revision = record['revision']
+            if report is None:
+                raise StoreError('report_unavailable')
+        if left == right:
+            raise StoreError('invalid_request')
+        ids = {job['job_id'] for job in report['ranking']['jobs']}
+        if left not in ids or right not in ids:
+            raise StoreError('unknown_job')
+        try:
+            result = compare(report, left, right).model_dump()
+        except ValueError:
+            raise StoreError('comparison_unavailable') from None
+        return {'run_id':rid, 'revision':revision, 'comparison':result}
 
     def review(self, rid, action):
         fields = {'expected_revision','job_id','action','item_id','idempotency_key'}
