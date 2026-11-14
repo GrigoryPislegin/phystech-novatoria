@@ -37,8 +37,10 @@
        }
       ]
      },
+     "contract_warnings": [],
+     "requirement_factors": null,
      "evidence_check": {
-      "rules_version": "evidence-0.2",
+      "rules_version": "evidence-0.3",
       "cv_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
       "vacancy_id": "job-001",
       "vacancy_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
@@ -202,6 +204,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 100.0,
        "disputed": 0.0,
@@ -233,7 +236,16 @@
       "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "cb178b6d5bc5c38c3bb4b93c89fa0654c494b498d5893ab94399eecbc931343f",
-     "rank": 1
+     "rank": 1,
+     "competency_axes": {
+      "policy_version": "draft-2026-11-14-v3",
+      "job_id": "job-001",
+      "radar_ready": false,
+      "reason": "no_labels",
+      "axes": [],
+      "outside_weight": 100.0,
+      "summary": "Подтверждено 100.0 п. из 100, предложено моделью и ждёт сверки 0.0 п., нет сведений по 0.0 п. Группы компетенций для требований не заданы: диаграмма не строится."
+     }
     },
     {
      "job_id": "job-002",
@@ -247,8 +259,10 @@
        }
       ]
      },
+     "contract_warnings": [],
+     "requirement_factors": null,
      "evidence_check": {
-      "rules_version": "evidence-0.2",
+      "rules_version": "evidence-0.3",
       "cv_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
       "vacancy_id": "job-002",
       "vacancy_sha256": "1c45ff0cbf14039070863347ed0cc5021f8576d9380ff9518db9248b1a897870",
@@ -350,6 +364,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 0.0,
@@ -380,7 +395,16 @@
       "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "1c45ff0cbf14039070863347ed0cc5021f8576d9380ff9518db9248b1a897870",
-     "rank": 2
+     "rank": 2,
+     "competency_axes": {
+      "policy_version": "draft-2026-11-14-v3",
+      "job_id": "job-002",
+      "radar_ready": false,
+      "reason": "no_labels",
+      "axes": [],
+      "outside_weight": 100.0,
+      "summary": "Подтверждено 0.0 п. из 100, предложено моделью и ждёт сверки 0.0 п., нет сведений по 100.0 п. Группы компетенций для требований не заданы: диаграмма не строится."
+     }
     },
     {
      "job_id": "job-003",
@@ -394,8 +418,10 @@
        }
       ]
      },
+     "contract_warnings": [],
+     "requirement_factors": null,
      "evidence_check": {
-      "rules_version": "evidence-0.2",
+      "rules_version": "evidence-0.3",
       "cv_sha256": "fe9b6b17283959e0d4d2756696298efeefdb7d8aa17176c62eac4a04fbf566a4",
       "vacancy_id": "job-003",
       "vacancy_sha256": "964af580232a4916af6cad3eebfdf885565f75b5fc16ad63a2b813f68761a383",
@@ -507,6 +533,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 100.0,
        "disputed": 0.0,
@@ -539,7 +566,16 @@
       "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "964af580232a4916af6cad3eebfdf885565f75b5fc16ad63a2b813f68761a383",
-     "rank": 3
+     "rank": 3,
+     "competency_axes": {
+      "policy_version": "draft-2026-11-14-v3",
+      "job_id": "job-003",
+      "radar_ready": false,
+      "reason": "no_labels",
+      "axes": [],
+      "outside_weight": 100.0,
+      "summary": "Подтверждено 100.0 п. из 100, предложено моделью и ждёт сверки 0.0 п., нет сведений по 0.0 п. Есть подтверждённое несоответствие обязательному требованию. Группы компетенций для требований не заданы: диаграмма не строится."
+     }
     }
    ],
    "recommendation": "review_top",
@@ -1053,6 +1089,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 100.0,
        "disputed": 0.0,
@@ -1323,6 +1360,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 0.0,
@@ -1482,6 +1520,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 100.0,
        "disputed": 0.0,

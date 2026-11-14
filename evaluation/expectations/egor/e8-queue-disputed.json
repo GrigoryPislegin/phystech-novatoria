@@ -42,8 +42,10 @@
        }
       ]
      },
+     "contract_warnings": [],
+     "requirement_factors": null,
      "evidence_check": {
-      "rules_version": "evidence-0.2",
+      "rules_version": "evidence-0.3",
       "cv_sha256": "fff6f9ae8dfead4019269d0f2422686c37a297a0e89cce3688f4a97169cc6044",
       "vacancy_id": "job-a",
       "vacancy_sha256": "0818e90a9d6a51e6976c4cc6007cac8fb0aaf7d5e1cdf56718f3c8d23039a4e2",
@@ -209,6 +211,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 25.0,
        "disputed": 75.0,
@@ -276,7 +279,16 @@
       "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "0818e90a9d6a51e6976c4cc6007cac8fb0aaf7d5e1cdf56718f3c8d23039a4e2",
-     "rank": 1
+     "rank": 1,
+     "competency_axes": {
+      "policy_version": "draft-2026-11-14-v3",
+      "job_id": "job-a",
+      "radar_ready": false,
+      "reason": "no_labels",
+      "axes": [],
+      "outside_weight": 100.0,
+      "summary": "Подтверждено 25.0 п. из 100, предложено моделью и ждёт сверки 75.0 п., нет сведений по 0.0 п. Группы компетенций для требований не заданы: диаграмма не строится."
+     }
     },
     {
      "job_id": "job-b",
@@ -290,8 +302,10 @@
        }
       ]
      },
+     "contract_warnings": [],
+     "requirement_factors": null,
      "evidence_check": {
-      "rules_version": "evidence-0.2",
+      "rules_version": "evidence-0.3",
       "cv_sha256": "fff6f9ae8dfead4019269d0f2422686c37a297a0e89cce3688f4a97169cc6044",
       "vacancy_id": "job-b",
       "vacancy_sha256": "d298f2487f9b2e5b7f5b5e1fb7c15b4a815fb79cc0aa8d43e9ad10b2e6361653",
@@ -421,6 +435,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 100.0,
@@ -469,7 +484,16 @@
       "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "d298f2487f9b2e5b7f5b5e1fb7c15b4a815fb79cc0aa8d43e9ad10b2e6361653",
-     "rank": 2
+     "rank": 2,
+     "competency_axes": {
+      "policy_version": "draft-2026-11-14-v3",
+      "job_id": "job-b",
+      "radar_ready": false,
+      "reason": "no_labels",
+      "axes": [],
+      "outside_weight": 100.0,
+      "summary": "Подтверждено 0.0 п. из 100, предложено моделью и ждёт сверки 100.0 п., нет сведений по 0.0 п. Группы компетенций для требований не заданы: диаграмма не строится."
+     }
     },
     {
      "job_id": "job-c",
@@ -483,8 +507,10 @@
        }
       ]
      },
+     "contract_warnings": [],
+     "requirement_factors": null,
      "evidence_check": {
-      "rules_version": "evidence-0.2",
+      "rules_version": "evidence-0.3",
       "cv_sha256": "fff6f9ae8dfead4019269d0f2422686c37a297a0e89cce3688f4a97169cc6044",
       "vacancy_id": "job-c",
       "vacancy_sha256": "37312ba021c114f55180967aabdf4c5d674e696e7d656aac36207a0175fced2c",
@@ -586,6 +612,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 0.0,
@@ -616,7 +643,16 @@
       "version": "draft-2026-11-14-v3"
      },
      "safe_source_sha256": "37312ba021c114f55180967aabdf4c5d674e696e7d656aac36207a0175fced2c",
-     "rank": 2
+     "rank": 2,
+     "competency_axes": {
+      "policy_version": "draft-2026-11-14-v3",
+      "job_id": "job-c",
+      "radar_ready": false,
+      "reason": "no_labels",
+      "axes": [],
+      "outside_weight": 100.0,
+      "summary": "Подтверждено 0.0 п. из 100, предложено моделью и ждёт сверки 0.0 п., нет сведений по 100.0 п. Группы компетенций для требований не заданы: диаграмма не строится."
+     }
     }
    ],
    "recommendation": "incomplete",
@@ -630,6 +666,7 @@
     "reasons": [
      "own_mandatory_unresolved",
      "own_disputed",
+     "own_mostly_unknown",
      "challenger_doubted",
      "close_margin"
     ],
@@ -899,6 +936,7 @@
    "reasons": [
     "own_mandatory_unresolved",
     "own_disputed",
+    "own_mostly_unknown",
     "challenger_doubted",
     "close_margin"
    ],
@@ -986,7 +1024,7 @@
    "unassessed": [
     "job-c"
    ],
-   "summary": "job-a: Предварительный выбор среди обработанных вакансий. Сравнение со всем набором не завершено. Решающие основания: «SQL желателен.» — full, 25.0 п. Ограничения: «Обязателен опыт Python.» — спорно. Условия работы расходятся (work_mode): в оценку не входят, решает HR. Может изменить выбор: job-a «Обязателен опыт Python.»; job-b «Python». Близкие вакансии: job-b. Без подтверждённых совпадений: job-c — это отсутствие сведений, не отказ. Обработаны не все вакансии: место предварительное."
+   "summary": "job-a: Предварительный выбор среди обработанных вакансий. Сравнение со всем набором не завершено. Подтверждённые сведения покрывают меньше половины требований этой вакансии: это лучший из мало изученных вариантов, а не установленный выбор. Решающие основания: «SQL желателен.» — full, 25.0 п. Ограничения: «Обязателен опыт Python.» — спорно. Условия работы расходятся (work_mode): в оценку не входят, решает HR. Может изменить выбор: job-a «Обязателен опыт Python.»; job-b «Python». Близкие вакансии: job-b. Без подтверждённых совпадений: job-c — это отсутствие сведений, не отказ. Обработаны не все вакансии: место предварительное."
   },
   "review_queue": {
    "schema_version": "review-queue-0.1",
@@ -1394,6 +1432,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 25.0,
        "disputed": 75.0,
@@ -1664,6 +1703,7 @@
        }
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 100.0,
@@ -1899,6 +1939,7 @@
        "extra": null
       },
       "repeated_ids": [],
+      "leader_rules": "leader-0.2",
       "shares": {
        "confirmed": 0.0,
        "disputed": 0.0,

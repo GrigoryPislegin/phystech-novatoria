@@ -23,8 +23,23 @@ INTEGRATED = True
 
 # A sentence ends at .!?; only before whitespace or end of text: «Node.js», «ASP.NET», «3.5» stay whole.
 _SENTENCE = re.compile(r'(?:[^\n.!?;]|[.!?;]+(?=[^\s.!?;]))+[.!?;]*')
-_LIST_ITEM = re.compile(r'^\s*(?:[-*•–—]|\d+[.)])\s+\S')
-_BULLET = re.compile(r'^[\s\-*•–—]+')
+# List markers as documents really carry them after DOCX/PDF extraction, not only «-» and «•».
+_MARKS = '-*•–—‒●·▪◦‣➢✓✔+■□▸►○◆'
+_LIST_ITEM = re.compile(rf'^\s*(?:[{re.escape(_MARKS)}]|o(?=\s)|\d+[.)])\s+\S')
+_PLAIN_ITEM = re.compile(r'^\s*(?:[-*•–—]|\d+[.)])\s+\S')  # the marks every heading has always governed
+# A heading that is about requirements. Only under such a heading is a list recovered across other marks,
+# unmarked lines, a blank line or a missing colon: «Условия работы:», «Стек проекта:» stay as they were.
+_REQUIREMENTS = re.compile(r'(?i)(?<![а-яёa-z])(?:обязател\w*|требовани\w*|требуется|требуются|необходим\w*|'
+                           r'must[\s-]+have|required|requirements?)(?![а-яёa-z])')
+_BULLET = re.compile(rf'^[\s{re.escape(_MARKS)}]+')
+# A plain line that opens another part of a vacancy: the list above it ends here even without a colon.
+_SECTION = re.compile(r'''(?ix)^\W*(?:будет\s+плюсом|плюсом\s+будет|плюс(?:ом|ы)?(?![а-яё])|бонус\w*|желател\w*|необязател\w*|приветству\w*|
+    преимуществ\w*|дополнительн\w*|условия|мы\s+предлагаем|что\s+мы\s+предлагаем|обязанности|задачи|о\s+компании|
+    о\s+нас|nice\s+to\s+have|optional|preferred|we\s+offer|responsibilities|benefits|about\s+us)''')
+# A heading that itself says the list is NOT obligatory: a mandatory marker cannot rest on it.
+_NOT_MANDATORY = re.compile(r'''(?ix)(?<![а-яёa-z])(?:не\s+обязател\w*|необязател\w*|желател\w*|плюс(?:ом|ы)?(?![а-яё])|бонус\w*|
+    приветству\w*|преимуществ\w*|не\s+требу\w+|не\s+нуж\w+|не\s+критичн\w*|по\s+желанию|
+    optional|nice\s+to\s+have|preferred|bonus|a\s+plus|not\s+required|not\s+necessary)''')
 _CLOSING = re.compile(r'[\s.!?;,:]+$')
 _WORD = re.compile(r'[0-9A-Za-zА-Яа-яЁё#+]+')
 
@@ -156,8 +171,15 @@ class Layout(NamedTuple):
 def layout(text: str) -> Layout:
     """Sentences and list headings of a text, computed once per text.
 
-    A heading is a line ending with ':' («Обязательно:»). Its block is only the list items
-    directly under it and stops at a blank or non-list line («Желательно: SQL», «Будет плюсом»).
+    A heading is a line ending with ':' («Обязательно:»), or a short line without closing punctuation
+    directly above a marked list. Its block is the list under it:
+    - marked items; the block stops at the first line that is not one, a blank line included, and at
+      a marked item that itself opens an optional part («● Будет плюсом: Docker»);
+    - only under a heading about requirements («Обязательные требования», «Требования», «Must have»):
+      any usual list mark («●», «·», «✓» …), a blank line under the heading, a missing colon above a
+      marked list, or plain lines up to a blank line, another heading or a line opening another part.
+    Any other heading («Условия работы:», «Стек проекта:») governs only «-», «*», «•», «–», «—» and
+    numbered items directly under it, as before.
     """
     sentences = tuple(Sentence(m.start(), m.end(), core(m.group()))
                       for m in _SENTENCE.finditer(text) if core(m.group()))
@@ -166,15 +188,45 @@ def layout(text: str) -> Layout:
         lines.append((pos, pos + len(line), line))
         pos += len(line) + 1
     headings = []
+
+    def item(index, pattern):
+        """A marked line that is a list item and does not itself open an optional part («● Будет плюсом: …»)."""
+        if index >= len(lines) or not pattern.match(lines[index][2]):
+            return False
+        body = _BULLET.sub('', lines[index][2])
+        return not (_SECTION.match(body) or (body.rstrip().endswith(':') is False and ':' in body
+                                             and _NOT_MANDATORY.search(body.split(':')[0].replace('ё', 'е'))))
+
+    def blank(index):
+        return index < len(lines) and not lines[index][2].strip()
+
     for i, (start, end, line) in enumerate(lines):
-        if not line.strip().endswith(':'):
+        name = line.strip()
+        if not name or _LIST_ITEM.match(line):
             continue
-        block_end = end
-        for _, item_end, item in lines[i + 1:]:
-            if not _LIST_ITEM.match(item):
-                break
-            block_end = item_end
-        headings.append(Heading(start, end, block_end, line.strip()))
+        about_requirements = bool(_REQUIREMENTS.search(name.replace('ё', 'е')))
+        first = i + 1
+        while about_requirements and blank(first):  # a blank line under the heading: requirement headings only
+            first += 1
+        titled = name.endswith(':')
+        pattern = _LIST_ITEM if about_requirements else _PLAIN_ITEM
+        # Without a colon only a short unpunctuated requirements line right above a marked list is a heading.
+        if not titled and not (about_requirements and item(first, pattern) and len(name.split()) <= 6
+                               and name[-1] not in '.!?;,'):
+            continue
+        block_end, j = end, first
+        if item(first, pattern):
+            while item(j, pattern):  # a blank line, another part or an optional item ends the list
+                block_end = lines[j][1]
+                j += 1
+        elif about_requirements and first == i + 1:  # plain lines directly under «Требования:»
+            while j < len(lines) and not blank(j):
+                body = lines[j][2].strip()
+                if body.endswith(':') or _SECTION.match(_BULLET.sub('', body)) or _LIST_ITEM.match(lines[j][2]):
+                    break
+                block_end = lines[j][1]
+                j += 1
+        headings.append(Heading(start, end, block_end, name))
     return Layout(sentences, tuple(s.start for s in sentences), tuple(headings))
 
 
@@ -260,11 +312,11 @@ class MandatoryCheck(_Strict):
     context: str | None = None
 
 
-RULES_VERSION = 'evidence-0.2'
+RULES_VERSION = 'evidence-0.3'  # 0.3: list layouts under requirement headings, obligation denied by heading or item
 
 
 class PairCheck(_Strict):
-    rules_version: str | None = None  # None: a check stored before evidence-0.2 (stricter fragment and list rules)
+    rules_version: str | None = None  # the rules a check was made by; None: stored before evidence-0.2
     cv_sha256: str
     vacancy_id: str
     vacancy_sha256: str
@@ -449,6 +501,23 @@ def check_mandatory(requirement: Requirement, vacancy: Source) -> MandatoryCheck
         return any(h.start <= m and m_end <= h.end and h.end <= r and r_end <= h.block_end for h in lay.headings)
 
     linked = [r for r in requirement_at if any(governs(m, r) for m in marker_at)]
+    # A marker resting on a heading that says «желательно» / «не обязательно» states no obligation.
+    resting = [h for h in lay.headings for m in marker_at
+               if h.start <= m < h.end or (h.start <= m and m + len(marker) <= h.end)]
+    if linked and any(_NOT_MANDATORY.search(h.text.replace('ё', 'е')) for h in resting):
+        joined = ' | '.join(sorted({h.text for h in resting}))
+        return MandatoryCheck(requirement_id=rid, state='needs_review', context=joined, reasons=[_review(
+            'mandatory_not_stated', 'Заголовок называет пункты желательными или необязательными, а не обязательными.',
+            context=joined)])
+    # The item itself may deny the obligation («Docker не требуется», «Будет плюсом: Docker») whatever
+    # heading it stands under.
+    denied = [context(lay, r, r + len(quote)) for r in linked
+              if _NOT_MANDATORY.search(context(lay, r, r + len(quote)).replace('ё', 'е'))]
+    if denied:
+        joined = ' | '.join(sorted(set(denied)))
+        return MandatoryCheck(requirement_id=rid, state='needs_review', context=joined, reasons=[_review(
+            'mandatory_not_stated', 'Сам пункт называет требование необязательным или не требуемым.',
+            context=joined)])
     if linked:
         places = {context(lay, r, r + len(quote)) for r in requirement_at}
         if len(linked) < len(requirement_at) and len(places) > 1:
