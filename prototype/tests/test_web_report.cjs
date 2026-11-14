@@ -3,7 +3,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
 
-const { parseReport, filterRows, statusCounts } = require('../static/report.js');
+const { parseReport, filterRows, statusCounts, reviewFor } = require('../static/report.js');
 
 function example(name = 'disputed') {
   return JSON.parse(readFileSync(join(__dirname, 'fixtures', 'web', name + '.json'), 'utf8'));
@@ -18,7 +18,7 @@ test('the current success and disputed reports expose the four assessment status
   assert.deepEqual(new Set([success, disputed].flatMap(report =>
     report.jobs.flatMap(job => job.rows.map(row => row.status))
   )), new Set(['full', 'partial', 'unknown', 'fail']));
-  assert.equal(success.requirementsConfirmed, false);
+  assert.equal(reviewFor(success, success.jobs[0]).requirements, 'unconfirmed');
   assert.equal(success.finalAllowed, false);
 });
 
@@ -44,7 +44,7 @@ test('legacy reports use source quotes and keep model prose marked as unverified
   assert.equal(row.commentFromModel, true);
   assert.equal(row.verified, false);
   assert.equal(row.evidence, null);
-  assert.equal(report.requirementsConfirmed, false);
+  assert.equal(reviewFor(report, report.jobs[0]).requirements, 'unconfirmed');
 });
 
 test('prepared presentation wins over free model prose and unsafe local file metadata', () => {
@@ -288,6 +288,52 @@ test('decisive flags are strict booleans and close margins must agree with store
   report = parseReport(JSON.stringify(raw));
   assert.deepEqual(report.comparisons[0].caveats, []);
   assert.ok(report.reviewItems.every(item => item.decisive === false));
+});
+
+test('the composition belongs to the exact vacancy and matches every canonical requirement', () => {
+  const raw = example('success');
+  const job = raw.ranking.jobs[0];
+  job.safe_source_sha256 = 'a'.repeat(64);
+  job.requirements_draft = {
+    vacancy_id: job.job_id, state: 'unconfirmed',
+    source_sha256: job.safe_source_sha256, requirements_sha256: 'b'.repeat(64),
+    requirements: structuredClone(job.requirements.items), uncovered: ['Офис в Москве.']
+  };
+  const draft = () => parseReport(JSON.stringify(raw)).jobs[0].requirementsDraft;
+  assert.deepEqual(draft().uncovered, ['Офис в Москве.']);
+  const original = structuredClone(job.requirements_draft);
+  for (const change of [
+    draft => { draft.vacancy_id = 'job-002'; },
+    draft => { draft.source_sha256 = 'f'.repeat(64); },
+    draft => { draft.requirements[0].text = 'Другой стек'; },
+    draft => { draft.requirements[0].mandatory_quote = null; },
+    draft => { draft.requirements[0].id = draft.requirements[1].id; },
+    draft => { draft.uncovered = [{ text: 'Фрагмент' }]; }
+  ]) {
+    job.requirements_draft = structuredClone(original);
+    change(job.requirements_draft);
+    assert.equal(draft(), null);
+  }
+});
+
+test('queue items retain priority, exact requirement and separate repeated source contexts', () => {
+  const raw = example('incomplete');
+  const [job] = raw.ranking.jobs;
+  raw.review_queue = { schema_version: 'review-queue-0.1', items: [
+    { id: 'one', job_id: job.job_id, requirement_id: 'r1', priority: 1, action: 'read_context',
+      explanation: 'Сверьте разделы', refs: [
+        { source: 'cv', quote: 'Python', heading: 'Использовал' },
+        { source: 'cv', quote: 'Python', heading: 'Отсутствует опыт' }
+      ] },
+    { id: 'two', job_id: raw.unprocessed_job_ids[0], priority: 1, explanation: 'Ошибка обработки' }
+  ] };
+  const [item, skipped] = parseReport(JSON.stringify(raw)).reviewItems;
+  assert.equal(item.requirementId, 'r1');
+  assert.equal(item.priority, 1);
+  assert.deepEqual(item.refs.map(ref => [ref.quote, ref.heading]), [
+    ['Python', 'Использовал'], ['Python', 'Отсутствует опыт']
+  ]);
+  assert.equal(skipped.job_id, raw.unprocessed_job_ids[0]);
 });
 
 

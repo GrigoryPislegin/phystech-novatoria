@@ -36,7 +36,7 @@
     failed: 'Сбой обработки', cancelled: 'Отменён', interrupted: 'Прерван'
   };
   const confirmation = {
-    confirm_requirements: 'Подтвердить состав требований выбранной вакансии?',
+    confirm_requirements: 'Подтвердить показанный состав требований?',
     read_context: null,
     accept_condition: 'Принять это исключение по условиям для передачи? Конфликт останется в отчёте.',
     mark_for_handoff: 'Отметить вакансию для передачи? Оценки соответствия сохранятся.'
@@ -74,6 +74,7 @@
   let activeRunsSeen = false;
   let removalBusy = false;
   let toRemove = null;
+  let reviewBusy = false;
   const rowMutations = new Set();
   const cancelPending = new Set();
   const deletedRuns = new Set();
@@ -85,7 +86,7 @@
     history.replaceState(null, '', url);
   }
 
-  viewer.onOpen(context => addressRun(context?.id));
+  viewer.onOpen(context => addressRun(context?.runId));
 
   function message(text, error = false, id = 'runs-message') {
     const node = byId(id);
@@ -95,16 +96,16 @@
   }
 
   function reportContext(next) {
-    const context = { id: next.runId, revision: next.revision };
+    const context = { runId: next.runId, revision: next.revision };
     if (operations.has('review')) {
       context.decide = (jobId, action, itemId) => saveDecision(context, jobId, action, itemId);
     }
-    if (operations.has('compare')) context.compare = (a, b) => api.comparison(context.id, a, b);
+    if (operations.has('compare')) context.compare = (a, b) => api.comparison(context.runId, a, b);
     return context;
   }
 
   async function openRun(id, revealReport = true, reviewWarning = null) {
-    if (deletedRuns.has(id)) return;
+    if (deletedRuns.has(id) || (viewer.getContext()?.pending && !reviewWarning)) return;
     const sequence = viewer.beginLoad();
     viewer.status('Читаем отчёт запуска…');
     try {
@@ -112,34 +113,51 @@
       const next = parseReport(source);
       if (next.runId !== id || !next.revision) throw new Error('Версия отчёта запуска недоступна.');
       if (deletedRuns.has(id) || !viewer.isLatest(sequence)) return;
-      viewer.openServerReport(next, reportContext(next));
+      const context = reportContext(next);
+      if (reviewWarning) context.reviewWarning = reviewWarning;
+      viewer.openServerReport(next, context);
       message('Открыт отчёт запуска.');
-      if (reviewWarning) message(reviewWarning, true, 'review-message');
+      if (reviewWarning) {
+        message(reviewWarning, true, 'review-message');
+        byId('review-message').focus();
+      }
       if (revealReport) {
         setRunCenterOpen(false);
         setInputCenterOpen(false);
         byId('file-status').focus();
       }
     } catch (error) {
-      if (viewer.isLatest(sequence)) viewer.status(error.message, true);
+      if (viewer.isLatest(sequence)) {
+        viewer.status(error.message, true);
+        if (reviewWarning) message('Обновить отчёт не удалось. Откройте этот запуск снова.', true, 'review-message');
+      }
+    } finally {
+      viewer.finishLoad(sequence);
     }
   }
 
   async function saveDecision(context, jobId, action, itemId) {
-    if (viewer.getContext() !== context || context.pending || !Object.hasOwn(confirmation, action)) return;
+    if (!viewer.canReview(context) || reviewBusy || !Object.hasOwn(confirmation, action)) return;
     const sequence = viewer.loadVersion();
     const isCurrent = () => viewer.isLatest(sequence) && viewer.getContext() === context;
     const text = confirmation[action];
-    context.pending = true;
+    reviewBusy = true;
     try {
-      if ((text && !await confirmReview(text)) || !isCurrent()) return;
+      if ((text && !await confirmReview('Ревизия ' + context.revision + '. ' + text)) || !isCurrent()) return;
+      context.pending = true;
+      context.reviewWarning = null;
+      const messageNode = byId('review-message');
+      if (byId('review-panel').contains(document.activeElement)) messageNode.focus();
+      viewer.updateReportActions();
       message('Сохраняем решение…', false, 'review-message');
       const decision = { expected_revision: context.revision, job_id: jobId, action, item_id: itemId };
       const key = JSON.stringify(decision);
       if (context.retry?.key !== key) context.retry = { key, id: crypto.randomUUID() };
-      const { report } = await api.review(context.id, { ...decision, idempotency_key: context.retry.id });
+      const { report } = await api.review(context.runId, { ...decision, idempotency_key: context.retry.id });
       const next = parseReport(JSON.stringify(report));
-      if (next.runId !== context.id || !next.revision) throw new Error('Версия отчёта запуска недоступна.');
+      if (next.runId !== context.runId || next.revision <= context.revision) {
+        throw new Error('Версия отчёта запуска недоступна.');
+      }
       if (isCurrent()) {
         viewer.openServerReport(next, reportContext(next));
         message('Решение сохранено.', false, 'review-message');
@@ -148,22 +166,38 @@
     } catch (error) {
       if (!isCurrent()) return;
       if (error.status === 409 && error.code === 'stale_revision') {
+        context.stale = true;
         const warning = 'Версия отчёта изменилась. Проверьте текущую запись и повторите действие.';
-        await openRun(context.id, false, warning);
+        await openRun(context.runId, false, warning);
       } else {
         message(error.message, true, 'review-message');
       }
     } finally {
       context.pending = false;
+      reviewBusy = false;
+      viewer.updateReportActions();
     }
   }
 
   function confirmReview(text) {
     byId('review-dialog-copy').textContent = text;
-    reviewDialog.returnValue = '';
-    reviewDialog.showModal();
     return new Promise(resolve => {
-      reviewDialog.addEventListener('close', () => resolve(reviewDialog.returnValue === 'confirm'), { once: true });
+      const events = new AbortController();
+      const settle = confirmed => {
+        events.abort();
+        reviewDialog.close();
+        resolve(confirmed);
+      };
+      const options = { signal: events.signal };
+      byId('save-review').addEventListener('click', () => settle(true), options);
+      for (const button of reviewDialog.querySelectorAll('[data-dismiss-dialog]')) {
+        button.addEventListener('click', () => settle(false), options);
+      }
+      reviewDialog.addEventListener('cancel', event => {
+        event.preventDefault();
+        settle(false);
+      }, options);
+      reviewDialog.showModal();
     });
   }
 
@@ -205,7 +239,9 @@
     const actions = document.createElement('div');
     actions.className = 'run-actions';
     if (operations.has('read') && run.report_available === true) {
-      actions.append(makeButton('Открыть отчёт', () => openRun(run.run_id)));
+      const open = makeButton('Открыть отчёт', () => openRun(run.run_id), viewer.getContext()?.pending === true);
+      open.dataset.reportNavigation = '';
+      actions.append(open);
     }
     if (operations.has('cancel') && isActive(run)) {
       const cancellation = run.cancel_requested || cancelPending.has(run.run_id);
@@ -234,6 +270,7 @@
     if (operations.has('delete') && Object.hasOwn(states, run.state) && !isActive(run)) {
       actions.append(makeButton('Удалить', () => {
         toRemove = run.run_id;
+        byId('delete-run-label').textContent = title.textContent;
         removal.showModal();
       }));
     }
@@ -514,11 +551,15 @@
   });
   reload.addEventListener('click', refreshRuns);
   start.addEventListener('click', startRun);
-  for (const button of document.querySelectorAll('[data-dismiss-dialog]')) {
-    button.addEventListener('click', () => button.closest('dialog').close());
+  for (const button of removal.querySelectorAll('[data-dismiss-dialog]')) {
+    button.addEventListener('click', () => {
+      const dialog = button.closest('dialog');
+      if (dialog !== removal || !removalBusy) dialog.close();
+    });
   }
-  byId('save-review').addEventListener('click', () => reviewDialog.close('confirm'));
-  removal.addEventListener('close', () => { toRemove = null; });
+  removal.addEventListener('cancel', event => {
+    if (removalBusy) event.preventDefault();
+  });
   byId('remove-run').addEventListener('click', async event => {
     const id = toRemove;
     if (!id || removalBusy) return;
@@ -527,17 +568,15 @@
     try {
       await api.remove(id);
       deletedRuns.add(id);
-      const closed = viewer.closeServerReport(id);
+      viewer.closeServerReport(id);
       message('Запуск удалён.');
-      if (closed) {
-        reload.focus();
-      }
     } catch (error) {
       message(error.message, true);
     } finally {
       removalBusy = false;
       event.target.disabled = false;
       removal.close();
+      if (deletedRuns.has(id)) reload.focus();
       refreshRuns();
     }
   });
@@ -580,6 +619,8 @@
     } catch {
       serviceStatus.hidden = false;
       serviceStatus.textContent = 'Локальный сервис недоступен. Можно открыть сохранённый отчёт или демо.';
+    } finally {
+      viewer.finishLoad(initialView);
     }
   }
 

@@ -48,7 +48,8 @@ test('incomplete, unknown and review states stay visible in print', () => {
   assert.match(html, /Неполный результат[\s\S]+1 из 3/);
   assert.match(html, /Места предварительные/);
   assert.match(html, /Синтетический replay/);
-  assert.match(html, /Состав подтверждён в отчёте/);
+  assert.match(html, /Подтверждение состава не проверено/);
+  assert.match(html, /Внешний непроверенный файл/);
   assert.match(html, /Черновик для проверки/);
   assert.match(html, /Обязательность требует проверки/);
   assert.match(html, /защита могла скрыть/i);
@@ -190,7 +191,14 @@ test('a selected vacancy gets its own provisional verdict independent of ranking
   const raw = example('success');
   assert.match(section(render(raw), 'vacancy-fit'), /Нужна проверка[\s\S]*Состав не подтверждён/);
   raw.ranking.jobs[0].requirements_review = { vacancy_id: 'job-001', state: 'confirmed', reasons: [] };
-  assert.match(section(render(raw), 'vacancy-fit'), /По оценённым требованиям соответствует/);
+  assert.match(section(render(raw), 'vacancy-fit'), /Нужна проверка[\s\S]*Подтверждение состава не проверено/);
+  raw.run_id = 'a'.repeat(32);
+  raw.revision = 2;
+  const context = { runId: raw.run_id, revision: raw.revision };
+  const serverReport = () => renderManagerReport(parseReport(JSON.stringify(raw)), 'job-001', context);
+  assert.match(section(serverReport(), 'vacancy-fit'), /Нужна проверка/);
+  raw.handoff = [{ job_id: 'job-001', requirements_confirmed: true, state: 'draft' }];
+  assert.match(section(serverReport(), 'vacancy-fit'), /По оценённым требованиям соответствует/);
   assert.match(section(render(raw, 2), 'vacancy-fit'), /Есть несоответствие[\s\S]*SQL/);
   const changed = example('success');
   changed.ranking.jobs[0].score_review.excluded_mandatory_ids = ['r1'];
@@ -321,7 +329,9 @@ test('handoff review state in print requires current trusted server context', ()
     accepted_exceptions: ['abc'], requirements_confirmed: true
   }];
   const report = parseReport(JSON.stringify(raw));
-  assert.match(renderManagerReport(report, jobId), /Черновик для проверки/);
+  const imported = renderManagerReport(report, jobId);
+  assert.match(imported, /Внешний непроверенный файл[\s\S]*Черновик для проверки/);
+  assert.doesNotMatch(imported, /Ревизия 12|Принятые исключения|Состав подтверждён/);
   const context = { runId: raw.run_id, revision: 12 };
   const reviewed = renderManagerReport(report, jobId, context);
   assert.match(reviewed, /Проверено рекрутером для передачи/);
