@@ -176,6 +176,33 @@ class ReviewOf04b80daTests(unittest.TestCase):
         self.assertEqual((s['mandatory'], s['lower'], s['excluded_mandatory_ids'], s['weights']),
                          ('not_set', 50, ['r2'], {'r1': 50, 'r2': 50}))
 
+    def test_a_bonus_item_and_a_plus_inside_an_item_stay_optional(self):
+        head = 'Обязательные требования:'
+        bonus = f'{head}\n● Python.\n● Бонус: Docker.\n● Kafka.'
+        self.assertEqual(check(bonus, 'Python.', bonus[:bonus.index('Python.') + 7]).state, 'structure_ok')
+        for quote in ('Docker.', 'Бонус: Docker.', 'Kafka.'):  # the bonus item ends the mandatory list
+            self.assertEqual(check(bonus, quote, bonus[:bonus.index(quote) + len(quote)]).state, 'needs_review', quote)
+        s, _ = self.run_contract(bonus, ['Python.', 'Docker.'],
+                                 [bonus[:bonus.index('Python.') + 7], bonus[:bonus.index('Docker.') + 7]],
+                                 [('full', 'f1'), ('fail', 'f2')])
+        self.assertEqual((s['mandatory'], s['excluded_mandatory_ids'], s['weights'], s['breakdown']['stop_factors']),
+                         ('confirmed', ['r2'], {'r1': 75, 'r2': 25}, []))
+        mixed = f'{head}\n● Обязателен Python; Docker — плюс.'
+        self.assertEqual(check(mixed, 'Обязателен Python', mixed).state, 'structure_ok')
+        result = check(mixed, 'Docker — плюс.', mixed)
+        self.assertEqual((result.state, codes(result)), ('needs_review', {'mandatory_not_stated'}))
+        s, _ = self.run_contract(mixed, ['Обязателен Python', 'Docker — плюс.'], [mixed, mixed],
+                                 [('full', 'f1'), ('fail', 'f2')])
+        self.assertEqual((s['mandatory'], s['excluded_mandatory_ids'], s['weights'], s['breakdown']['stop_factors']),
+                         ('confirmed', ['r2'], {'r1': 75, 'r2': 25}, []))
+        for item in ('Docker будет плюсом.', 'Docker — бонусом.', 'Docker is a plus.', 'Bonus: Docker.'):
+            text = f'{head}\n● Python.\n● {item}'
+            self.assertEqual(check(text, item, text).state, 'needs_review', item)
+        # «плюс» inside another word or a product name is not a denial.
+        for item in ('C++ и STL.', 'Плюсовая разработка на C++.', 'Опыт с 1С:Бухгалтерия.'):
+            text = f'{head}\n● {item}'
+            self.assertEqual(check(text, item, text).state, 'structure_ok', item)
+
     def test_rules_version_changed_with_the_rules(self):
         self.assertEqual(RULES_VERSION, 'evidence-0.3')
 
