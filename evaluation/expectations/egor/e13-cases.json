@@ -73,6 +73,271 @@
      "Павловна"
     ]
    }
+  },
+  {
+   "case_id": "E13-finance",
+   "fixture": "finance",
+   "domain": "finance",
+   "split": "dev",
+   "decision_status": "draft",
+   "rationale": "Аналитик с планированием и моделями подходит аналитической вакансии; учёт основных средств был 2 года при требуемых 5; о казначействе в резюме ничего нет — это unknown, не fail. Курс без практики — не полный опыт. Офис против гибрида — конфликт условий, не отказ.",
+   "personal": [
+    "Гришина",
+    "Алла",
+    "Сергеевна",
+    "900) 000-00-02",
+    "alla.synthetic@example.com"
+   ],
+   "min_facts": 15,
+   "min_requirements": 8,
+   "passthrough": {
+    "order": [
+     [
+      "fin-1",
+      "fin-2"
+     ],
+     [
+      "fin-1",
+      "fin-3"
+     ]
+    ],
+    "recommendation_in": [
+     "clarify",
+     "review_top"
+    ],
+    "statuses": {
+     "fin-1": {
+      "Опыт работы в SAP.": [
+       "fail"
+      ],
+      "Опыт работы с Power BI.": [
+       "partial",
+       "fail"
+      ],
+      "Английский язык не ниже B2.": [
+       "fail"
+      ]
+     },
+     "fin-2": {
+      "Опыт учёта основных средств от 5 лет.": [
+       "fail",
+       "partial"
+      ],
+      "Опыт расчёта налога на имущество.": [
+       "unknown"
+      ],
+      "Опыт проведения инвентаризации основных средств.": [
+       "partial"
+      ]
+     },
+     "fin-3": {
+      "Опыт управления платёжным календарём и ликвидностью от 3 лет.": [
+       "unknown"
+      ],
+      "Опыт руководства командой от 5 человек.": [
+       "fail",
+       "partial"
+      ]
+     }
+    },
+    "mandatory": {},
+    "conflicts": {
+     "fin-1": [],
+     "fin-2": [
+      "work_mode"
+     ],
+     "fin-3": []
+    }
+   },
+   "real_privacy": {
+    "expected": {
+     "processed": 3,
+     "stopped_at": null
+    },
+    "known_blocker": {
+     "processed": 0,
+     "stopped_at": {
+      "stage": "facts",
+      "code": "privacy_residual_findings"
+     }
+    },
+    "known_leak": []
+   }
+  },
+  {
+   "case_id": "E13-analytics",
+   "fixture": "analytics",
+   "domain": "analytics",
+   "split": "dev",
+   "decision_status": "draft",
+   "rationale": "Другой BI-инструмент в резюме не доказывает отсутствие нужного: Power BI — unknown, не fail. «Пользователь готовых пайплайнов» — не опыт их разработки. Зарплата выше вилки — конфликт условий, решает HR.",
+   "personal": [
+    "Зуев",
+    "Тимур",
+    "Ренатович",
+    "900) 000-00-03",
+    "timur.synthetic@example.com"
+   ],
+   "min_facts": 15,
+   "min_requirements": 8,
+   "passthrough": {
+    "order": [
+     [
+      "an-1",
+      "an-2"
+     ],
+     [
+      "an-1",
+      "an-3"
+     ]
+    ],
+    "recommendation_in": [
+     "clarify",
+     "review_top"
+    ],
+    "statuses": {
+     "an-1": {
+      "Опыт построения ML-моделей.": [
+       "fail"
+      ]
+     },
+     "an-2": {
+      "Опыт разработки пайплайнов в Airflow от 2 лет.": [
+       "fail",
+       "partial"
+      ],
+      "Опыт работы со Spark.": [
+       "fail"
+      ],
+      "Опыт работы с Kafka.": [
+       "unknown"
+      ]
+     },
+     "an-3": {
+      "Опыт работы с Power BI.": [
+       "unknown"
+      ],
+      "Знание DAX.": [
+       "unknown"
+      ],
+      "Опыт работы с Tableau.": [
+       "full"
+      ]
+     }
+    },
+    "mandatory": {},
+    "conflicts": {
+     "an-1": [],
+     "an-2": [
+      "work_mode"
+     ],
+     "an-3": [
+      "salary"
+     ]
+    }
+   },
+   "real_privacy": {
+    "expected": {
+     "processed": 3,
+     "stopped_at": null
+    },
+    "known_blocker": {
+     "processed": 0,
+     "stopped_at": {
+      "stage": "facts",
+      "code": "privacy_residual_findings"
+     }
+    },
+    "known_leak": []
+   }
+  },
+  {
+   "case_id": "E13-development",
+   "fixture": "development",
+   "domain": "development",
+   "split": "dev",
+   "decision_status": "draft",
+   "rationale": "Шесть лет backend с подтверждённым стеком вакансии против явного «не работал» и против двух лет на старом стеке при требуемых трёх. Оркестратор «как пользователь» — partial.",
+   "personal": [
+    "Панов",
+    "Денис",
+    "Олегович",
+    "900) 000-00-04",
+    "denis.synthetic@example.com"
+   ],
+   "min_facts": 15,
+   "min_requirements": 8,
+   "passthrough": {
+    "order": [
+     [
+      "dev-1",
+      "dev-2"
+     ],
+     [
+      "dev-1",
+      "dev-3"
+     ]
+    ],
+    "recommendation_in": [
+     "clarify",
+     "review_top"
+    ],
+    "statuses": {
+     "dev-1": {
+      "Опыт работы с Kafka.": [
+       "fail"
+      ],
+      "Опыт работы с Docker и Kubernetes.": [
+       "partial"
+      ]
+     },
+     "dev-2": {
+      "Коммерческий опыт разработки на Go от 2 лет.": [
+       "fail"
+      ],
+      "Знание gRPC.": [
+       "unknown"
+      ],
+      "Опыт проектирования высоконагруженных сервисов.": [
+       "unknown",
+       "partial"
+      ]
+     },
+     "dev-3": {
+      "Коммерческий опыт разработки на PHP от 3 лет.": [
+       "fail",
+       "partial"
+      ],
+      "Опыт разработки интерфейсов на Vue или React.": [
+       "unknown"
+      ]
+     }
+    },
+    "mandatory": {},
+    "conflicts": {
+     "dev-1": [],
+     "dev-2": [
+      "work_mode"
+     ],
+     "dev-3": [
+      "salary"
+     ]
+    }
+   },
+   "real_privacy": {
+    "expected": {
+     "processed": 3,
+     "stopped_at": null
+    },
+    "known_blocker": {
+     "processed": 0,
+     "stopped_at": {
+      "stage": "facts",
+      "code": "privacy_residual_findings"
+     }
+    },
+    "known_leak": []
+   }
   }
  ]
 }

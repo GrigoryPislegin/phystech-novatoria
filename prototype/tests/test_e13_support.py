@@ -18,13 +18,16 @@ import asyncio
 import copy
 import difflib
 import json
+import os
+import re
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / 'evaluation' / 'fixtures' / 'integration'
 EXPECTATIONS = ROOT / 'evaluation' / 'expectations' / 'egor'
-MODELS = ROOT / 'data' / 'private' / 'privacy-models'
+# The same variable `prototype.privacy.local_privacy` reads; in the Docker image the weights are in /opt/privacy-models.
+MODELS = Path(os.environ.get('PRIVACY_MODELS_DIR', ROOT / 'data' / 'private' / 'privacy-models'))
 
 
 def load_fixture(name: str) -> dict:
@@ -43,20 +46,39 @@ def real_privacy_available() -> bool:
     return True
 
 
+REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
+
+
 class Projector:
-    """Maps a fragment of the original text onto the processed text the model was shown."""
+    """Maps a fragment of the original text onto the processed text the model was shown.
+
+    The processed text is the original with some spans replaced by privacy references. The plain
+    pieces between references are located in the original in order, which gives exact pairs of
+    equal blocks; a fragment that touches a masked span takes the whole reference, never a part
+    of it. Without references the two texts must be equal."""
 
     def __init__(self, original: str, processed: str):
         self.original, self.processed = original, processed
-        self.ops = difflib.SequenceMatcher(None, original, processed, autojunk=False).get_opcodes()
+        self.blocks, cursor, position = [], 0, 0  # (original start, processed start, length)
+        for piece in REFERENCE.split(processed):
+            found = original.find(piece, cursor) if piece else cursor
+            if found < 0:
+                raise ValueError('processed_text_not_alignable')
+            start = processed.index(piece, position) if piece else position
+            self.blocks.append((found, start, len(piece)))
+            cursor, position = found + len(piece), start + len(piece)
+            reference = REFERENCE.match(processed, position)
+            position = reference.end() if reference else position
 
     def _at(self, position: int, end: bool) -> int:
-        for tag, a1, a2, b1, b2 in self.ops:
-            if a1 <= position < a2 or (end and position == a2 and a1 < a2):
-                if tag == 'equal':
-                    return b1 + position - a1
-                return b2 if end else b1  # inside a masked span: take the whole replacement
-        return len(self.processed) if end else 0
+        for index, (a, b, length) in enumerate(self.blocks):
+            inside = a < position <= a + length if end else a <= position < a + length
+            if inside or (length == 0 and position == a):
+                return b + position - a
+            if position < a or (end and position == a):  # in the masked span before this block
+                previous = self.blocks[index - 1] if index else (0, 0, 0)
+                return b if end else previous[1] + previous[2]
+        return len(self.processed)
 
     def quote(self, fragment: str) -> str:
         start = self.original.find(fragment)
