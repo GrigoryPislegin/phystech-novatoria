@@ -331,3 +331,31 @@ test('handoff review state in print requires current trusted server context', ()
   assert.match(renderManagerReport(report, jobId, { ...context, revision: 11 }), /Черновик для проверки/);
   assert.match(renderManagerReport(report, raw.ranking.jobs[1].job_id, context), /Черновик для проверки/);
 });
+
+test('restored aliases are escaped in exported HTML and raw view stays protected', () => {
+  const { createDisplayText } = require('../static/report.js');
+  const ref = '[[PRIV:0123456789abcdef:1:ORG]]';
+  const report = parseReport(JSON.stringify(example()));
+  const job = report.jobs[0];
+  job.rows[0].label = ref;
+  job.rows[0].requirementQuote = ref;
+  const before = job.rows[0].label;
+  const page = renderManagerReport(report,job.id,null,createDisplayText({[ref]:'<img src=x onerror=alert(1)> Vue.js'}));
+  assert.doesNotMatch(page, /<img src=x|\[\[PRIV:/);
+  assert.match(page, /&lt;img src=x onerror=alert\(1\)&gt; Vue.js/);
+  assert.equal(job.rows[0].label,before);
+  assert.match(renderManagerReport(report,job.id), /Фрагмент 1/);
+});
+
+test('display aliases cannot change which vacancy is exported when labels collide', () => {
+  const { createDisplayText } = require('../static/report.js');
+  const ref = '[[PRIV:0123456789abcdef:1:ORG]]';
+  const report = parseReport(JSON.stringify(example()));
+  report.jobs[0].id = 'Фрагмент 1'; report.jobs[0].title = 'Первая';
+  report.jobs[1].id = ref; report.jobs[1].title = 'Вторая';
+  for (const display of [createDisplayText(),createDisplayText({[ref]:'Фрагмент 1'})]) {
+    const page = renderManagerReport(report,ref,null,display);
+    assert.match(page, /<p class="vacancy">Вакансия Вторая<\/p>/);
+    assert.doesNotMatch(page, /<p class="vacancy">Вакансия Первая<\/p>/);
+  }
+});

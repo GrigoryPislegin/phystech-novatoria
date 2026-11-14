@@ -59,7 +59,9 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual((status,report['revision']),(200,1))
         display_route = f'/api/runs/{rid}/display-data'
         status, display, display_headers = self.request('GET',display_route)
-        self.assertEqual((status,display),(200,{'run_id':rid,'revision':1,'aliases':{}}))
+        from prototype.demo import demo_inputs
+        self.assertEqual((status,display),(200,{'run_id':rid,'revision':1,'aliases':{},
+                                                'job_titles':dict(demo_inputs()[1])}))
         self.assertEqual(display_headers['Cache-Control'],'no-store')
         for hostile in ({'Host':'attacker.example'}, {'Origin':'https://attacker.example'},
                         {'Sec-Fetch-Site':'cross-site'}):

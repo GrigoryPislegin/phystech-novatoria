@@ -71,12 +71,17 @@
     node.textContent = text;
   }
 
-  function reportContext(next) {
-    const context = { id: next.runId, revision: next.revision };
+  function contextFor(next, display) {
+    const displayText = window.NanimaiReport.bindDisplayData(next, display);
+    const context = { id: next.runId, revision: next.revision, displayText };
     if (operations.has('review')) {
       context.decide = (jobId, action, itemId) => saveDecision(context, jobId, action, itemId);
     }
     return context;
+  }
+
+  async function reportContext(next) {
+    return contextFor(next, await api.displayData(next.runId));
   }
 
   async function openRun(id, revealReport = true) {
@@ -90,8 +95,9 @@
       if (new Blob([source]).size > MAX_REPORT_BYTES) throw new Error('Отчёт слишком большой.');
       const next = parseReport(source);
       if (next.runId !== id || !next.revision) throw new Error('Версия отчёта запуска недоступна.');
+      const context = await reportContext(next);
       if (deletedRuns.has(id) || !viewer.isLatest(sequence)) return;
-      viewer.openServerReport(next, reportContext(next));
+      viewer.openServerReport(next, context);
       message('Открыт отчёт запуска.');
       if (revealReport) {
         setRunCenterOpen(false);
@@ -120,9 +126,17 @@
       const { report } = await api.review(context.id, { ...decision, idempotency_key: context.retry.id });
       const next = parseReport(JSON.stringify(report));
       if (next.runId !== context.id || !next.revision) throw new Error('Версия отчёта запуска недоступна.');
+      let updatedContext, savedMessage = 'Решение сохранено.';
+      try { updatedContext = await reportContext(next); }
+      catch {
+        // The write already succeeded. Missing/stale decoration cannot undo
+        // it or leave the old revision looking as if nothing was saved.
+        updatedContext = contextFor(next, null);
+        savedMessage = 'Решение сохранено. Обновите запуск для актуальной расшифровки.';
+      }
       if (viewer.getContext() === context) {
-        viewer.openServerReport(next, reportContext(next));
-        message('Решение сохранено.', false, 'review-message');
+        viewer.openServerReport(next, updatedContext);
+        message(savedMessage, false, 'review-message');
       }
       refreshRuns();
     } catch (error) {

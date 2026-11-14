@@ -47,7 +47,59 @@
     relocation: 'Переезд', salary: 'Зарплата'
   };
   const profilePath = /^(?:summary\[[0-2]\]|stack\[(?:[0-9]|[12][0-9])\]|last_position\.(?:role|domain|period)|achievements\[[0-4]\]\.(?:action|result))$/;
-  const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 4 });
+  const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 1 });
+  const axisLabels = { stack:'Инструменты и технологии', relevant_experience:'Профильный опыт',
+    domain:'Предметная область', education:'Образование', management:'Взаимодействие и руководство', language:'Языки' };
+  const shortAxisLabels = { stack:'Инструменты', relevant_experience:'Опыт', domain:'Сфера',
+    education:'Образование', management:'Команда', language:'Языки' };
+
+  function radarGeometry(axes) {
+    if (!Array.isArray(axes) || axes.length < 4 || axes.length > 6) return [];
+    return axes.map((axis,index) => {
+      const angle = 2 * Math.PI * index / axes.length - Math.PI / 2;
+      const point = radius => ({x:160 + Math.cos(angle)*radius, y:130 + Math.sin(angle)*radius});
+      const known = Number.isFinite(axis.score) && axis.score >= 0 && axis.score <= 100;
+      return {label:shortAxisLabels[axis.axis] || axis.label, outer:point(82), labelPoint:point(105),
+        point:known ? point(82*axis.score/100) : null, score:known ? axis.score : null, coverage:axis.coverage};
+    });
+  }
+
+  function createDisplayText(aliases = {}) {
+    const known = isRecord(aliases) ? aliases : {};
+    const missing = new Map();
+    return value => String(value).replace(/\[\[PRIV:[^\]\r\n]{1,160}\]\]/g, token => {
+      if (Object.hasOwn(known, token) && typeof known[token] === 'string') return known[token];
+      if (!missing.has(token)) missing.set(token, 'Фрагмент ' + (missing.size + 1));
+      return missing.get(token);
+    });
+  }
+
+  const displayFields = new Set(['label','title','requirementQuote','mandatoryQuote','resumeQuotes','comment',
+    'question','questions','message','context','sentence','heading','quote','text','diagnostic']);
+  function displayCopy(value, displayText, field = '', seen = new Map()) {
+    if (typeof value === 'string') return displayFields.has(field) ? displayText(value) : value;
+    if (value === null || typeof value !== 'object') return value;
+    if (seen.has(value)) return seen.get(value);
+    const copy = value instanceof Map ? new Map() : Array.isArray(value) ? [] : {};
+    seen.set(value, copy);
+    if (value instanceof Map) for (const [key,item] of value) copy.set(key, displayCopy(item, displayText, field, seen));
+    else if (Array.isArray(value)) for (const item of value) copy.push(displayCopy(item, displayText, field, seen));
+    else for (const [key,item] of Object.entries(value)) Object.defineProperty(copy,key,
+      {value:displayCopy(item,displayText,key,seen), enumerable:true, writable:true, configurable:true});
+    return copy;
+  }
+
+  function bindDisplayData(report, data) {
+    if (data != null && (!isRecord(data) || data.run_id !== report.runId || data.revision !== report.revision)) {
+      throw new Error('Версия отчёта изменилась. Откройте запуск повторно.');
+    }
+    const displayText = createDisplayText(data?.aliases);
+    for (const job of [...report.jobs, ...report.unprocessed]) {
+      const title = data?.job_titles?.[job.id];
+      if (typeof title === 'string' && title.trim()) job.title = displayText(title).slice(0,180);
+    }
+    return displayText;
+  }
   const verdictLabels = {
     mismatch: 'Есть несоответствие требованиям',
     partial: 'Соответствие частичное',
@@ -292,6 +344,38 @@
     };
   }
 
+  function briefFrom(job, rows, policy, unitMetadataValid) {
+    const percent = value => Number.isFinite(value) && value >= 0 && value <= 100;
+    const keys = ['full','partial','fail','unknown','disputed'];
+    const shares = job.score?.shares;
+    const breakdown = job.score?.breakdown;
+    const rowIds = new Set(rows.map(row => row.id));
+    const validShares = policy === 'draft-2026-11-14-v3' && job.score?.policy_version === policy &&
+      isRecord(shares) && ['confirmed','disputed','unknown'].every(key => percent(shares[key])) &&
+      Math.abs(shares.confirmed + shares.disputed + shares.unknown - 100) < 0.02 &&
+      Math.abs(shares.confirmed - job.score.coverage) < 0.02;
+    const listed = keys.flatMap(key => Array.isArray(breakdown?.[key]) ? breakdown[key] : []);
+    const validBreakdown = validShares && isRecord(breakdown) && keys.every(key => Array.isArray(breakdown[key])) &&
+      listed.length === rows.length && new Set(listed).size === listed.length && listed.every(id => rowIds.has(id));
+    const axes = job.competency_axes;
+    const validAxes = validShares && isRecord(axes) && axes.policy_version === policy && axes.job_id === job.job_id &&
+      Array.isArray(axes.axes) && axes.axes.length <= 6 && new Set(axes.axes.map(axis => axis?.axis)).size === axes.axes.length &&
+      axes.axes.every(axis => isRecord(axis) && Object.hasOwn(axisLabels, axis.axis) && percent(axis.coverage) &&
+        percent(axis.weight) && (axis.score === null ? axis.coverage === 0 : percent(axis.score) && axis.coverage > 0) &&
+        Array.isArray(axis.requirement_ids) && axis.requirement_ids.every(id => rowIds.has(id))) &&
+      new Set(axes.axes.flatMap(axis => axis.requirement_ids)).size === axes.axes.flatMap(axis => axis.requirement_ids).length;
+    const positiveUnits = unitMetadataValid ? new Set(job.score.units.filter(unit => ['full','partial'].includes(unit.state)).flatMap(unit => unit.ids)) : new Set();
+    const accepted = validBreakdown ? new Set([...breakdown.full, ...breakdown.partial].filter(id => positiveUnits.has(id))) : new Set();
+    return {
+      shares: validShares ? { confirmed:shares.confirmed, disputed:shares.disputed, unknown:shares.unknown } : null,
+      axes: validAxes ? axes.axes.map(axis => ({ axis:axis.axis, label:axisLabels[axis.axis], score:axis.score, coverage:axis.coverage, weight:axis.weight })) : [],
+      radarReady: Boolean(validAxes && axes.radar_ready === true && axes.axes.length >= 4 && axes.axes.filter(axis => axis.score !== null).length >= 3),
+      strengths: rows.filter(row => accepted.has(row.id) && ['full','partial'].includes(row.status) &&
+        row.evidence?.state === 'structure_ok').slice(0,2).map(row => ({ text:row.label, status:row.status })),
+      questions: rows.filter(row => row.status === 'unknown').slice(0,2).map(row => row.question || row.label)
+    };
+  }
+
   function rowFrom(id, requirementQuote, values) {
     requireShape(isText(id) && isText(requirementQuote) && statuses.includes(values.status) &&
       isOptionalText(values.mandatoryQuote) && isOptionalText(values.comment) &&
@@ -405,7 +489,7 @@
 
   function readHandoff(input, jobs) {
     if (!Array.isArray(input)) return [];
-    return input.slice(0, 20).filter(item => isRecord(item) && jobs.has(item.job_id)).map(item => ({
+    return input.slice(0, 30).filter(item => isRecord(item) && jobs.has(item.job_id)).map(item => ({
       job_id: item.job_id, state: isText(item.state) ? item.state : null, requirements_confirmed: item.requirements_confirmed === true,
       blockers: Array.isArray(item.blockers) ? item.blockers.filter(isText) : [],
       acknowledged: Array.isArray(item.acknowledged) ? item.acknowledged.filter(isText) : [],
@@ -433,7 +517,7 @@
     const [leader] = jobs;
     const byId = new Map(jobs.map(job => [job.id, job]));
 
-    return input.slice(0, 19).flatMap(item => {
+    return input.slice(0, 29).flatMap(item => {
       if (!isRecord(item)) return [];
       const a = byId.get(item.job_a);
       const b = byId.get(item.job_b);
@@ -526,7 +610,7 @@
     const unprocessed = unprocessedFrom(report, rankedJobs);
     const total = rankedJobs.size + unprocessed.length;
     requireShape(report.ranking.complete === (unprocessed.length === 0) &&
-      total > 0 && total <= 20);
+      total > 0 && total <= 30);
 
     let presentation;
     requireShape(isRecord(report.facts));
@@ -588,6 +672,7 @@
       return {
         id: job.job_id, title: vacancyTitle(job.job_id, index), rank: job.rank,
         score: scoreFrom(job.score), rows, excluded, disputed, conflicts, units, unitMetadataValid,
+        brief: briefFrom(job, rows, report.policy_version, unitMetadataValid),
         requirementsReview: requirementReviewFrom(job),
         sourceDigest, policyDigest: digest(job.score.policy_sha256),
         conditions: conditionsFrom(job.conditions, job.job_id, resumeDigest, sourceDigest, factQuotes)
@@ -611,11 +696,11 @@
     };
   }
 
-  function filterRows(rows, filter, query) {
+  function filterRows(rows, filter, query, displayText = value => value) {
     const search = query.trim().toLocaleLowerCase('ru');
     return rows.filter(row => {
       const matchesFilter = filter === 'all' || row.status === filter || (filter === 'review' && !row.verified);
-      return matchesFilter && row.label.toLocaleLowerCase('ru').includes(search);
+      return matchesFilter && displayText(row.label).toLocaleLowerCase('ru').includes(search);
     });
   }
 
@@ -633,12 +718,13 @@
       upper: job.score.upper,
       coverage: job.score.coverage,
       counts: statusCounts(job.rows),
-      total: job.rows.length
+      total: job.rows.length,
+      brief: job.brief
     }));
   }
 
   const api = {
-    MAX_REPORT_BYTES, parseReport, filterRows, statusCounts, describeDashboard, describeRun, describeFailure, describeFit, scoreRange, assessments,
+    MAX_REPORT_BYTES, parseReport, createDisplayText, displayCopy, bindDisplayData, radarGeometry, filterRows, statusCounts, describeDashboard, describeRun, describeFailure, describeFit, scoreRange, assessments,
     mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
   };
   if (typeof module === 'object' && module.exports) {

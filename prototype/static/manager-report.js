@@ -4,7 +4,7 @@
   const commonJS = typeof module === 'object' && module.exports;
   const {
     describeRun, describeFit, scoreRange, assessments, mandatoryStates, evidenceLabel, evidenceNeedsReview,
-    mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
+    mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel, createDisplayText, displayCopy
   } = commonJS ? require('./report.js') : root.NanimaiReport;
 
   const htmlEntities = {
@@ -249,7 +249,8 @@
   const printScript = "document.getElementById('print-report').addEventListener('click', () => window.print());";
   const printScriptDigest = 'Ly5N7hfg2ILqQD8qjfrNRGdeV9zTxlJEU/jhMitXdoU=';
 
-  function renderManagerReport(report, jobId, trustedContext = null) {
+  function renderManagerReport(report, jobId, trustedContext = null, displayText = createDisplayText()) {
+    report = displayCopy(report, displayText);
     const job = report.jobs.find(item => item.id === jobId);
     if (!job) throw new Error('Выберите оценённую вакансию.');
 

@@ -235,8 +235,11 @@ class LocalServiceTests(unittest.TestCase):
                 self.assertNotIn(contact, str(record))
             self.service.close()
             self.service = LocalService(Path(self.tmp.name), allow_live=True)
-            self.assertEqual(self.service.store.display_data(rid), {
+            display = self.service.store.display_data(rid)
+            self.assertEqual({key:display[key] for key in ('run_id','revision','aliases')}, {
                 'run_id':rid, 'revision':report['revision'], 'aliases':aliases})
+            self.assertEqual(set(display['job_titles']), {job['job_id'] for job in report['ranking']['jobs']})
+            self.assertCountEqual(display['job_titles'].values(), [text for _,text in jobs])
             self.service.store.delete(rid)
             with self.assertRaisesRegex(StoreError, 'not_found'):
                 self.service.store.display_data(rid)

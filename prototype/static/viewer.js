@@ -2,7 +2,7 @@
   'use strict';
 
   const {
-    MAX_REPORT_BYTES, parseReport, filterRows, describeDashboard, describeRun, describeFit, scoreRange,
+    MAX_REPORT_BYTES, parseReport, createDisplayText, radarGeometry, filterRows, describeDashboard, describeRun, describeFit, scoreRange,
     assessments, mandatoryStates, evidenceLabel, mandatoryLabel, requirementReviewLabel
   } = window.NanimaiReport;
   const { renderManagerReport } = window.NanimaiManagerReport;
@@ -12,7 +12,7 @@
   const managerButton = byId('manager-report');
   const views = Array.from(byId('report-views').querySelectorAll('button'));
   const filterButtons = Array.from(byId('row-filters').querySelectorAll('button'));
-  const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 4 });
+  const numberFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 1 });
 
   const indicators = { ok: '✓', warning: '◐', neutral: '–', danger: '×' };
   const conditionStates = {
@@ -32,15 +32,19 @@
   let filter = 'all';
   let loadSequence = 0;
   let runContext = null;
+  let displayText = createDisplayText();
+  const boundTextNodes = new Set();
 
   function setText(id, value) {
-    byId(id).textContent = value;
+    const node = byId(id);
+    node.textContent = displayText(value);
+    boundTextNodes.add(node);
   }
 
   function element(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
-    if (text != null) node.textContent = text;
+    if (text != null) node.textContent = displayText(text);
     return node;
   }
 
@@ -459,13 +463,13 @@
       heading.append(element('h3', null, job.title), element('span', 'support', place + job.rank), button);
 
       const bounds = element('div', 'overview-metric');
-      bounds.append(element('p', null, 'Диапазон L–H'),
-        element('strong', 'numeric', scoreRange(job)));
+      bounds.append(element('p', null, 'Засчитано по шкале'),
+        element('strong', 'numeric', numberFormat.format(job.lower) + ' / 100'));
       // Native meters take numeric values under the offline page's strict CSP.
       // The two meters share a baseline and the upper bound has the lighter fill.
       const interval = element('div', 'interval');
       interval.setAttribute('aria-hidden', 'true');
-      interval.append(meter(job.upper, 'high'), meter(job.lower, 'low'));
+      interval.append(meter(job.lower, 'low'));
       bounds.append(interval);
 
       const coverage = element('div', 'overview-metric');
@@ -481,9 +485,71 @@
         item.append(tag(...assessments[status]), element('strong', 'numeric', count));
         counts.append(item);
       }
-      row.append(heading, bounds, coverage, counts);
+      const statusDetails = element('details', 'overview-statuses');
+      statusDetails.append(element('summary', null, 'Все статусы · ' + job.total), counts,
+        element('p', 'support', 'Диапазон возможного соответствия: ' + scoreRange(job)));
+      row.append(heading, bounds, coverage, statusDetails);
+      if (job.brief?.shares) {
+        const brief = element('div', 'compact-brief');
+        const strengths = element('section');
+        strengths.append(element('h4', null, 'Что подходит'));
+        const matches = element('ul');
+        for (const item of job.brief.strengths) matches.append(element('li', null,
+          item.text + (item.status === 'partial' ? ' — частично подтверждено' : ' — подтверждено')));
+        if (!matches.childElementCount) matches.append(element('li', null, 'Основания требуют проверки.'));
+        strengths.append(matches);
+        const questions = element('ul');
+        for (const question of job.brief.questions) questions.append(element('li', null, question));
+        if (questions.childElementCount) strengths.append(element('h4', null, 'Что уточнить'), questions);
+        const skills = element('section');
+        skills.append(element('h4', null, 'Соответствие по группам'));
+        if (job.brief.radarReady) skills.append(radar(job.brief.axes));
+        for (const axis of job.brief.axes) {
+          const axisRow = element('div', 'competency-axis');
+          axisRow.append(element('span', null, axis.label + ' · ' + numberFormat.format(axis.coverage) + '% данных'));
+          if (axis.score === null) axisRow.append(element('span', 'support', 'Нет данных'));
+          else axisRow.append(meter(axis.score, 'coverage'), element('strong', 'numeric', numberFormat.format(axis.score)));
+          skills.append(axisRow);
+        }
+        if (!job.brief.axes.length) skills.append(element('p', 'support', 'Группировка недоступна.'));
+        const shares = job.brief.shares;
+        skills.append(element('p', 'support', 'Основания: ' + percent(shares.confirmed) +
+          ' · Сверка: ' + percent(shares.disputed) + ' · Нет сведений: ' + percent(shares.unknown)));
+        brief.append(strengths, skills);
+        row.append(brief);
+      }
       list.append(row);
     });
+  }
+
+  function radar(axes) {
+    const points = radarGeometry(axes);
+    const svg = (name, attrs = {}) => {
+      const node = document.createElementNS('http://www.w3.org/2000/svg', name);
+      for (const [key,value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+      return node;
+    };
+    const chart = svg('svg', {viewBox:'0 0 320 260',class:'skills-radar',role:'img',
+      'aria-label':'Соответствие по группам требований. Отсутствующие данные не показаны точкой.'});
+    for (const radius of [20.5,41,61.5,82]) chart.append(svg('circle',{cx:160,cy:130,r:radius,class:'radar-grid'}));
+    for (const axis of points) {
+      chart.append(svg('line',{x1:160,y1:130,x2:axis.outer.x,y2:axis.outer.y,class:'radar-grid'}));
+      const label = svg('text',{x:axis.labelPoint.x,y:axis.labelPoint.y,'text-anchor':'middle','dominant-baseline':'middle'});
+      label.textContent = axis.label;
+      chart.append(label);
+    }
+    if (points.every(axis=>axis.point)) chart.append(svg('polygon',{
+      points:points.map(axis=>axis.point.x+','+axis.point.y).join(' '),class:'radar-area'}));
+    for (let index=0; index<points.length; index++) {
+      const axis = points[index], next = points[(index+1)%points.length];
+      if (!axis.point) continue;
+      if (next.point) chart.append(svg('line',{x1:axis.point.x,y1:axis.point.y,x2:next.point.x,y2:next.point.y,class:'radar-line'}));
+      const dot = svg('circle',{cx:axis.point.x,cy:axis.point.y,r:3.5,class:'radar-dot'});
+      const title = svg('title');
+      title.textContent = axis.label + ': ' + numberFormat.format(axis.score) + '/100; данные ' + numberFormat.format(axis.coverage) + '%';
+      dot.append(title);chart.append(dot);
+    }
+    return chart;
   }
 
   function meter(value, variant) {
@@ -564,7 +630,7 @@
 
   function renderRows() {
     if (!activeJob) return;
-    const rows = filterRows(activeJob.rows, filter, search.value);
+    const rows = filterRows(activeJob.rows, filter, search.value, displayText);
     byId('requirement-rows').replaceChildren(...rows.flatMap(makeRow));
     byId('empty-rows').hidden = rows.length > 0;
     setText('result-count', 'Показано требований: ' + rows.length + ' из ' + activeJob.rows.length);
@@ -579,7 +645,7 @@
   function downloadManagerReport() {
     if (!activeJob) return;
     const trustedContext = runContext ? { runId: runContext.id, revision: runContext.revision } : null;
-    const html = renderManagerReport(report, activeJob.id, trustedContext);
+    const html = renderManagerReport(report, activeJob.id, trustedContext, displayText);
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
     const link = element('a');
     link.href = url;
@@ -615,8 +681,20 @@
     openReport(next, 'Открыт ' + file.name);
   }
 
-  function openReport(next, label, context = null, selectedJob = null, view = 'ranking') {
+  function clearReportData() {
+    displayText = createDisplayText();
+    search.value = '';
+    for (const node of boundTextNodes) node.textContent = '';
+    boundTextNodes.clear();
+    for (const container of ['job-list', 'requirement-rows', 'profile-list', 'overview-list',
+      'condition-list', 'comparison-detail', 'comparison-job', 'review-list', 'review-controls', 'skipped-jobs',
+      'leader-evidence', 'job-conditions']) byId(container).replaceChildren();
+  }
+
+  function openReport(next, label, context = null, selectedJob = null, view = 'overview') {
+    clearReportData();
     runContext = context;
+    displayText = context?.displayText || createDisplayText();
     report = next;
     renderSummary();
     renderRanking();
@@ -635,7 +713,7 @@
     getContext: () => runContext,
     openServerReport(next, context) {
       const staysOpen = runContext?.id === context.id;
-      const view = staysOpen ? views.find(button => button.getAttribute('aria-pressed') === 'true').dataset.view : 'ranking';
+      const view = staysOpen ? views.find(button => button.getAttribute('aria-pressed') === 'true').dataset.view : 'overview';
       openReport(next, 'Открыт отчёт локального запуска', context, staysOpen ? activeJob?.id : null, view);
     },
     closeServerReport(id) {
@@ -644,10 +722,9 @@
       runContext = null;
       report = null;
       activeJob = null;
+      clearReportData();
       byId('report-workspace').hidden = true;
       byId('welcome').hidden = false;
-      for (const container of ['job-list', 'requirement-rows', 'profile-list', 'overview-list',
-        'condition-list', 'comparison-detail', 'comparison-job', 'review-list', 'review-controls', 'skipped-jobs']) byId(container).replaceChildren();
       setFileStatus('Локальный запуск удалён.');
     }
   };

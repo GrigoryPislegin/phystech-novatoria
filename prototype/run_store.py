@@ -374,7 +374,9 @@ class RunStore:
             if record['report'] is None:
                 raise StoreError('report_unavailable')
             return {'run_id':rid, 'revision':record['revision'],
-                    'aliases':record.get('display_aliases', {})}
+                    'aliases':record.get('display_aliases', {}),
+                    'job_titles':{jid:next((line.strip() for line in source.splitlines() if line.strip()), '')
+                                  for jid,source in record['sources'].get('jobs', {}).items()}}
 
     def review(self, rid, action):
         fields = {'expected_revision','job_id','action','item_id','idempotency_key'}

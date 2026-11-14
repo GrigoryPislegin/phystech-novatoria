@@ -29,12 +29,13 @@ test('synthetic start, read, cancel and delete follow the local contract', async
   await api.start({ mode: 'synthetic-replay', scenario: 'incomplete', idempotency_key: 'same-key' });
   await api.get(runId);
   await api.report(runId);
+  await api.displayData(runId);
   await api.cancel(runId);
   await api.review(runId, { expected_revision: 1, job_id: 'job-001', action: 'read_context', item_id: 'review-item' });
   await api.remove(runId);
   assert.deepEqual(calls.map(([path, options]) => [path, options.method]), [
     ['/api/session', 'GET'], ['/api/runs', 'POST'], ['/api/runs/' + runId, 'GET'],
-    ['/api/runs/' + runId + '/report', 'GET'], ['/api/runs/' + runId + '/cancel', 'POST'],
+    ['/api/runs/' + runId + '/report', 'GET'], ['/api/runs/' + runId + '/display-data', 'GET'], ['/api/runs/' + runId + '/cancel', 'POST'],
     ['/api/runs/' + runId + '/review', 'POST'],
     ['/api/runs/' + runId, 'DELETE']
   ]);
@@ -44,6 +45,11 @@ test('synthetic start, read, cancel and delete follow the local contract', async
   }
   assert.equal(JSON.parse(calls[1][1].body).idempotency_key, 'same-key');
   await assert.rejects(() => api.get('..'), /запуск/);
+});
+
+test('legacy display-data 404 returns no aliases without swallowing access errors', async () => {
+  assert.equal(await createRunApi(async () => new Response('', {status:404})).displayData(runId), null);
+  await assert.rejects(() => createRunApi(async () => new Response('', {status:403})).displayData(runId));
 });
 
 test('failed requests have fixed local feedback and cannot leak backend messages', async () => {

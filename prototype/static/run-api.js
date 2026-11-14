@@ -73,6 +73,7 @@
       start: data => json('/api/runs', { method: 'POST', data }),
       async get(id) { return json(pathFor(id)); },
       async report(id) { return response(pathFor(id) + '/report'); },
+      async displayData(id) { return json(pathFor(id) + '/display-data', { allowMissing: true }); },
       async cancel(id) { return json(pathFor(id) + '/cancel', { method: 'POST' }); },
       async review(id, data) { return json(pathFor(id) + '/review', { method: 'POST', data }); },
       async remove(id) { await response(pathFor(id), { method: 'DELETE' }); }

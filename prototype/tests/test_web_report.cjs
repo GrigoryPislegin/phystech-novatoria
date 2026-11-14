@@ -148,7 +148,7 @@ test('malformed recommendations and oversized job sets cannot replace an open re
   assert.throws(() => parseReport(JSON.stringify(report)), /структур/);
 
   const incomplete = example('incomplete');
-  incomplete.unprocessed_job_ids = Array.from({ length: 20 }, (_, index) => 'skipped-' + index);
+  incomplete.unprocessed_job_ids = Array.from({ length: 30 }, (_, index) => 'skipped-' + index);
   delete incomplete.unprocessed;
   assert.throws(() => parseReport(JSON.stringify(incomplete)), /структур/);
 });
@@ -317,4 +317,86 @@ test('v3 optional metadata cannot reinterpret legacy reports or break readable b
   assert.equal(report.jobs.length, 3);
   assert.equal(report.leader, null);
   assert.deepEqual(report.jobs[0].conflicts, []);
+});
+
+test('30 vacancies remain complete and the 31st is rejected', () => {
+  const raw = example('success');
+  const first = raw.ranking.jobs[0];
+  delete raw.presentation;
+  raw.ranking.jobs = Array.from({length:30}, (_,index) => ({...structuredClone(first),job_id:'batch-'+index,rank:index+1}));
+  assert.equal(parseReport(JSON.stringify(raw)).jobs.length,30);
+  raw.ranking.jobs.push({...structuredClone(first),job_id:'batch-30',rank:31});
+  assert.throws(() => parseReport(JSON.stringify(raw)), /структур/);
+});
+
+test('display aliases are run-bound, literal, stable and separate from score input', () => {
+  const { bindDisplayData, createDisplayText, displayCopy } = require('../static/report.js');
+  const ref = '[[PRIV:0123456789abcdef:1:ORG]]';
+  const other = '[[PRIV:0123456789abcdef:2:PERSON]]';
+  const report = parseReport(JSON.stringify(example('success')));
+  report.runId = 'a'.repeat(32); report.revision = 2;
+  report.jobs[0].rows[0].label = ref;
+  const original = JSON.stringify(report.jobs[0].score);
+  const data = {run_id:report.runId,revision:2,aliases:{[ref]:'<img src=x> Vue.js'},job_titles:{[report.jobs[0].id]:ref}};
+  assert.throws(() => bindDisplayData(report,{...data,revision:1}), /Версия/);
+  assert.throws(() => bindDisplayData(report,{...data,run_id:'b'.repeat(32)}), /Версия/);
+  const display = bindDisplayData(report,data);
+  assert.equal(display(ref),'<img src=x> Vue.js');
+  assert.equal(display(other),'Фрагмент 1');
+  assert.equal(display(other),'Фрагмент 1');
+  assert.equal(filterRows(report.jobs[0].rows,'all','vue',display).length,1);
+  assert.equal(report.jobs[0].rows[0].label,ref);
+  assert.equal(JSON.stringify(report.jobs[0].score),original);
+  const copy = displayCopy(report,display);
+  assert.equal(copy.jobs[0].rows[0].label,'<img src=x> Vue.js');
+  assert.equal(createDisplayText()(ref),'Фрагмент 1');
+  assert.equal(bindDisplayData(report,null)(ref),'Фрагмент 1');
+});
+
+test('brief uses bounded server groups and never turns missing evidence into zero', () => {
+  const raw = example('success');
+  raw.policy_version = 'draft-2026-11-14-v3';
+  const job = raw.ranking.jobs[0];
+  for (const entry of raw.ranking.jobs) entry.score.policy_version = raw.policy_version;
+  const ids = job.requirements.items.map(item=>item.id);
+  job.score.coverage = 50;
+  job.score.lower = 50;
+  job.score.upper = 100;
+  job.evaluation.rows[1] = {...job.evaluation.rows[1],status:'unknown',fact_ids:[],question:'Уточните опыт.'};
+  const shown = raw.presentation.jobs[0].rows;
+  shown[1] = {...shown[1],status:'unknown',resume_quotes:[],question:'Уточните опыт.'};
+  shown.forEach((row,index) => {row.evidence_check = {requirement_id:row.requirement_id,state:index ? 'no_evidence' : 'structure_ok',reasons:[]};});
+  job.score.units = [{ids:ids.slice(0,1),state:'full'},{ids:ids.slice(1),state:'unknown'}];
+  job.score.conflict_ids = [];
+  job.score.disputed_ids = [];
+  job.score.shares = {confirmed:50,disputed:0,unknown:50};
+  job.score.breakdown = {full:ids.slice(0,1),partial:[],fail:[],unknown:ids.slice(1),disputed:[]};
+  job.competency_axes = {policy_version:raw.policy_version,job_id:job.job_id,axes:[
+    {axis:'stack',score:0,coverage:100,weight:50,requirement_ids:ids.slice(0,1)},
+    {axis:'domain',score:null,coverage:0,weight:50,requirement_ids:ids.slice(1)}]};
+  let brief = parseReport(JSON.stringify(raw)).jobs[0].brief;
+  assert.deepEqual(brief.axes.map(axis=>axis.score),[0,null]);
+  assert.equal(brief.strengths.length,1);
+  job.competency_axes.axes[0].score = 100;
+  job.competency_axes.axes[0].coverage = 0;
+  assert.deepEqual(parseReport(JSON.stringify(raw)).jobs[0].brief.axes,[]);
+  job.competency_axes.axes[0].coverage = 100;
+  job.competency_axes.axes[0].score = 500;
+  assert.deepEqual(parseReport(JSON.stringify(raw)).jobs[0].brief.axes,[]);
+  job.score.breakdown.full = ids;
+  job.score.breakdown.unknown = [];
+  assert.equal(parseReport(JSON.stringify(raw)).jobs[0].brief.strengths.length,1);
+  job.score.shares.confirmed = 200;
+  assert.equal(parseReport(JSON.stringify(raw)).jobs[0].brief.shares,null);
+});
+
+test('radar distinguishes measured zero from absent data without inventing a vertex', () => {
+  const { radarGeometry } = require('../static/report.js');
+  const points = radarGeometry([{axis:'stack',score:100,coverage:100},{axis:'domain',score:null,coverage:0},
+    {axis:'education',score:0,coverage:100},{axis:'language',score:50,coverage:20}]);
+  assert.equal(points.length,4);
+  assert.equal(points[1].point,null);
+  assert.deepEqual(points[2].point,{x:160,y:130});
+  assert.notDeepEqual(points[0].point,{x:160,y:130});
+  assert.deepEqual(radarGeometry([{score:90}]),[]);
 });
