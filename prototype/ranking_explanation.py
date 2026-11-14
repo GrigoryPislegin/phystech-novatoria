@@ -467,7 +467,8 @@ def competency_axes(job: dict, labels: dict[str, str] | None) -> CompetencyAxes 
     """Data for a compact summary and a radar of one vacancy. Pure arithmetic over the job's v3 score.
 
     `labels` maps requirement ids to a `contracts.Factor` (a model proposal, like the statuses). An
-    axis weight is the sum of the policy weights of its requirement units, so repeats, splitting and
+    axis weight is the sum of the policy weights of its requirement units (a unit whose rows carry
+    different or missing labels stays outside the axes), so repeats, splitting and
     optional rows move it exactly as they move the score, and all weights add up to 100. An axis
     value is counted evidence only; nothing is drawn for an axis without it. With fewer than four
     axes, or data on fewer than three, `radar_ready` is false and `summary` is the honest short
@@ -487,7 +488,10 @@ def competency_axes(job: dict, labels: dict[str, str] | None) -> CompetencyAxes 
     outside = 0.0
     for unit in score_['units']:
         weight = sum(score_['weights'][rid] for rid in unit['ids'])
-        axis = next((labels[rid] for rid in unit['ids'] if rid in labels), None)
+        # Rows of one unit (literal repeats) must agree: one unlabelled or differently labelled row leaves
+        # the whole unit outside the axes, so its weight never lands on an axis by the order of ids.
+        named = {labels.get(rid) for rid in unit['ids']}
+        axis = named.pop() if len(named) == 1 else None
         if axis in AXES:
             groups[axis].append({**unit, 'weight': weight})
         else:
