@@ -58,6 +58,9 @@ _GENERIC_WORDS = '''
 
 def _stem(word: str) -> str:
     word = word.lower().replace('ё', 'е')
+    word = {'js':'javascript', 'ts':'typescript', 'vuejs':'vue', 'ml':'machinelearning'}.get(word, word)
+    if re.fullmatch(r'тест(?:ы|а|ам|ами|ов|ирование|ирования|ированию|ировать)', word):
+        word = 'тест'
     return word[:5]
 
 
@@ -120,7 +123,9 @@ def _terms(text: str) -> set[str]:
     A privacy reference is one term as a whole: the same hidden value links two texts, and the
     pieces of its marker («PRIV», «ORG», the run id) never do."""
     stems = set(_REFERENCE.findall(text))
-    for word in _WORD.findall(_REFERENCE.sub(' ', text)):
+    text = re.sub(r'(?i)\b(?:машинн(?:ое|ого|ому|ым|ом)\s+обучени(?:е|я|ю|ем|и)|machine\s+learning)\b', 'machinelearning', text)
+    visible = re.sub(r'(?i)\b(vue|nuxt|react|next|node)\.js\b', r'\1', _REFERENCE.sub(' ', text))
+    for word in _WORD.findall(visible):
         if word.isdigit() or (len(word) == 1 and not (word.isascii() and word.isalpha())):
             continue
         stem = _stem(word)
@@ -312,7 +317,7 @@ class MandatoryCheck(_Strict):
     context: str | None = None
 
 
-RULES_VERSION = 'evidence-0.3'  # 0.3: list layouts under requirement headings, obligation denied by heading or item
+RULES_VERSION = 'evidence-0.5'  # aliases, general tenure and unambiguous repeated positive evidence
 
 
 class PairCheck(_Strict):
@@ -448,23 +453,87 @@ def _evidence_reasons(span: Span, quote: str, requirement_terms: set[str], fact_
     return reasons
 
 
+_TENURE = re.compile(r'(?i)^\s*(?:общий\s+)?(?:опыт\s+работы|стаж\s+работы)\s*[:—–-]?\s*'
+                     r'(?:от\s+|минимум\s+)?(?P<years>\d{1,2})\s*(?:год(?:а)?|лет)'
+                     r'(?:\s+(?P<months>1[01]|[0-9])\s+месяц(?:а|ев)?)?\s*[.!]?\s*$')
+
+
+def _tenure_matches(requirement: str, quote: str, status: str) -> bool:
+    """Only an explicit overall work-duration claim; never project/course age or skill tenure."""
+    need, have = _TENURE.fullmatch(requirement), _TENURE.fullmatch(quote)
+    if not need or not have:
+        return False
+    months = lambda m: int(m['years']) * 12 + int(m['months'] or 0)
+    return (months(have) >= months(need) if status == 'full' else
+            0 < months(have) < months(need) if status == 'partial' else
+            months(have) < months(need) if status == 'fail' else False)
+
+
+def _link_terms(text: str, status: str, *, as_fact=False) -> set[str]:
+    terms = _terms(text)
+    if status == 'partial':
+        # General language knowledge supports partial credit for a version,
+        # never full credit for version-specific features. Nuxt uses Vue
+        # (https://nuxt.com/docs/4.x/getting-started/introduction).
+        for version, base in (('html5','html'), ('css3','css')):
+            if version in terms:
+                terms.add(base)
+        if as_fact and 'nuxt' in terms:
+            terms.add('vue')
+    return terms
+
+
+def _positive_repetition(span: Span) -> bool:
+    """Repeated quotes can be bound only when every location is affirmative professional use."""
+    text = span.sentence or span.quote
+    if reverses(text) or (span.heading and reverses(span.heading, heading=True)) or _OTHERS.search(text):
+        return False
+    if re.search(r'(?i)\b(?:книг\w*|стать\w*|ваканси\w*|требовани\w*|пример\w*|клиент\w*|коллег\w*|ему|ей|им|book|article|vacancy|example|client|customer)\b', text):
+        return False
+    if (re.match(r'(?i)^(?:(?:основной|технологический|ключевые)\s+)?(?:стек|навыки|технологии)\s*[:|]', text)
+            or re.match(r'(?i)^(?:участие\s+в\s+)?(?:интеграци\w*|миграци\w*|переход\w*)\b', text)
+            or re.search(r'(?i)\b(?:использовал[аи]?|работал[аи]?|разрабатывал[аи]?|участвовал[аи]?|used|implemented)\b', text)):
+        return True
+    # A complete technical list, without arbitrary prose, is also a skills claim.
+    from .privacy_core.professional import technical_list_spans
+    return bool(technical_list_spans(text))
+
+
 def check_row(row: Row, requirement: Requirement, facts: Facts, cv: Source) -> RowCheck:
     reasons, evidence = _row_shape(row, requirement), []
     by_id = {f.id: f for f in facts.items}
-    requirement_terms = _terms(f'{requirement.text} {requirement.quote}')
+    # The model's paraphrase cannot introduce a term absent from the vacancy.
+    requirement_terms = _link_terms(requirement.quote, row.status)
     lay = cv.text_layout
+    linked = False
     for fact_id in row.fact_ids:
         fact = by_id.get(fact_id)
         if fact is None:
             reasons.append(_invalid('unknown_fact_id', 'Ссылка на несуществующий факт.', fact_id=fact_id))
             continue
         located = locate(cv, fact.quote)
+        if (located.reason and located.reason.code == 'ambiguous_location'
+                and row.status in ('full', 'partial')):
+            positions = occurrences(cv.text, fact.quote)
+            candidates = [locate(cv, fact.quote, pos) for pos in positions] if len(positions) <= 64 else []
+            if candidates and all(_positive_repetition(item.span) for item in candidates):
+                located = candidates[0]
         if located.reason:
             reasons.append(located.reason.model_copy(update={'fact_id': fact_id}))
             continue
         evidence.append(located.span)
-        reasons += _evidence_reasons(located.span, fact.quote, requirement_terms, fact_id, lay, cv.text,
-                                     status=row.status)
+        checks = _evidence_reasons(located.span, fact.quote, requirement_terms, fact_id, lay, cv.text,
+                                   status=row.status)
+        connects = bool(requirement_terms & _link_terms(fact.quote, row.status, as_fact=True)) or _tenure_matches(
+            requirement.quote, fact.quote, row.status)
+        if connects:
+            checks = [r for r in checks if r.code != 'evidence_not_linked']
+            linked = True
+        reasons += checks
+    if row.status == 'partial' and linked:
+        # A partial match needs a supported part. Additional context facts may
+        # be irrelevant, but negations, forged spans and attribution still block it.
+        reasons = [r for r in reasons if r.code != 'evidence_not_linked']
     if any(r.severity == 'invalid' for r in reasons):
         state = 'invalid'
     elif reasons:

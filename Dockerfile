@@ -22,8 +22,8 @@ FROM models-${PRIVACY_MODEL_SOURCE} AS final
 COPY prototype/__main__.py prototype/contracts.py prototype/demo.py prototype/documents.py prototype/model.py prototype/pipeline.py prototype/privacy.py prototype/scoring.py prototype/application.py prototype/errors.py prototype/presentation.py prototype/evidence.py prototype/requirements_review.py /app/prototype/
 COPY prototype/analysis_contracts.py prototype/candidate_profile.py prototype/ranking_explanation.py prototype/review_queue.py prototype/review_policy.py prototype/run_store.py prototype/local_service.py prototype/web_app.py /app/prototype/
 COPY prototype/model_references.py /app/prototype/
-COPY prototype/public_demo.py /app/prototype/
-COPY prototype/tests/test_public_demo.py /app/prototype/tests/
+COPY prototype/public_demo.py prototype/recheck.py /app/prototype/
+COPY prototype/tests/test_public_demo.py prototype/tests/test_evidence_linking.py prototype/tests/test_recheck.py /app/prototype/tests/
 COPY prototype/static /app/prototype/static
 COPY scripts/privacy_smoke.py /app/scripts/privacy_smoke.py
 COPY scripts/check_cli_replays.py /app/scripts/check_cli_replays.py
@@ -42,7 +42,7 @@ COPY evaluation/policy_compare.py /app/evaluation/policy_compare.py
 RUN python -m unittest discover -s prototype/tests -p 'test_core.py' -v \
     && python -m unittest prototype.tests.test_model prototype.tests.test_runtime_safety -q \
     && python -m unittest prototype.tests.test_integrated_analysis prototype.tests.test_run_store prototype.tests.test_local_service prototype.tests.test_web_app -q \
-    && python -m unittest prototype.tests.test_public_demo -q \
+    && python -m unittest prototype.tests.test_public_demo prototype.tests.test_evidence_linking prototype.tests.test_recheck -q \
     && mkdir -p data/private && ln -s /opt/privacy-models data/private/privacy-models \
     && python -m unittest prototype.tests.test_c14_boundary prototype.tests.test_professional_context prototype.tests.test_e13_case_acceptance prototype.tests.test_e13_failures -q \
     && python -m unittest prototype.tests.test_e14_evidence_fidelity prototype.tests.test_e14_competency_axes prototype.tests.test_e14_professional_fidelity -q \
