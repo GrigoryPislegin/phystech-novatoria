@@ -131,5 +131,29 @@ class MinimalRealPrivacyTests(RealPrivacyMixin, unittest.TestCase):
     case_id = 'E13-minimal'
 
 
+class FinanceTests(CaseMixin, unittest.TestCase):
+    case_id = 'E13-finance'
+
+
+class FinanceRealPrivacyTests(RealPrivacyMixin, unittest.TestCase):
+    case_id = 'E13-finance'
+
+
+class AnalyticsTests(CaseMixin, unittest.TestCase):
+    case_id = 'E13-analytics'
+
+
+class AnalyticsRealPrivacyTests(RealPrivacyMixin, unittest.TestCase):
+    case_id = 'E13-analytics'
+
+
+class DevelopmentTests(CaseMixin, unittest.TestCase):
+    case_id = 'E13-development'
+
+
+class DevelopmentRealPrivacyTests(RealPrivacyMixin, unittest.TestCase):
+    case_id = 'E13-development'
+
+
 if __name__ == '__main__':
     unittest.main()
