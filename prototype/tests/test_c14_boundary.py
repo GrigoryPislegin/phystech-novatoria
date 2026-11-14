@@ -206,6 +206,13 @@ class C14BoundaryTests(unittest.TestCase):
                 privacy.close()
         asyncio.run(run())
 
+    def test_recovery_does_not_reintroduce_a_hidden_word_in_its_own_template(self):
+        # A detector can hide a value identical to a common word. New prose
+        # written by recovery must not keep colliding with that run's index.
+        report, requests, _, _ = self.run_fixture(lambda *_:None, '\nИмя: опыт')
+        self.assertTrue(report['ranking']['complete'], report['errors'])
+        self.assertEqual(len(requests), 7)
+
     def test_unseen_entity_still_blocks_facts_with_safe_diagnostic(self):
         def mutate(task, payload, value):
             if task == 'facts':

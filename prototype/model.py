@@ -56,12 +56,15 @@ def _evidence_only_response(value, payload):
         for row in value.rows:
             requirement = requirements.get(row.requirement_id, {}).get('quote', '')
             grounds = [facts[fid]['quote'] for fid in row.fact_ids if fid in facts]
-            row.comment = 'Требование: ' + requirement + ' / Основания: ' + (
-                ' / '.join(grounds) if grounds else 'подтверждающая цитата не указана.')
+            # Even a fixed word such as "опыт" can collide with a hidden name
+            # or a false-positive source span. Introduce no new lexical values:
+            # the UI already labels requirement, evidence, status and question.
+            row.comment = ' / '.join([requirement, *grounds])
             if row.question is not None and row.question.strip():
-                row.question = None if row.status == 'full' else 'Уточните опыт по требованию: ' + requirement
+                row.question = None if row.status == 'full' else requirement + '?'
         for condition in value.conditions.items:
-            condition.note = 'Сверьте условия по цитатам.'
+            condition.note = ' / '.join(quote for quote in
+                (condition.cv.quote if condition.cv else None, condition.vacancy_quote) if quote) or '?'
         return value
     for fact in value.items:
         fact.text = fact.quote
