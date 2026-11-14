@@ -1,6 +1,6 @@
 # C14: восстановление границы модели
 
-14 ноября 2026. Runtime **36f406bba25513328cc9ac35937aa54916b15a3e**, ветка `codex/c14-safe-mvp`, задача #38. E12 принят из 4d9f237 с сохранением автора (5013724).
+14 ноября 2026. Runtime **aff2d68b3a0cce21253ec37951aceebbf0e416a5**, ветка `codex/c14-safe-mvp`, задача #38. Защита/сервис — 36f406b, aff2d68 уточняет только подписи Live. E12 принят из 4d9f237 с сохранением автора (5013724).
 
 ## Реализация и источник принципа
 
@@ -12,25 +12,25 @@
 
 ## Проверки
 
-- 425 Python-тестов, 41 JS-тест, repository/diff checks PASS.
+- На 36f406b: 425 Python-тестов, 41 JS-тест, repository/diff checks PASS. Затем изменены только три HTML-подписи по [V12/PR39](https://github.com/GrigoryPislegin/hackathon-phystech-nanimai/pull/39): действие теперь явно называет Live и OpenAI; отдаваемый HTTP-сервером HTML проверен.
 - Настоящий NER + SDK MockTransport: контекстный Excel, полный путь 3/3, facts fail 0/3, requirements fail 1/3, восстановленные имена/компоненты, нормализация, чужие ссылки, неверные цитаты, междокументные совпадения, лимит и отмена. Внешних вызовов 0.
 - Семь исходных DOCX прочитаны обоими парсерами. Резюме №2 + 3 вакансии прошли локальную маскировку набора и исходящую проверку. Исходные значения не записаны в репозиторий/диагностику.
 - HTTP финального runtime: protected mock success/disputed 3/3, incomplete 2/3; чтение четырёх исходных DOCX ready/4 ok. Chrome: 3/3, явный неуспех 0/3 с этапом/направлением, сохранённый 1/3, заблокированная передача и предварительный выбор в сводке.
-- Новый Docker linux/arm64: build PASS; 25 boundary/service/HTTP-тестов под UID10001 с `--network none` PASS. Архив загружен через docker load, 12 C14-регрессий повторены без сети.
+- Новый Docker linux/arm64 на aff2d68: build PASS; архив загружен через docker load, 25 boundary/service/HTTP-тестов (включая 12 C14) под UID10001 с `--network none` PASS.
 
 ## Локальный образ и запуск
 
-Тег `recruiter-prototype:c14-36f406b-arm64`.
-Image ID `sha256:969a443d20f0a1fe20ab6bc0f43e5f946a8081ebac0d796d4512cebda5d4c0d8`.
-Архив worktree `artifacts/c14-36f406b/recruiter-prototype-c14-arm64.tar.gz`.
-SHA256 архива `c14441bb0ab1e984e2b1147a01c02d9d53391f8bf2954bf455d20718e8a76d6b`.
+Тег `recruiter-prototype:c14-aff2d68-arm64`.
+Image ID `sha256:5771b1d7f53845a6de63e9bf8445de309f0ddec66fc5f2db85ad54843ce37e3c`.
+Архив worktree `artifacts/c14-aff2d68/recruiter-prototype-c14-arm64.tar.gz`.
+SHA256 архива `1310312a335f91cdf16e0760b25648b9aad8d6bd95cf4468d91df5bb37d48ba8`.
 
 ```sh
-docker load -i artifacts/c14-36f406b/recruiter-prototype-c14-arm64.tar.gz
-docker run --rm --network none --entrypoint python recruiter-prototype:c14-36f406b-arm64 \
+docker load -i artifacts/c14-aff2d68/recruiter-prototype-c14-arm64.tar.gz
+docker run --rm --network none --entrypoint python recruiter-prototype:c14-aff2d68-arm64 \
   -m unittest prototype.tests.test_c14_boundary -q
 docker run --name recruiter-c14 -p 127.0.0.1:8769:8765 \
-  -v recruiter-c14-data:/app/data recruiter-prototype:c14-36f406b-arm64
+  -v recruiter-c14-data:/app/data recruiter-prototype:c14-aff2d68-arm64
 ```
 
 Открыть `http://127.0.0.1:8769`. Остановка: `docker stop recruiter-c14`. Платный API выключен.
