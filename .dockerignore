@@ -41,6 +41,7 @@ prototype/static/**
 !prototype/tests/test_c14_boundary.py
 !prototype/tests/test_e13_case_acceptance.py
 !prototype/tests/test_e13_support.py
+!prototype/tests/test_e13_failures.py
 !evaluation/
 evaluation/**
 !evaluation/fixtures/
@@ -48,6 +49,9 @@ evaluation/fixtures/**
 !evaluation/fixtures/integration/
 evaluation/fixtures/integration/**
 !evaluation/fixtures/integration/egor-e13-minimal.json
+!evaluation/fixtures/integration/egor-e13-finance.json
+!evaluation/fixtures/integration/egor-e13-analytics.json
+!evaluation/fixtures/integration/egor-e13-development.json
 !evaluation/expectations/
 evaluation/expectations/**
 !evaluation/expectations/egor/

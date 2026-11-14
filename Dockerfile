@@ -27,13 +27,13 @@ COPY scripts/check_cli_replays.py /app/scripts/check_cli_replays.py
 COPY prototype/tests/test_core.py /app/prototype/tests/test_core.py
 COPY prototype/tests/test_integrated_analysis.py prototype/tests/test_run_store.py prototype/tests/test_local_service.py prototype/tests/test_web_app.py /app/prototype/tests/
 COPY prototype/tests/test_c14_boundary.py /app/prototype/tests/
-COPY prototype/tests/test_e13_case_acceptance.py prototype/tests/test_e13_support.py /app/prototype/tests/
-COPY evaluation/fixtures/integration/egor-e13-minimal.json /app/evaluation/fixtures/integration/
+COPY prototype/tests/test_e13_case_acceptance.py prototype/tests/test_e13_support.py prototype/tests/test_e13_failures.py /app/prototype/tests/
+COPY evaluation/fixtures/integration/egor-e13-minimal.json evaluation/fixtures/integration/egor-e13-finance.json evaluation/fixtures/integration/egor-e13-analytics.json evaluation/fixtures/integration/egor-e13-development.json /app/evaluation/fixtures/integration/
 COPY evaluation/expectations/egor/e13-cases.json /app/evaluation/expectations/egor/
 RUN python -m unittest discover -s prototype/tests -p 'test_core.py' -v \
     && python -m unittest prototype.tests.test_integrated_analysis prototype.tests.test_run_store prototype.tests.test_local_service prototype.tests.test_web_app -q \
     && mkdir -p data/private && ln -s /opt/privacy-models data/private/privacy-models \
-    && python -m unittest prototype.tests.test_c14_boundary prototype.tests.test_e13_case_acceptance -q \
+    && python -m unittest prototype.tests.test_c14_boundary prototype.tests.test_e13_case_acceptance prototype.tests.test_e13_failures -q \
     && python scripts/privacy_smoke.py --models-dir /opt/privacy-models \
     && python scripts/privacy_smoke.py --models-dir /opt/privacy-models --model-mock \
     && mkdir -p /app/data/private/prototype-runs \

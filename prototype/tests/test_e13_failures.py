@@ -50,7 +50,7 @@ class RejectedAnswerTests(FailureMixin, unittest.TestCase):
                 report, replay = self.go({'facts': fault})
                 self.assert_incomplete(report, processed=[], lost=JOBS, stage='facts')
                 self.assertEqual(report['errors'][0]['code'], 'model_invalid')
-                self.assertEqual(replay.requests, [('facts', None)])  # no vacancy call without facts
+                self.assertEqual(replay.requests, [('facts', None), ('facts', None)])  # one retry, no vacancy call without facts
                 self.assertEqual(report['facts']['items'], [])
                 self.assertIsNone(report['profile'])  # no manager brief is invented
 
@@ -60,7 +60,7 @@ class RejectedAnswerTests(FailureMixin, unittest.TestCase):
                 report, replay = self.go({'job': {lost: 'not_json'}})
                 self.assert_incomplete(report, processed=[j for j in JOBS if j != lost], lost=[lost],
                                        stage='evaluation')
-                self.assertEqual(len(replay.requests), 7)  # the run went on after the rejection
+                self.assertEqual(len(replay.requests), 8)  # one retry, then the run went on after the rejection
                 self.assertEqual(report['unprocessed'][0]['reason'], 'model_invalid')
         # Without the rejected leader the next vacancy is first only among the processed ones.
         report, _ = self.go({'job': {'an-1': 'not_json'}})
@@ -72,16 +72,16 @@ class InventedGroundTests(FailureMixin, unittest.TestCase):
     def test_quote_that_is_not_in_the_resume_rejects_the_facts(self):
         report, _ = self.go(edit('facts', None, lambda a: a['items'][2].update(
             quote='Писал запросы на SQL к Oracle.')))
-        self.assert_incomplete(report, processed=[], lost=JOBS, stage='facts_validation')
+        self.assert_incomplete(report, processed=[], lost=JOBS, stage='facts')
 
     def test_quote_that_is_not_in_the_vacancy_rejects_only_that_vacancy(self):
         report, _ = self.go(edit('requirements', 'an-2', lambda a: a['items'][0].update(
             quote='Опыт работы с Hadoop.', mandatory_quote=None)))
-        self.assert_incomplete(report, processed=['an-1', 'an-3'], lost=['an-2'], stage='requirements_validation')
+        self.assert_incomplete(report, processed=['an-1', 'an-3'], lost=['an-2'], stage='requirements')
 
     def test_reference_to_a_fact_that_was_not_extracted_is_rejected(self):
         report, _ = self.go(edit('evaluation', 'an-1', lambda a: a['rows'][1].update(fact_ids=['f99'])))
-        self.assert_incomplete(report, processed=['an-2', 'an-3'], lost=['an-1'], stage='evaluation_validation')
+        self.assert_incomplete(report, processed=['an-2', 'an-3'], lost=['an-1'], stage='evaluation')
 
     def test_unrelated_fact_gives_no_credit(self):
         base, _ = self.go(None)
@@ -119,7 +119,7 @@ class UnknownIsNotFailTests(FailureMixin, unittest.TestCase):
             with self.subTest(name):
                 report, _ = self.go(edit('evaluation', 'an-3', lambda a, c=change: a['rows'][self.ROW].update(c)))
                 self.assert_incomplete(report, processed=['an-1', 'an-2'], lost=['an-3'],
-                                       stage='evaluation_validation')
+                                       stage='evaluation')
 
     def test_silence_widens_the_range_and_a_stated_absence_narrows_it(self):
         base, _ = self.go(None)
@@ -142,8 +142,7 @@ class UnknownIsNotFailTests(FailureMixin, unittest.TestCase):
 
 @unittest.skipUnless(real_privacy_available(), 'public NER weights or libraries are not installed')
 class RealPrivacyBoundaryTests(FailureMixin, unittest.TestCase):
-    """The same answers behind the real privacy_core. Known blockers are reported as skips with the
-    observed result; an unrecorded result fails."""
+    """The same answers behind real privacy_core; historical blockers are failures, not skips."""
 
     def stop(self, report):
         first = next(iter(report['errors']), None)
@@ -155,7 +154,7 @@ class RealPrivacyBoundaryTests(FailureMixin, unittest.TestCase):
         processed, stopped = self.stop(report)
         self.assertEqual(processed, 0)
         self.assertEqual(stopped[0], 'facts')
-        self.assertIn(stopped[1], {'privacy_untrusted_reference', 'privacy_residual_findings'})
+        self.assertEqual(stopped[1], 'privacy_untrusted_reference')
         self.assertEqual(replay.requests, [('facts', None)])
 
     def test_professional_terms_in_free_text_and_in_quotes(self):
@@ -163,14 +162,7 @@ class RealPrivacyBoundaryTests(FailureMixin, unittest.TestCase):
         professional content of the documents, not personal data."""
         report, _ = self.go(None, privacy='local')
         got = self.stop(report)
-        if got == (3, None):
-            return
-        self.assertEqual(got, KNOWN_ANALYTICS_BLOCKER, 'neither 3 of 3 nor the recorded blocker')
-        self.skipTest(f'KNOWN BLOCKER: analytics set stops at {got}; expected 3 of 3')
-
-
-# privacy_core local-privacy-0.3 on base 6b06d69, the analytics set as written.
-KNOWN_ANALYTICS_BLOCKER = (0, ('facts', 'privacy_residual_findings'))
+        self.assertEqual(got, (3, None))
 
 
 if __name__ == '__main__':
