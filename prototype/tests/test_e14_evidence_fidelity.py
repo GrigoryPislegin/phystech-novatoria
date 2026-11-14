@@ -116,10 +116,27 @@ class InventedEvidenceTests(unittest.TestCase):
         s = self.refused('Vue.js изучаю, писал на jQuery.', 'Vue.js', 'quote_is_fragment', status='fail', mandatory=True)
         self.assertEqual((s['mandatory'], s['breakdown']['stop_factors']), ('clarify', []))
 
-    def test_reverses_reads_whole_words_only(self):
-        self.assertFalse(any(map(reverses, ('Навыки:', 'Опыт работы:', 'Нетология', 'Notebook', 'Технологии:',
-                                            'Работал с Next.js 3 года', 'Ключевые навыки'))))
-        self.assertTrue(all(map(reverses, ('не работал', 'Нет опыта', 'без опыта', "don't use", 'ещё изучаю'))))
+    def test_ordinary_work_phrases_are_not_reversing_words(self):
+        neutral = ('Навыки:', 'Опыт работы:', 'Нетология', 'Notebook', 'Технологии:', 'Работал с Next.js 3 года',
+                   'Готовила управленческую отчётность в', 'Разрабатывал пользовательские интерфейсы на',
+                   'Самостоятельно разработал сервис на', 'Собирал витрины данных в', 'Опыт: машинное обучение,',
+                   'Обучал стажёров работе с', 'Изучение рынка и аналитика в', 'Планирование спринтов в',
+                   'Готов к переезду', 'Минимальное время ответа', 'Базовый оклад', 'Базы данных:',
+                   'Plan-fact analysis in', 'Знакомство клиентов с продуктом', 'Теория вероятностей,', 'Основные навыки:')
+        self.assertEqual([t for t in neutral if reverses(t)], [])
+        self.assertTrue(all(map(reverses, ('не работал', 'Нет опыта', 'без опыта', "don't use", 'ещё изучаю',
+                                            'прошёл курс', 'планирую освоить', 'базовый уровень', 'только читал',
+                                            'как пользователь', 'знаком по документации', 'would like to try'))))
+        # A real match next to such a phrase is counted.
+        for cv in ('Готовила управленческую отчётность в Excel и Vue.js-панели.',
+                   'Разрабатывал пользовательские интерфейсы на Vue.js.'):
+            s, check, _ = one_of_eight(cv, 'Опыт работы с Vue.js.', 'Vue.js')
+            self.assertEqual((check.state, s['coverage']), ('structure_ok', 12.5), cv)
+
+    def test_a_heading_that_is_not_about_experience_disputes_its_bullets(self):
+        for heading in ('Интересы:', 'Хобби:', 'Планы:', 'Желаемые технологии:'):
+            with self.subTest(heading):
+                self.refused(f'{heading}\n- Vue.js', 'Vue.js', 'heading_context')
 
 
 class MaskedTermTests(unittest.TestCase):
