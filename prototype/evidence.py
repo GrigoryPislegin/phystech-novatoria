@@ -53,22 +53,29 @@ _GENERIC_STEMS = frozenset(map(_stem, _GENERIC_WORDS))
 _REFERENCE = re.compile(r'\[\[PRIV:[a-f0-9]{16}:\d+:[A-Z]+\]\]')
 
 # Words after which the rest of a sentence, or a list heading, may reverse or limit what a short quote
-# says: negation, intent, learning, a low level. The list is deliberately wide: a hit only sends the
-# row to the recruiter, and a miss would let «Python» be quoted out of «не работал с Python».
-_REVERSING = re.compile(r'''(?ix)(?<![0-9a-zа-яё])(?:
-    не|нет|нету|ни|без|кроме|никогда|никак|отсутств\w*|исключ\w*|
-    not|no|never|without|except|lack\w*|none|\w+n't|
-    планир\w*|хочу|хотел\w*|хочется|желаю|желаем\w*|интерес\w*|готов\w*|собира\w*|мечта\w*|
-    изуча\w*|изучен\w*|осваива\w*|учусь|учил\w*|обуча\w*|обучени\w*|курс\w*|стажир\w*|самостоятельно|
-    learn\w*|study\w*|course\w*|plan\w*|want\w*|would|
-    только|лишь|базов\w*|начальн\w*|начинающ\w*|поверхностн\w*|немного|чуть|слаб\w*|минимальн\w*|
-    теоретическ\w*|теори\w*|пользовател\w*|знаком\w*|basic|beginner|only|just|familiar
-    )(?![0-9a-zа-яё])''')
+# says: negation, a stated intent, learning, a low level. The forms are exact on purpose: «готовила
+# отчётность», «пользовательские интерфейсы», «машинное обучение», «собирал витрины» are ordinary work
+# and must not send a real match to review, while a miss here would let «Python» be quoted out of
+# «не работал с Python».
+_REVERSING = re.compile(r"""(?ix)(?<![0-9a-zа-яё])(?:
+    не|нет|нету|ни|без|кроме|никогда|никак|отсутству(?:ет|ют)|отсутствие|
+    not|no|never|without|except|none|lacks?|lacking|\w+n't|
+    планирую|планирует|хочу|хотел|хотела|хочется|желаю|собираюсь|мечтаю|намерен\w*|
+    изуча(?:ю|л|ла|ет)|осваива(?:ю|л|ла|ет)|учусь|учился|училась|курс(?:а|е|ы|ов|ах|у|ом)?|стажир\w*|
+    learning|learned|studying|studied|courses?|plan\s+to|want\s+to|would\s+like|
+    только|лишь|немного|чуть|поверхностн\w*|начинающ\w*|слаб(?:о|ый|ая|ое|ые)|теоретически|
+    (?:базов|начальн|теоретическ)\w+\s+(?:уров\w+|знани\w+|навык\w+|понимани\w+)|
+    (?:как|уровне|уровень|уровня)\s+пользовател\w*|знаком(?:а|ы)?|
+    basic|beginner|only|just|familiar
+    )(?![0-9a-zа-яё])""")
+# A list heading that is not about what the person did: its bullets are not evidence of experience.
+_HEADING_ONLY = re.compile(r'(?i)(?<![а-яё])(?:интерес\w*|хобби|планы|цели|желаем\w*)(?![а-яё])')
 
 
-def reverses(text: str) -> bool:
+def reverses(text: str, heading: bool = False) -> bool:
     """The text holds a word that may reverse or limit a neighbouring claim."""
-    return bool(_REVERSING.search(text.replace('ё', 'е').replace('Ё', 'Е')))
+    text = text.replace('ё', 'е').replace('Ё', 'Е')
+    return bool(_REVERSING.search(text) or (heading and _HEADING_ONLY.search(text)))
 
 
 def _terms(text: str) -> set[str]:
@@ -342,7 +349,7 @@ def _evidence_reasons(span: Span, quote: str, requirement_terms: set[str], fact_
                        if hidden else
                        _review('evidence_not_linked', 'В доказательстве нет ни одного термина требования.',
                                fact_id=fact_id, context=around))
-    if span.heading and reverses(span.heading):
+    if span.heading and reverses(span.heading, heading=True):
         reasons.append(_review('heading_context', 'Пункт списка под заголовком с оговоркой; проверьте заголовок.',
                                fact_id=fact_id, context=f'{span.heading} → {around}'))
     return reasons

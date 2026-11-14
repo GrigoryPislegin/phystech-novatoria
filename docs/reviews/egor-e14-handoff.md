@@ -20,7 +20,7 @@
 | Разные маски | считалось связью (ошибка) | спорно, код `link_hidden_by_mask` |
 | Термин скрыт только с одной стороны | спорно без объяснения | спорно, «сверьте с исходным документом» |
 
-Список оговорок намеренно широкий: срабатывание лишь отправляет строку рекрутеру.
+Оговорки заданы точными формами: «готовила отчётность», «пользовательские интерфейсы», «машинное обучение», «собирал витрины» — обычная работа и строку на проверку не отправляют (регрессия на 22 нейтральные фразы).
 
 **Версии.** Формула и веса v3 не менялись, `policy_version` прежняя (UI привязан к этой строке). Новые проверки помечены `evidence_check.rules_version = "evidence-0.2"`; у сохранённых отчётов поля нет, их расчёт воспроизводится по сохранённым состояниям.
 
@@ -58,11 +58,11 @@
 ## Проверки
 
 ```
-python -m unittest prototype.tests.test_e14_evidence_fidelity      # 15 тестов, OK — exit 0
-python -m unittest discover -s prototype/tests                     # 515 тестов, OK (54 пропущено: нет NER)
+python -m unittest prototype.tests.test_e14_evidence_fidelity      # 16 тестов, OK — exit 0
+python -m unittest discover -s prototype/tests                     # 516 тестов, OK (54 пропущено: нет NER)
 docker run --rm --network none -v "$PWD":/work -w /work -e PYTHONDONTWRITEBYTECODE=1 \
   -e PRIVACY_MODELS_DIR=/opt/privacy-models --entrypoint python recruiter-prototype:bffa94a-arm64 \
-  -m unittest discover -s prototype/tests                          # с NER: 515 тестов, 6 FAIL потери смысла — exit 1
+  -m unittest discover -s prototype/tests                          # с NER: 516 тестов, 6 FAIL потери смысла — exit 1
 node --test prototype/tests/test_web_*.cjs                         # 41/41
 python scripts/check_cli_replays.py                                # exit 0
 python -m evaluation.policy_compare                                # v2 10, v3 16 из 16, регрессий нет
