@@ -202,6 +202,10 @@ class LocalPrivacy:
                           if len(part) >= 2)
             values.add(head)
         for hidden in values - {''}:
+            # A one-letter NER span/initial is masked at its source position,
+            # but must not turn every Russian preposition into a hidden name.
+            if len(hidden) == 1 and hidden.isalpha():
+                continue
             self._hidden_lengths.add(len(hidden))
             self._hidden_values.add(hmac.digest(self._key, hidden.encode(), 'sha256'))
 
@@ -402,6 +406,34 @@ class LocalPrivacy:
                     if not any(left < ref.end() and ref.start() < right for ref in references):
                         found.append(Finding(left, right, 'KNOWN'))
         return found
+
+    def reprotect_response(self, value):
+        """Replace exact known source values with existing refs; never issue new aliases."""
+        self._ready()
+        by_value = {}
+        for ref, original in self._display_aliases.items():
+            if original and not (len(original) == 1 and original.isalpha()):
+                by_value.setdefault(original, set()).add(ref)
+        replacements = {original:next(iter(refs)) for original, refs in by_value.items() if len(refs) == 1}
+        if not replacements:
+            return value
+        pattern = re.compile(r'(?<!\w)(?:' + '|'.join(re.escape(v) for v in sorted(replacements, key=len, reverse=True)) + r')(?!\w)')
+        prose_fields = {'text', 'quote', 'mandatory_quote', 'vacancy_quote', 'comment', 'question', 'note'}
+        def walk(item, field=None):
+            if isinstance(item, str):
+                if field not in prose_fields:
+                    return item
+                self._without_refs(item)  # Reject unissued/damaged refs before transforming.
+                parts, pos = [], 0
+                for ref in REFERENCE.finditer(item):
+                    parts.extend((pattern.sub(lambda m:replacements[m.group()], item[pos:ref.start()]), ref.group()))
+                    pos = ref.end()
+                parts.append(pattern.sub(lambda m:replacements[m.group()], item[pos:]))
+                return ''.join(parts)
+            if isinstance(item, list): return [walk(child, field) for child in item]
+            if isinstance(item, dict): return {key:walk(child, key) for key, child in item.items()}
+            return item
+        return walk(value)
 
     def summary(self):
         return {'backend':POLICY_VERSION, 'kind':'pseudonymization_not_anonymity',

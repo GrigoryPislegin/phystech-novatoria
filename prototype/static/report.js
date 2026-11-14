@@ -713,6 +713,27 @@
     return counts;
   }
 
+  function interviewPlan(report) {
+    const selected = [], seen = new Set();
+    const candidates = [
+      ...(report.leader?.canChange || []).filter(ref => ['unknown', 'partial'].includes(ref.kind))
+        .map(ref => ({ ...ref, changesOrder:true })),
+      ...report.jobs.slice(0, 3).flatMap(job => [...job.rows]
+        .sort((a, b) => Number(Boolean(b.mandatoryQuote && !b.mandatoryExcluded)) -
+          Number(Boolean(a.mandatoryQuote && !a.mandatoryExcluded)))
+        .map(row => ({ jobId:job.id, row, unitIds:job.units.find(unit => unit.includes(row.id)) || [row.id], changesOrder:false })))
+    ];
+    for (const ref of candidates) {
+      if (!['unknown', 'partial'].includes(ref.row.status) || !ref.row.question) continue;
+      const key = JSON.stringify([ref.jobId, [...ref.unitIds].sort()]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      selected.push({ ...ref, title:report.jobs.find(job => job.id === ref.jobId).title });
+      if (selected.length === 3) break;
+    }
+    return selected;
+  }
+
   function describeDashboard(report) {
     return report.jobs.map(job => ({
       title: job.title,
@@ -727,7 +748,7 @@
   }
 
   const api = {
-    MAX_REPORT_BYTES, parseReport, createDisplayText, displayCopy, bindDisplayData, radarGeometry, filterRows, statusCounts, describeDashboard, describeRun, describeFailure, describeFit, scoreRange, assessments,
+    MAX_REPORT_BYTES, interviewPlan, parseReport, createDisplayText, displayCopy, bindDisplayData, radarGeometry, filterRows, statusCounts, describeDashboard, describeRun, describeFailure, describeFit, scoreRange, assessments,
     mandatoryStates, evidenceLabel, evidenceNeedsReview, mandatoryLabel, mandatoryNeedsReview, requirementReviewLabel
   };
   if (typeof module === 'object' && module.exports) {

@@ -8,6 +8,44 @@ from prototype.model import Model, Budget
 
 
 class ModelBoundaryTests(unittest.TestCase):
+    def test_short_mandatory_heading_binds_only_its_own_required_list(self):
+        from prototype.analysis_contracts import RequirementsAnalysis
+        from prototype.model import _bind_short_mandatory
+        text = 'Требования:\n- Python.\n- SQL.\nБудет плюсом:\n- Go.'
+        req = RequirementsAnalysis(items=[{'id':'r1','text':'SQL','quote':'SQL.', 'mandatory_quote':'Требования:'}])
+        bound, count = _bind_short_mandatory(req, text)
+        self.assertEqual(count, 1)
+        self.assertIn('SQL.', bound.items[0].mandatory_quote)
+        bound.without_unverified_mandatory(text)
+        for quote, marker in [('Go.', 'Требования:'), ('Go.', 'Будет плюсом:')]:
+            req.items[0].quote, req.items[0].mandatory_quote = quote, marker
+            _, count = _bind_short_mandatory(req, text)
+            self.assertEqual(count, 0)
+
+    def test_short_marker_cannot_turn_same_sentence_prose_into_obligation(self):
+        from prototype.analysis_contracts import RequirementsAnalysis
+        from prototype.model import _bind_short_mandatory
+        for text, quote, marker in [
+            ('Обязательно знание Python, Docker можно изучить после найма.', 'Docker можно изучить после найма.', 'Обязательно знание Python'),
+            ('Мы ожидаем, что команда поможет освоить Docker.', 'Docker', 'ожидаем')]:
+            req = RequirementsAnalysis(items=[{'id':'r1','text':quote,'quote':quote,'mandatory_quote':marker}])
+            self.assertEqual(_bind_short_mandatory(req, text)[1], 0)
+
+    def test_unknown_background_citation_is_removed_without_inventing_match(self):
+        from prototype.contracts import Evaluation, Row
+        model = self.model(AsyncMock())
+        payload = {'requirements':{'items':[{'id':'r1','text':'Python','quote':'Нужен Python.', 'mandatory_quote':None}]},
+                   'facts':{'items':[{'id':'f1','text':'SQL','quote':'Работал с SQL.'}]}}
+        model.client.responses.parse.return_value.output_parsed = Evaluation(rows=[
+            Row(requirement_id='r1',status='unknown',fact_ids=['f1'],comment='SQL',question='Есть опыт Python?')])
+        result = asyncio.run(model.ask(Evaluation, 'evaluation', payload))
+        self.assertEqual((result.rows[0].status, result.rows[0].fact_ids), ('unknown', []))
+        self.assertEqual(model.client.responses.parse.await_count, 1)
+        self.assertEqual(model.response_normalizations[-1]['action'], 'unknown_background_citations_removed')
+        model.client.responses.parse.return_value.output_parsed.rows[0].fact_ids = ['forged']
+        with self.assertRaisesRegex(ValueError, 'model_invalid'):
+            asyncio.run(model.ask(Evaluation, 'evaluation', payload))
+
     def test_budget_settlement_releases_only_measured_call_headroom(self):
         budget = Budget('gpt-6-luna', 0.02, max_calls=65)
         first = budget.reserve(20000, 16000)
